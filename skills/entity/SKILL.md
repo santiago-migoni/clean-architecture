@@ -65,7 +65,8 @@ export class <EntityName> {
     return new <EntityName>(props);
   }
 
-  // Reconstruct from persistence (no validation of existing data)
+  // Reconstruct from persistence. It still runs validate(): stored data must satisfy the same
+  // invariants. What it skips are creation-time effects (initial status, defaults, domain events).
   static reconstitute(props: <EntityName>Props): <EntityName> {
     return new <EntityName>(props);
   }
