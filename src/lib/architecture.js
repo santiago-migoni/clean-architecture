@@ -70,8 +70,10 @@ export function detectLayer(relPath) {
   return LAYER_PATTERNS.find((def) => def.patterns.some((re) => re.test(p))) || null;
 }
 
+// Anchored to the modules/ folder at the ROOT of src (an alias prefix such as "@/" or "src/" is allowed).
+// An unanchored match would misread e.g. src/main/compose/modules/x or src/platform/modules/x as a module.
 export function detectModule(relPath) {
-  const m = /\/modules\/([^/]+)(?:\/|$)/.exec(norm(relPath));
+  const m = /^\/(?:@\/|~\/|src\/)?modules\/([^/]+)(?:\/|$)/.exec(norm(relPath));
   return m ? m[1] : null;
 }
 

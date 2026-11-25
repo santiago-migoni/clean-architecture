@@ -24,12 +24,12 @@ Main composes one module at a time, then connects them:
            │
            ├── platform: createDbConnection()          (src/platform/db)
            │
-           ├── composeCustomers({ db })                (src/main/modules/customers)
+           ├── composeCustomers({ db })                (src/main/compose/customers)
            │     ├── creates SqlCustomerRepository     (customers/infra/adapters/gateways)
            │     ├── creates GetCustomerInteractor     (customers/app/interactors)
            │     └── exposes input port IGetCustomerUseCase  ← the only thing others may use
            │
-           ├── composeOrders({ db, getCustomer })      (src/main/modules/orders)
+           ├── composeOrders({ db, getCustomer })      (src/main/compose/orders)
            │     ├── creates SqlOrderRepository        (orders/infra/adapters/gateways)
            │     ├── creates CustomerLookupGateway(getCustomer)   ← cross-module link
            │     └── PlaceOrderInteractor + PlaceOrderController
@@ -48,12 +48,12 @@ Main composes one module at a time, then connects them:
 
 ### Step 2: Create the Main Files
 
-One entry point → `src/main/index.<ext>`. Several (api, worker, cli) → one folder per entry point, all sharing the `modules/<m>.<ext>` compose functions: `src/main/api/index.<ext>`, `src/main/worker/index.<ext>`.
+One entry point → `src/main/index.<ext>`. Several (api, worker, cli) → one folder per entry point, all sharing the `compose/<m>.<ext>` functions: `src/main/api/index.<ext>`, `src/main/worker/index.<ext>`.
 
 ```
 src/main/
 ├── index.<ext>               ← entry point: platform → modules → server
-├── modules/
+├── compose/                  ← NOT named "modules/": src/modules/ is the business code
 │   ├── customers.<ext>       ← compose<Module>(deps) per module
 │   └── orders.<ext>
 ├── index.test.<ext>          ← test composition root (in-memory implementations)
@@ -63,9 +63,9 @@ src/main/
 
 #### TypeScript (Express, manual DI)
 
-`src/main/modules/orders.ts` — wires ONE module:
+`src/main/compose/orders.ts` — wires ONE module:
 ```typescript
-// src/main/modules/orders.ts
+// src/main/compose/orders.ts
 // Composition of the `orders` module. Only src/main/ may import concrete classes.
 
 import type { DbConnection } from '../../platform/db/connection';
@@ -105,7 +105,7 @@ const makePlaceOrder = () => {
 return { routes: { placeOrder: makePlaceOrder } };
 ```
 
-`src/main/modules/customers.ts` — same shape; it also **exposes its input ports** for other modules:
+`src/main/compose/customers.ts` — same shape; it also **exposes its input ports** for other modules:
 ```typescript
 export function composeCustomers({ db }: { db: DbConnection }) {
   const customerRepository = new SqlCustomerRepository(db);
@@ -126,8 +126,8 @@ export function composeCustomers({ db }: { db: DbConnection }) {
 import express from 'express';
 import { createDbConnection } from '../platform/db/connection';
 import { registerRoutes } from '../platform/web/routes';
-import { composeCustomers } from './modules/customers';
-import { composeOrders } from './modules/orders';
+import { composeCustomers } from './compose/customers';
+import { composeOrders } from './compose/orders';
 
 export async function bootstrap(): Promise<void> {
   // 1. Initialize infrastructure (platform)
@@ -156,7 +156,7 @@ bootstrap().catch(console.error);
 
 #### Python (FastAPI, manual DI)
 ```python
-# src/main/modules/orders.py
+# src/main/compose/orders.py
 from ...modules.orders.infra.adapters.gateways.sql_order_repository import SqlOrderRepository
 from ...modules.orders.infra.adapters.gateways.customer_lookup_gateway import CustomerLookupGateway
 from ...modules.orders.app.interactors.place_order import PlaceOrderInteractor
@@ -176,8 +176,8 @@ def compose_orders(db_session, get_customer):
 from fastapi import FastAPI
 from ..platform.db.connection import create_db_session
 from ..platform.web.routes import register_routes
-from .modules.customers import compose_customers
-from .modules.orders import compose_orders
+from .compose.customers import compose_customers
+from .compose.orders import compose_orders
 
 def create_app() -> FastAPI:
     app = FastAPI()

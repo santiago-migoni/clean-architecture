@@ -150,6 +150,8 @@ Install: `npm i -D eslint typescript typescript-eslint eslint-plugin-boundaries 
 
 Notes for the generated project:
 - `tsconfig.json`: use `"paths": { "@/*": ["./src/*"] }` **without `baseUrl`** (deprecated in TypeScript 6 and an error without `ignoreDeprecations`).
+- `tsconfig.json`: TypeScript 6 no longer includes `@types/*` automatically — if the code uses Node built-ins (`node:fs`, `node:sqlite`, `node:crypto`), install `@types/node` and set `"types": ["node"]`.
+- Do not name a folder under `src/main/` `modules/`: use `src/main/compose/`. `src/modules/` is the business code, and the same name in two places confuses people.
 - The `input-port` element must come **before** `app` in `boundaries/elements`: the first matching descriptor wins, and `app/ports/input` is the only place another module may reach.
 - The whole `src/modules/*/infra` folder is the infra layer, not just `infra/adapters`.
 - After generating the config, verify it by temporarily adding a file that imports outward (for example a `domain/` file importing from `app/`) and checking that ESLint reports it, then delete it. A config that reports nothing may simply not be matching your folders.

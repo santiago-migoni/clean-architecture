@@ -229,7 +229,7 @@ Steps:
 Steps:
 1. Create `src/main/` directory.
 2. Move all `new ConcreteClass()` calls to main.
-3. Wire: Gateway → Presenter → Interactor → Controller → Router, one `compose<Module>` function per module in `src/main/modules/`; connect modules there through input ports only.
+3. Wire: Gateway → Presenter → Interactor → Controller → Router, one `compose<Module>` function per module in `src/main/compose/`; connect modules there through input ports only.
 4. Test that the application still starts and works end-to-end.
 
 ### Phase 7: Enforce the Dependency Rule

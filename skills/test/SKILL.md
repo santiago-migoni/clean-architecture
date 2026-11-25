@@ -321,6 +321,9 @@ it('translates the customers module answer into orders vocabulary', async () => 
 }
 ```
 
+### Vitest (TypeScript, ESM) — verified alternative:
+`vitest.config.ts` with `resolve.alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) }` and `test.include: ['tests/**/*.test.ts']` (so the test composition root `src/main/index.test.ts` is not collected as a suite). Replace `jest.fn()` by `vi.fn()`. Unit tests run with `vitest run tests/*/unit` and need no database.
+
 ### pytest config (Python):
 ```ini
 [pytest]
