@@ -150,6 +150,41 @@ try {
   const escaped = callTool(scaf, 'ca_scaffold', { rootPath: scaf, modules: ['../../etc'] });
   const outside = readdirSync(dirname(scaf)).includes('etc');
   check('scaffold sanitises path-traversal module names', !outside && (typeof escaped !== 'string' || !/etc\//.test(JSON.stringify(escaped.created))), JSON.stringify(escaped).slice(0, 160));
+
+  // ── 5. classification is positional and resolves every import form ─────────────────────
+  console.log('\n[5] layers are classified by position, and barrel / package imports are resolved');
+  const pos = tmpProject('positional'); temps.push(pos);
+  // must be reported
+  write(pos, `${M}/orders/domain/barrel-outward.ts`, "import { X } from '../app';\n");
+  write(pos, `${M}/orders/app/barrel-cross.ts`, "import { C } from '../../customers/domain';\n");
+  write(pos, `${M}/orders/app/alias-cross.ts`, "import { C } from '@/modules/customers';\n");
+  write(pos, 'src/shop/modules/orders/app/py_cross.py', 'from shop.modules.customers.domain.customer import Customer\n');
+  write(pos, 'src/main/java/com/acme/modules/orders/app/JavaCross.java', 'import com.acme.modules.customers.domain.Customer;\n');
+  // must NOT be reported: main/<app>/ is main, a nested shared/ folder stays in its module's layer,
+  // and the legal cross-module edge also works for Java packages
+  write(pos, 'src/main/app/index.ts', "import { createDbConnection } from '../../platform/db/connection';\n");
+  write(pos, `${M}/orders/domain/shared/money.ts`, "import { Order } from '../order';\n");
+  write(pos, 'src/main/java/com/acme/modules/orders/infra/JavaLegal.java', 'import com.acme.modules.customers.app.ports.input.GetCustomer;\n');
+  const ps = callTool(pos, 'ca_scan');
+  const psGot = ps.violations.map((v) => `${v.rule}:${v.file.split('/').pop()}`);
+  const psWant = [
+    'dependency-rule:barrel-outward.ts',
+    'cross-module:barrel-cross.ts',
+    'cross-module:alias-cross.ts',
+    'cross-module:py_cross.py',
+    'cross-module:JavaCross.java',
+  ];
+  check('ca_scan: barrel, alias, Python and Java imports are checked; main/<app>/ and nested shared/ are not misread',
+    same(psGot, psWant), `got:  ${psGot.sort().join(', ')}\n         want: ${psWant.sort().join(', ')}`);
+
+  // ca_layer_of on a file of a NESTED project must use that project's src/, not the cwd's
+  const nest = tmpProject('nested'); temps.push(nest);
+  write(nest, 'src/index.ts', 'export {};\n'); // the cwd has its own src/, like this repo
+  write(nest, `packages/shop/${M}/orders/app/cross.ts`, "import { C } from '../../customers/domain/customer';\n");
+  const lo = callTool(nest, 'ca_layer_of', { filePath: `packages/shop/${M}/orders/app/cross.ts` });
+  check('ca_layer_of: a nested project is classified against its own src/ (module found, violation reported)',
+    lo.module === 'orders' && lo.dependencyRuleCompliant === false && lo.importViolations.some((v) => v.rule === 'cross-module'),
+    JSON.stringify(lo).slice(0, 200));
 } finally {
   for (const dir of temps) rmSync(dir, { recursive: true, force: true });
 }

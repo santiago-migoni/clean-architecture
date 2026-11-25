@@ -18,6 +18,7 @@ import {
   extractImports,
   findViolations,
   importToSrcRelative,
+  srcDirForFile,
   toPosix,
 } from './lib/architecture.js';
 
@@ -454,7 +455,8 @@ function toolScaffold(args) {
 
 function toolLayerOf(args) {
   const safeFile = safePath(args.filePath);
-  const srcDir = srcDirOf(SAFE_ROOT);
+  // The file's own src/ (a nested project such as examples/shop has its own), else the cwd's.
+  const srcDir = srcDirForFile(safeFile) ?? srcDirOf(SAFE_ROOT);
   const rel = toPosix(relative(srcDir, safeFile));
   const layerDef = detectLayer(rel);
 

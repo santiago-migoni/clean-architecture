@@ -8,7 +8,7 @@
  */
 
 import { readFileSync, existsSync } from 'fs';
-import { ALLOWED_LAYERS, detectLayer, detectModule, findViolations, toPosix } from '../lib/architecture.js';
+import { ALLOWED_LAYERS, detectLayer, detectModule, findViolations, srcDirForFile, toPosix } from '../lib/architecture.js';
 
 // Read file path from environment or stdin (Claude Code passes tool context)
 let filePath = process.env.CLAUDE_TOOL_FILE || '';
@@ -25,9 +25,8 @@ if (!filePath || !existsSync(filePath)) process.exit(0);
 
 // Layers are detected relative to src/, never on the absolute path.
 const posixPath = toPosix(filePath);
-const srcIdx = posixPath.lastIndexOf('/src/');
-if (srcIdx === -1) process.exit(0);
-const srcDir = posixPath.slice(0, srcIdx + '/src'.length);
+const srcDir = srcDirForFile(posixPath);
+if (!srcDir) process.exit(0);
 
 const rel = posixPath.slice(srcDir.length + 1);
 const layerDef = detectLayer(rel);

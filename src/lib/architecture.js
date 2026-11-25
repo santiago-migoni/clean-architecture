@@ -19,27 +19,35 @@
  *      crossing is  A/infra/adapters  →  B/app/ports/input.
  *
  * Detection always runs on a path RELATIVE to src/, never on the absolute path,
- * so a project that happens to live under /app/ is not misclassified.
+ * so a project that happens to live under /app/ is not misclassified, and it is
+ * positional: a layer is the folder at its place in the layout (see classifyPath).
  */
 
 import { dirname, resolve, relative } from 'path';
 
 // ── Layers ─────────────────────────────────────────────────────────────────
 
-export const LAYER_PATTERNS = [
-  { layer: 'shared',   patterns: [/\/shared\//], level: 0 },
-  { layer: 'domain',   patterns: [/\/domain\//], level: 1 },
-  { layer: 'app',      patterns: [/\/app\//], level: 2 },
-  {
-    layer: 'adapters',
-    // The whole infra/ folder is the adapters layer (not only infra/adapters/): a file placed
-    // directly under infra/ must not escape the rules.
-    patterns: [/\/infra\//, /\/controllers\//, /\/presenters\//, /\/gateways\//],
-    level: 3,
-  },
-  { layer: 'platform', patterns: [/\/platform\//], level: 4 },
-  { layer: 'main',     patterns: [/\/main\//, /\/bootstrap\//, /\/composition\//], level: 5 },
-];
+export const LAYERS = {
+  shared:   { layer: 'shared',   level: 0 },
+  domain:   { layer: 'domain',   level: 1 },
+  app:      { layer: 'app',      level: 2 },
+  adapters: { layer: 'adapters', level: 3 },
+  platform: { layer: 'platform', level: 4 },
+  main:     { layer: 'main',     level: 5 },
+};
+
+// Top-level folders of src/ and the layer each one is.
+const TOP_LEVEL = {
+  shared: 'shared',
+  platform: 'platform',
+  main: 'main',
+  bootstrap: 'main',
+  composition: 'main',
+};
+
+// Layer folder directly under modules/<module>/. The whole infra/ folder is the adapters layer
+// (not only infra/adapters/): a file placed directly under infra/ must not escape the rules.
+const MODULE_LAYER = { domain: 'domain', app: 'app', infra: 'adapters' };
 
 export const ALLOWED_LAYERS = {
   shared:   [],
@@ -65,16 +73,51 @@ function norm(p) {
   return '/' + toPosix(p).replace(/^\.?\//, '');
 }
 
-export function detectLayer(relPath) {
-  const p = norm(relPath);
-  return LAYER_PATTERNS.find((def) => def.patterns.some((re) => re.test(p))) || null;
+// Classify the path as if `segs[i]` were the root of src/. Returns null if segs[i] is not a known
+// top-level folder. `module` is set for anything under modules/<m>/, even without a layer folder
+// (e.g. a barrel import of '@/modules/customers'), so the Module Rule still applies to it.
+function classifyAt(segs, i) {
+  const top = segs[i];
+  if (top === 'modules') {
+    const mod = segs[i + 1];
+    if (!mod) return null;
+    const layer = MODULE_LAYER[segs[i + 2]];
+    return { layer: layer ? LAYERS[layer] : null, module: mod };
+  }
+  if (TOP_LEVEL[top] && segs.length > i + 1) return { layer: LAYERS[TOP_LEVEL[top]], module: null };
+  return null;
 }
 
-// Anchored to the modules/ folder at the ROOT of src (an alias prefix such as "@/" or "src/" is allowed).
-// An unanchored match would misread e.g. src/main/compose/modules/x or src/platform/modules/x as a module.
+/**
+ * Classify a path relative to src/ (or an import specifier converted with importToSrcRelative)
+ * by POSITION, never by a folder name found anywhere in the path:
+ *   - src/main/app/index.ts is main (not app), src/modules/orders/domain/shared/x.ts is domain (not shared);
+ *   - src/main/compose/modules/x or src/platform/modules/x is not a module.
+ * An alias prefix ("@/", "~/", "src/") is skipped, and so is a Maven/Gradle source set (main/java/...).
+ * When the root is not a known folder — a Java or Python package such as com/acme/modules/... or
+ * shop/modules/... — the first known folder further down the path is used as the root instead.
+ */
+export function classifyPath(relPath) {
+  let segs = toPosix(relPath).split('/').filter((s) => s !== '' && s !== '.');
+  if (segs.length === 0 || segs[0] === '..') return { layer: null, module: null };
+  while (['@', '~', 'src'].includes(segs[0])) segs = segs.slice(1);
+  if (['main', 'test'].includes(segs[0]) && ['java', 'kotlin', 'scala'].includes(segs[1])) segs = segs.slice(2);
+
+  const anchored = classifyAt(segs, 0);
+  if (anchored) return anchored;
+  for (let i = 1; i < segs.length; i++) {
+    const found = classifyAt(segs, i);
+    if (found) return found;
+  }
+  return { layer: null, module: null };
+}
+
+export function detectLayer(relPath) {
+  return classifyPath(relPath).layer;
+}
+
 export function detectModule(relPath) {
-  const m = /^\/(?:@\/|~\/|src\/)?modules\/([^/]+)(?:\/|$)/.exec(norm(relPath));
-  return m ? m[1] : null;
+  return classifyPath(relPath).module;
 }
 
 /**
@@ -82,10 +125,20 @@ export function detectModule(relPath) {
  * Every module is its own component; shared / platform / main are components too.
  */
 export function componentOf(relPath) {
-  const layerDef = detectLayer(relPath);
-  if (!layerDef) return null;
-  const mod = detectModule(relPath);
-  return mod ? `modules/${mod}` : layerDef.layer;
+  const { layer, module } = classifyPath(relPath);
+  if (module) return `modules/${module}`;
+  return layer ? layer.layer : null;
+}
+
+/**
+ * The src/ directory a file belongs to: the nearest enclosing "src" folder (so a file in a nested
+ * project such as examples/shop/src/... is classified against examples/shop/src, not ./src).
+ * Returns null when the file is not under a src/ folder.
+ */
+export function srcDirForFile(file) {
+  const p = toPosix(file);
+  const idx = p.lastIndexOf('/src/');
+  return idx === -1 ? null : p.slice(0, idx + '/src'.length);
 }
 
 // ── Import extraction ──────────────────────────────────────────────────────
@@ -176,12 +229,12 @@ export function findViolations(file, srcDir, content) {
 
   for (const imp of extractImports(content)) {
     const impRel = importToSrcRelative(file, imp, srcDir);
-    const importedLayer = detectLayer(impRel);
-    if (!importedLayer) continue;
-    const impMod = detectModule(impRel);
+    const { layer: importedLayer, module: impMod } = classifyPath(impRel);
+    // A module's root (e.g. a barrel '@/modules/customers') has no layer but still belongs to a module.
+    if (!importedLayer && !impMod) continue;
 
     // Axis 1 — layers
-    if (importedLayer.layer !== layerDef.layer && !allowedLayers.includes(importedLayer.layer)) {
+    if (importedLayer && importedLayer.layer !== layerDef.layer && !allowedLayers.includes(importedLayer.layer)) {
       out.push({
         severity: severityFor(layerDef.layer),
         rule: 'dependency-rule',
@@ -200,14 +253,14 @@ export function findViolations(file, srcDir, content) {
 
     // Axis 2 — modules
     if (mod && impMod && mod !== impMod &&
-        !isLegalCrossModuleImport(layerDef.layer, importedLayer.layer, impRel)) {
+        !isLegalCrossModuleImport(layerDef.layer, importedLayer?.layer, impRel)) {
       out.push({
         severity: 'HIGH',
         rule: 'cross-module',
         layer: layerDef.layer,
         module: mod,
         import: imp,
-        importedLayer: importedLayer.layer,
+        importedLayer: importedLayer ? importedLayer.layer : null,
         importedModule: impMod,
         message: `module "${mod}" must not import module "${impMod}" directly`,
         fix:
