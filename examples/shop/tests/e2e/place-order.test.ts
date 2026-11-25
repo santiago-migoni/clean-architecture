@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createApp } from '@/main';
 import { bootstrapTestApp } from '@/main/index.test';
 import { serve } from './http-test-server';
@@ -61,6 +61,11 @@ describe.each([
       .toMatchObject({ status: 400, body: { code: 'INVALID_ORDER' } });
     expect(await send('POST', '/orders', { customerId, items: [{ productId: 'p1', quantity: 'abc', unitPriceCents: 1 }] }))
       .toMatchObject({ status: 400, body: { code: 'INVALID_ORDER' } });
+    // A missing field is a malformed request (400), not a missing customer (404)
+    expect(await send('POST', '/orders', { items: [item(1)] }))
+      .toMatchObject({ status: 400, body: { code: 'INVALID_ORDER' } });
+    expect(await send('POST', '/orders', { customerId, items: [{ quantity: 1, unitPriceCents: 100 }] }))
+      .toMatchObject({ status: 400, body: { code: 'INVALID_ORDER' } });
   });
 
   it('answers malformed JSON with 400 and never leaks internals', async () => {
@@ -81,5 +86,24 @@ describe.each([
     // Each response must carry ITS OWN total (q x $1.00).
     results.forEach((r, i) => expect(r.body.total).toBe(dollars(quantities[i])));
     expect(new Set(results.map((r) => r.body.orderId)).size).toBe(25);
+  });
+});
+
+describe('HTTP e2e - unexpected failures (real composition root)', () => {
+  it('answers 500 without internals AND logs the original error', async () => {
+    const { app, db } = createApp();
+    const http = await serve(app);
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const { body: { customerId } } = await http.send('POST', '/customers', { name: 'Ada', email: 'ada@example.com' });
+      db.exec('DROP TABLE order_lines; DROP TABLE orders'); // the DB breaks under the use case
+      const res = await http.send('POST', '/orders', { customerId, items: [item(1)] });
+      expect(res).toMatchObject({ status: 500, body: { message: 'Unexpected error' } });
+      expect(JSON.stringify(res.body)).not.toContain('no such table');
+      expect(logged).toHaveBeenCalledWith('Unhandled error:', expect.objectContaining({ message: expect.stringContaining('no such table') }));
+    } finally {
+      logged.mockRestore();
+      await http.close();
+    }
   });
 });

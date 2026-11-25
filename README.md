@@ -9,36 +9,36 @@ A native Claude Code plugin that enforces and guides implementation of **Clean A
 In any Claude Code session:
 
 ```
-/plugin install morcoss/clean-architecture-plugin
+/plugin install santiago-migoni/clean-architecture
 ```
 
 > **Note:** `/plugin marketplace add` and `/plugin install` are different commands.
-> - `/plugin marketplace add morcoss/clean-architecture-plugin` — registers this repo as a **marketplace** (a registry), then you still need to install the plugin from it.
-> - `/plugin install morcoss/clean-architecture-plugin` — installs the **plugin directly**. This is what you want.
+> - `/plugin marketplace add santiago-migoni/clean-architecture` — registers this repo as a **marketplace** (a registry), then you still need to install the plugin from it.
+> - `/plugin install santiago-migoni/clean-architecture` — installs the **plugin directly**. This is what you want.
 
 ### Option 2 — Via marketplace (two steps)
 
 ```
-/plugin marketplace add morcoss/clean-architecture-plugin
-/plugin install clean-architecture@morcoss-clean-architecture-plugin
+/plugin marketplace add santiago-migoni/clean-architecture
+/plugin install clean-architecture@clean-architecture-marketplace
 ```
 
 ### Option 3 — Install from a local clone
 
 ```bash
-git clone https://github.com/morcoss/clean-architecture-plugin.git
+git clone https://github.com/santiago-migoni/clean-architecture.git
 ```
 
 Then in Claude Code:
 
 ```
-/plugin install /path/to/clean-architecture-plugin
+/plugin install /path/to/clean-architecture
 ```
 
 ### Option 4 — Point Claude Code directly at the directory
 
 ```bash
-claude --plugin-dir /path/to/clean-architecture-plugin
+claude --plugin-dir /path/to/clean-architecture
 ```
 
 ## Requirements
@@ -213,3 +213,7 @@ Earlier versions generated `src/{entities,usecases,adapters,frameworks,main}/`. 
 ## License
 
 MIT
+
+## Credits
+
+Maintained by [Santiago Migoni](https://github.com/santiago-migoni). Originally created by [MorcosS](https://github.com/morcoss) and released under the MIT license.

@@ -11,6 +11,8 @@ export function buildHttpApp(handlers: RouteHandlers): Express {
   // Last resort. Malformed JSON is the client's fault; anything else must never leak internals.
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     const malformed = typeof err === 'object' && err !== null && (err as { type?: string }).type === 'entity.parse.failed';
+    // The client gets no internals, but the failure must not disappear: log every unexpected error.
+    if (!malformed) console.error('Unhandled error:', err);
     res.status(malformed ? 400 : 500).json({ message: malformed ? 'Malformed JSON' : 'Unexpected error' });
   });
   return app;

@@ -9,7 +9,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/morcoss/clean-architecture-plugin.git"
+    "url": "https://github.com/santiago-migoni/clean-architecture.git"
   },
   "keywords": [
     "claude-code",
@@ -20,12 +20,13 @@
     "mcp",
     "model-context-protocol"
   ],
-  "author": "MorcosS",
+  "author": "Santiago Migoni (https://github.com/santiago-migoni)",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
   },
   "scripts": {
     "verify:example": "node scripts/verify-example.mjs"
-  }
+  },
+  "homepage": "https://github.com/santiago-migoni/clean-architecture"
 }
