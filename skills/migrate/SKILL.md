@@ -9,8 +9,10 @@ The argument after the command is the path to the code to migrate (e.g., `src/`,
 From the book (Chapter 34 — The Missing Chapter):
 > "The devil is in the implementation details."
 
+The target layout is feature-first: `src/modules/<module>/{domain, app, infra/adapters}` plus `src/shared/`, `src/platform/` and `src/main/`.
+
 Migration should be:
-- **Incremental** — never a big-bang rewrite. Move one layer at a time.
+- **Incremental** — never a big-bang rewrite. Migrate one module at a time, and within it one layer at a time.
 - **Non-breaking** — existing tests should still pass after each step.
 - **Inside-out** — start with the innermost layer (entities) and work outward.
 - **Test-driven** — add tests before moving code, so the tests validate the migration.
@@ -59,7 +61,27 @@ class OrderService {
 // controllers import from models import from utils import from controllers
 ```
 
+### 5. Previous layer-first Clean Architecture layout
+```
+// src/entities/, src/usecases/, src/adapters/, src/frameworks/, src/main/
+// Layers are right, but every business capability is mixed inside each layer folder
+```
+Mapping (per module): `entities/<x>` → `modules/<m>/domain/`, `usecases/ports|interactors` → `modules/<m>/app/`, `adapters/*` → `modules/<m>/infra/adapters/`, `frameworks/*` → `platform/`. File names become kebab-case. Start with Phase 0 (identify the modules), then move the files of one module at a time and fix imports; `ca_scan` reports files still in the old folders.
+
 ## Migration Roadmap
+
+### Phase 0: Identify the Modules (Planning Only — No Code Moves)
+
+**Goal**: Decide the module boundaries before moving any code.
+
+Steps:
+1. List the business capabilities in the code (`orders`, `customers`, `billing`…). Group by *reason to change* (CCP), not by technical type: a module is what changes together.
+2. Name each module in kebab-case. Avoid the reserved names `shared`, `platform`, `main`, `app`, `domain`, `infra`, `modules`, `adapters`.
+3. Map every existing class/file to a module. Anything used by several modules and free of business policy (Money, Id, base errors) is a candidate for `src/shared/`.
+4. Find the places where one capability calls another. Each becomes a **cross-module port** (owned by the caller, implemented in the caller's `infra`, calling the other module's input port) — decide them now.
+5. Order the migration: start with the module that is depended on the least.
+
+Phases 1–5 below are applied **per module**.
 
 ### Phase 1: Extract Entities (Safest — No Behavior Change)
 
@@ -67,7 +89,7 @@ class OrderService {
 
 Steps:
 1. Identify classes/functions that contain enterprise business rules.
-2. Create `src/entities/` directory.
+2. Create `src/modules/<module>/domain/` directory.
 3. Create entity classes that:
    - Are framework-independent.
    - Contain only business methods and validation.
@@ -84,7 +106,7 @@ class OrderService {
 }
 
 // AFTER — Phase 1: Extract to Entity
-// src/entities/Order.ts
+// src/modules/orders/domain/order.ts
 export class Order {
   canBeCancelled(): boolean {
     return this.status === 'PENDING' && this.items.length > 0;
@@ -105,21 +127,21 @@ class OrderService {
 **Goal**: Define the boundaries between business logic and infrastructure.
 
 Steps:
-1. For each "service" method that represents a user action, define an Input Port interface.
+1. For each "service" method that another module (or a second entry point) will call, define an Input Port interface. For use cases only called by one controller in the same module an Input Port is optional — skip it.
 2. For each database access pattern used by a service, define a Repository interface.
-3. Place all interfaces in `src/usecases/ports/`.
+3. Place all interfaces in `src/modules/<module>/app/ports/` (`input/` and `output/`).
 4. Have existing services implement the Input Port interfaces.
 5. Have existing repository/ORM classes implement the Repository interfaces.
 
 ```typescript
 // Step 2a: Define the input port
-// src/usecases/ports/input/IPlaceOrderUseCase.ts
+// src/modules/orders/app/ports/input/place-order.ts
 export interface IPlaceOrderUseCase {
   execute(request: PlaceOrderRequestModel): Promise<void>;
 }
 
 // Step 2b: Define the repository interface
-// src/usecases/ports/output/IOrderRepository.ts
+// src/modules/orders/app/ports/output/order-repository.ts
 export interface IOrderRepository {
   findById(id: string): Promise<Order | null>;
   save(order: Order): Promise<void>;
@@ -135,26 +157,27 @@ export class OrderService implements IPlaceOrderUseCase { /* ... */ }
 **Goal**: Move application business logic into framework-independent interactors.
 
 Steps:
-1. Create `src/usecases/interactors/` directory.
+1. Create `src/modules/<module>/app/interactors/` directory.
 2. Create an Interactor class that:
-   - Implements the Input Port.
+   - Implements the Input Port (if one was defined).
    - Accepts Repository interface via constructor injection.
    - Has no ORM imports, no HTTP imports.
 3. Move the actual business logic from the service into the interactor.
 4. Update the existing service to delegate to the interactor.
 
 ```typescript
-// src/usecases/interactors/PlaceOrderInteractor.ts
+// src/modules/orders/app/interactors/place-order.ts
 // Pure business logic, no framework dependencies
 export class PlaceOrderInteractor implements IPlaceOrderUseCase {
   constructor(
     private readonly outputPort: IPlaceOrderOutputPort,
     private readonly repository: IOrderRepository,
+    private readonly customerLookup: ICustomerLookup, // port owned by `orders`, implemented against `customers`' input port
   ) {}
 
   async execute(request: PlaceOrderRequestModel): Promise<void> {
     // Business logic extracted from service/controller
-    const customer = await this.repository.findCustomerById(request.customerId);
+    const customerExists = await this.customerLookup.exists(request.customerId);
     const order = Order.create({ ... });
     await this.repository.save(order);
     this.outputPort.present({ orderId: order.id });
@@ -167,14 +190,14 @@ export class PlaceOrderInteractor implements IPlaceOrderUseCase {
 **Goal**: Move all database/external code into adapter implementations.
 
 Steps:
-1. Create `src/adapters/gateways/` directory.
+1. Create `src/modules/<module>/infra/adapters/gateways/` directory.
 2. Create Gateway/Repository implementation classes that implement the interfaces from Phase 2.
 3. These classes contain all ORM/SQL code.
 4. Create a data mapper to translate between domain entities and ORM models.
 5. Add an in-memory implementation for testing.
 
 ```typescript
-// src/adapters/gateways/OrderRepositoryImpl.ts
+// src/modules/orders/infra/adapters/gateways/order-repository-impl.ts
 export class OrderRepositoryImpl implements IOrderRepository {
   constructor(private readonly ormRepo: TypeOrmOrderRepository) {}
 
@@ -194,7 +217,7 @@ export class OrderRepositoryImpl implements IOrderRepository {
 **Goal**: Thin out controllers and introduce the Humble Object pattern.
 
 Steps:
-1. Create `src/adapters/controllers/` directory.
+1. Create `src/modules/<module>/infra/adapters/controllers/` (and `presenters/`) directories.
 2. Extract HTTP request parsing from fat controllers into thin adapter controllers.
 3. Create Presenter classes that implement Output Ports.
 4. Make HTTP route handlers (Humble Objects) delegate to controllers and read from presenters.
@@ -206,50 +229,55 @@ Steps:
 Steps:
 1. Create `src/main/` directory.
 2. Move all `new ConcreteClass()` calls to main.
-3. Wire: Gateway → Presenter → Interactor → Controller → Router.
+3. Wire: Gateway → Presenter → Interactor → Controller → Router, one `compose<Module>` function per module in `src/main/compose/`; connect modules there through input ports only.
 4. Test that the application still starts and works end-to-end.
 
 ### Phase 7: Enforce the Dependency Rule
 
 **Goal**: Add tooling to prevent regressions.
 
-Add lint rules or architecture tests:
+Add lint rules or architecture tests for BOTH axes — layers and modules:
 
-#### TypeScript — eslint-plugin-boundaries:
-```json
-{
-  "rules": {
-    "boundaries/element-types": [2, {
-      "default": "disallow",
-      "rules": [
-        { "from": "entities",   "allow": [] },
-        { "from": "usecases",   "allow": ["entities"] },
-        { "from": "adapters",   "allow": ["usecases", "entities"] },
-        { "from": "frameworks", "allow": ["adapters", "usecases", "entities"] },
-        { "from": "main",       "allow": ["frameworks", "adapters", "usecases", "entities"] }
-      ]
-    }]
-  }
-}
-```
+#### TypeScript — eslint-plugin-boundaries (v7):
+Use the `eslint.config.js` from `/clean-architecture:init` (section "Rule enforcement"). It defines the element types `shared`, `domain`, `input-port`, `app`, `infra`, `platform`, `main` and one policy per allowed edge, with the `{{ from.element.captured.module }}` template so a module may only depend on itself, plus the single legal cross-module edge `infra → input-port`. It uses `boundaries/dependencies` with `policies`; older plugin versions (`boundaries/element-types`) have a different syntax.
+
+During migration, set the rule to `1` (warn) so the existing violations are visible without blocking the build, then raise it to `2` (error) once the module is migrated.
 
 #### Java — ArchUnit test:
 ```java
 @Test
-void entitiesShouldNotDependOnUseCases() {
-    noClasses().that().resideInAPackage("..entities..")
-        .should().dependOnClassesThat().resideInAPackage("..usecases..")
+void domainShouldNotDependOnApp() {
+    noClasses().that().resideInAPackage("..modules..domain..")
+        .should().dependOnClassesThat().resideInAPackage("..modules..app..")
+        .check(importedClasses);
+}
+
+@Test
+void modulesShouldNotDependOnEachOther() {
+    slices().matching("..modules.(*)..").should().notDependOnEachOther()
+        .ignoreDependency(resideInAPackage("..infra.adapters.."), resideInAPackage("..app.ports.input.."))
         .check(importedClasses);
 }
 ```
 
 #### Python — import-linter:
 ```ini
-[importlinter:contract:entities]
-name = Entities should not import from other layers
-type = forbidden
-source_modules = myapp.entities
-forbidden_modules = myapp.usecases, myapp.adapters, myapp.frameworks
+[importlinter:contract:layers]
+name = Layers inside each module
+type = layers
+layers =
+    myapp.modules.orders.infra
+    myapp.modules.orders.app
+    myapp.modules.orders.domain
+
+[importlinter:contract:modules]
+name = Modules do not import each other
+type = independence
+modules =
+    myapp.modules.orders
+    myapp.modules.customers
+ignore_imports =
+    myapp.modules.orders.infra.adapters.** -> myapp.modules.customers.app.ports.input.**
 ```
 
 ## Migration Execution Plan
@@ -263,25 +291,32 @@ MIGRATION PLAN FOR: <path>
 Current Architecture Pattern: [identified pattern]
 Estimated Effort: [S/M/L/XL]
 
+PHASE 0 — Module Identification (0 risk — planning only)
+  [ ] List modules and map each existing file to one
+  [ ] Decide src/shared/ contents and the cross-module ports
+
+(Phases 1–5 repeat for each module, least-depended-on first)
+
 PHASE 1 — Entity Extraction (0 risk — pure extraction)
-  [ ] Create src/entities/<Name>.ts
+  [ ] Create src/modules/<module>/domain/<name>.ts
   [ ] Move business methods from <source file>
   [ ] Add entity unit tests
   [ ] Have source file delegate to entity
   [ ] Verify all existing tests still pass
 
 PHASE 2 — Port Definition (0 risk — adding interfaces)
-  [ ] Create src/usecases/ports/input/I<Name>UseCase.ts
-  [ ] Create src/usecases/ports/output/I<Name>Repository.ts
+  [ ] Create src/modules/<module>/app/ports/input/<name>.ts (only where another module / entry point needs it)
+  [ ] Create src/modules/<module>/app/ports/output/<name>-repository.ts
+  [ ] Create cross-module ports (e.g. <other>-lookup.ts) where a capability calls another module
   [ ] Have existing classes implement the interfaces
 
 PHASE 3 — Interactor Extraction (low risk — new class, old delegates)
-  [ ] Create src/usecases/interactors/<Name>Interactor.ts
+  [ ] Create src/modules/<module>/app/interactors/<name>.ts
   [ ] Write interactor unit tests (with mocks)
   [ ] Have old service delegate to interactor
 
 PHASE 4 — Gateway Extraction (medium risk — DB layer refactor)
-  [ ] Create src/adapters/gateways/<Name>RepositoryImpl.ts
+  [ ] Create src/modules/<module>/infra/adapters/gateways/<name>-repository-impl.ts
   [ ] Create in-memory implementation for tests
   [ ] Write integration tests
   [ ] Update Main wiring
@@ -291,11 +326,12 @@ PHASE 5 — Controller/Presenter Split (medium risk — HTTP layer refactor)
   [ ] Verify HTTP responses unchanged
 
 PHASE 6 — Main/Composition Root (low risk — wiring consolidation)
-  [ ] Consolidate all wiring in main/
+  [ ] Consolidate all wiring in main/ (one compose<Module> per module)
+  [ ] Connect modules only through input ports
   [ ] Remove direct instantiation from other layers
 
 PHASE 7 — Enforce the Rule (0 risk — tooling only)
-  [ ] Add eslint-plugin-boundaries or ArchUnit tests
+  [ ] Add eslint-plugin-boundaries / import-linter / ArchUnit tests (layers AND modules)
   [ ] Run lint in CI
 ```
 

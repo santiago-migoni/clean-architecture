@@ -9,6 +9,18 @@ import { createInterface } from 'readline';
 import { readFileSync, existsSync, readdirSync, statSync, lstatSync, mkdirSync, writeFileSync } from 'fs';
 import { join, relative, extname, dirname, resolve, normalize } from 'path';
 import { fileURLToPath } from 'url';
+import {
+  ALLOWED_LAYERS,
+  RESERVED_MODULE_NAMES,
+  componentOf,
+  detectLayer,
+  detectModule,
+  extractImports,
+  findViolations,
+  importToSrcRelative,
+  srcDirForFile,
+  toPosix,
+} from './lib/architecture.js';
 
 const rl = createInterface({ input: process.stdin, terminal: false });
 
@@ -73,10 +85,10 @@ const TOOLS = [
   {
     name: 'ca_scaffold',
     description:
-      'Create the full Clean Architecture directory and file scaffold for a new project or subsystem. ' +
-      'Generates entities/, usecases/ports/input/, usecases/ports/output/, usecases/interactors/, ' +
-      'adapters/controllers/, adapters/presenters/, adapters/gateways/, frameworks/, and main/ ' +
-      'with appropriate README stubs.',
+      'Create the lean Clean Architecture scaffold (feature-first) for a new project: ' +
+      'src/modules/<module>/{domain,app,infra} for each module, src/main/, docs/architecture/ARCHITECTURE.md ' +
+      'and .gitkeep stubs. Everything else (shared/, platform/, ports/, interactors/, in-memory/, test trees) ' +
+      'is created on demand by the skills that need it.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -91,7 +103,15 @@ const TOOLS = [
         },
         domain: {
           type: 'string',
-          description: 'Business domain name (e.g. "OrderManagement") — used in stub comments.',
+          description: 'Business domain name (e.g. "OrderManagement") — used in stub comments and as the default module name.',
+        },
+        modules: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Module names to create under src/modules/ (e.g. ["orders", "customers"]). ' +
+            'Defaults to one module named after the domain, or "core". ' +
+            'Names like shared, platform, main, app, domain, infra are reserved.',
         },
       },
       required: ['rootPath'],
@@ -130,76 +150,6 @@ const TOOLS = [
   },
 ];
 
-// ── Layer detection helpers ────────────────────────────────────────────────
-
-const LAYER_PATTERNS = [
-  {
-    layer: 'entities',
-    patterns: [/\/entities\//, /\/domain\//, /\/enterprise\//],
-    level: 1,
-  },
-  {
-    layer: 'usecases',
-    patterns: [/\/usecases\//, /\/use-cases\//, /\/use_cases\//, /\/application\//],
-    level: 2,
-  },
-  {
-    layer: 'adapters',
-    patterns: [
-      /\/adapters\//, /\/interface-adapters\//, /\/controllers\//, /\/presenters\//, /\/gateways\//,
-    ],
-    level: 3,
-  },
-  {
-    layer: 'frameworks',
-    patterns: [/\/frameworks\//, /\/infrastructure\//, /\/web\//, /\/db\//, /\/external\//],
-    level: 4,
-  },
-  {
-    layer: 'main',
-    patterns: [/\/main\//, /\/bootstrap\//, /\/composition\//],
-    level: 5,
-  },
-];
-
-function detectLayer(filePath) {
-  const normalized = filePath.replace(/\\/g, '/');
-  for (const def of LAYER_PATTERNS) {
-    if (def.patterns.some((p) => p.test(normalized))) {
-      return def;
-    }
-  }
-  return null;
-}
-
-// ── Import extraction ──────────────────────────────────────────────────────
-
-const IMPORT_REGEXES = [
-  // JS/TS: import ... from '...'
-  /(?:import|export)\s+(?:[^'"]*\s+from\s+)?['"]([^'"]+)['"]/g,
-  // JS/TS: require('...')
-  /require\(\s*['"]([^'"]+)['"]\s*\)/g,
-  // Python: from ... import / import ...
-  /^(?:from\s+([\w./]+)\s+import|import\s+([\w./]+))/gm,
-  // Java/Kotlin: import ...;
-  /^import\s+([\w.]+);/gm,
-  // Go: import "..."
-  /import\s+"([^"]+)"/g,
-];
-
-function extractImports(content) {
-  const imports = [];
-  for (const regex of IMPORT_REGEXES) {
-    let m;
-    const re = new RegExp(regex.source, regex.flags);
-    while ((m = re.exec(content)) !== null) {
-      const imp = m[1] || m[2];
-      if (imp) imports.push(imp);
-    }
-  }
-  return [...new Set(imports)];
-}
-
 // ── Path safety ───────────────────────────────────────────────────────────
 
 const SAFE_ROOT = resolve(process.cwd());
@@ -234,63 +184,69 @@ function walkSrc(dir, exts = ['.ts', '.js', '.py', '.java', '.go', '.cs', '.kt']
 
 // ── Tool: ca_scan ──────────────────────────────────────────────────────────
 
+function srcDirOf(root) {
+  return existsSync(join(root, 'src')) ? join(root, 'src') : root;
+}
+
+// Top-level folders of the previous layer-first layout. Files there are no longer
+// classified, so they must be reported instead of silently counting as "clean".
+const LEGACY_TOP = /^(entities|usecases|use-cases|use_cases|adapters|frameworks|infrastructure)\//;
+
 function toolScan(args) {
   const root = safePath(args.path);
-  const srcDir = existsSync(join(root, 'src')) ? join(root, 'src') : root;
+  const srcDir = srcDirOf(root);
   const files = walkSrc(srcDir);
 
   const violations = [];
-  const allowed = {
-    entities: [],
-    usecases: ['entities'],
-    adapters: ['usecases', 'entities'],
-    frameworks: ['adapters', 'usecases', 'entities'],
-    main: ['frameworks', 'adapters', 'usecases', 'entities'],
-  };
-
+  let unclassified = 0; // outside any known layer and NOT in an old layer folder
+  let legacy = 0;       // in an old layer-first folder (classified or not)
   for (const file of files) {
-    const layerDef = detectLayer(file);
-    if (!layerDef) continue;
-    const allowedLayers = allowed[layerDef.layer] || [];
-
+    const rel = toPosix(relative(srcDir, file));
+    if (LEGACY_TOP.test(rel)) legacy++;
+    else if (!detectLayer(rel)) unclassified++;
     let content;
     try { content = readFileSync(file, 'utf8'); } catch { continue; }
-
-    const imports = extractImports(content);
-    for (const imp of imports) {
-      const importedLayer = detectLayer(imp);
-      if (!importedLayer) continue;
-      if (!allowedLayers.includes(importedLayer.layer) && importedLayer.layer !== layerDef.layer) {
-        const severity =
-          layerDef.layer === 'entities' ? 'CRITICAL' :
-          layerDef.layer === 'usecases' ? 'HIGH' : 'MEDIUM';
-        violations.push({
-          severity,
-          file: relative(root, file),
-          layer: layerDef.layer,
-          import: imp,
-          importedLayer: importedLayer.layer,
-          message: `${layerDef.layer} must not depend on ${importedLayer.layer}`,
-          fix: `Define an interface (port) in ${layerDef.layer}/ports/ and inject the concrete implementation from main/.`,
-        });
-      }
+    for (const v of findViolations(file, srcDir, content)) {
+      violations.push({ file: relative(root, file), ...v });
     }
   }
 
   const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0 };
   for (const v of violations) counts[v.severity]++;
 
+  const crossModule = violations.filter((v) => v.rule === 'cross-module').length;
   const score = Math.max(0, 100 - counts.CRITICAL * 20 - counts.HIGH * 10 - counts.MEDIUM * 5);
 
+  const warnings = [];
+  if (legacy > 0) {
+    warnings.push(
+      `${legacy} file(s) are in the previous layer-first layout (src/entities, src/usecases, src/adapters, ` +
+      'src/frameworks). They are NOT covered by the layer/module rules, so the health score is not reliable. ' +
+      'Run /clean-architecture:migrate to move them into src/modules/<module>/{domain,app,infra}.'
+    );
+  }
+  if (unclassified > 0) {
+    warnings.push(
+      `${unclassified} file(s) are outside any known layer ` +
+      '(expected: src/modules/<module>/{domain,app,infra/adapters}, src/shared, src/platform, src/main).'
+    );
+  }
+
   return {
+    warnings,
     summary: {
       filesScanned: files.length,
+      unclassifiedFiles: unclassified,
       violations: violations.length,
+      layerViolations: violations.length - crossModule,
+      crossModuleViolations: crossModule,
       critical: counts.CRITICAL,
       high: counts.HIGH,
       medium: counts.MEDIUM,
-      healthScore: score,
+      // A score computed while part of the code is not covered by the rules would be misleading.
+      healthScore: legacy > 0 ? null : score,
       grade:
+        legacy > 0 ? 'N/A — legacy layout detected, run /clean-architecture:migrate' :
         score >= 90 ? 'A — Excellent' :
         score >= 75 ? 'B — Good' :
         score >= 50 ? 'C — Fair' :
@@ -301,19 +257,20 @@ function toolScan(args) {
 }
 
 // ── Tool: ca_metrics ──────────────────────────────────────────────────────
+// Components are modules (modules/<name>) plus shared, platform and main.
 
 function toolMetrics(args) {
   const root = safePath(args.path);
-  const srcDir = existsSync(join(root, 'src')) ? join(root, 'src') : root;
+  const srcDir = srcDirOf(root);
   const files = walkSrc(srcDir);
 
   // Build component → files map
   const components = {};
   for (const file of files) {
-    const layerDef = detectLayer(file);
-    if (!layerDef) continue;
-    if (!components[layerDef.layer]) components[layerDef.layer] = { files: [], fanIn: 0, fanOut: 0, abstractClasses: 0 };
-    components[layerDef.layer].files.push(file);
+    const comp = componentOf(toPosix(relative(srcDir, file)));
+    if (!comp) continue;
+    if (!components[comp]) components[comp] = { files: [], fanIn: 0, fanOut: 0, abstractClasses: 0 };
+    components[comp].files.push(file);
   }
 
   // Count fan-in / fan-out and abstract classes
@@ -328,15 +285,12 @@ function toolMetrics(args) {
         abstractCount++;
       }
 
-      // Count outgoing dependencies to other layers
-      const imports = extractImports(content);
-      for (const imp of imports) {
-        const importedLayer = detectLayer(imp);
-        if (importedLayer && importedLayer.layer !== comp) {
+      // Count outgoing dependencies to other components
+      for (const imp of extractImports(content)) {
+        const impComp = componentOf(importToSrcRelative(file, imp, srcDir));
+        if (impComp && impComp !== comp) {
           data.fanOut++;
-          if (components[importedLayer.layer]) {
-            components[importedLayer.layer].fanIn++;
-          }
+          if (components[impComp]) components[impComp].fanIn++;
         }
       }
     }
@@ -382,32 +336,42 @@ const EXT_MAP = {
 
 const VALID_LANGUAGES = new Set(['typescript', 'javascript', 'python', 'java', 'go', 'csharp']);
 
+/** "OrderManagement" → "order-management". Output is [a-z0-9-] only (path-safe). */
+function toKebab(s) {
+  return String(s)
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .toLowerCase()
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+}
+
 function toolScaffold(args) {
   const safeRoot = safePath(args.rootPath);
   const lang = VALID_LANGUAGES.has(args.language) ? args.language : 'typescript';
   const domain = (args.domain || 'Domain').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64) || 'Domain';
   const ext = EXT_MAP[lang] || 'ts';
 
-  const dirs = [
-    'src/entities',
-    'src/usecases/ports/input',
-    'src/usecases/ports/output',
-    'src/usecases/interactors',
-    'src/adapters/controllers',
-    'src/adapters/presenters',
-    'src/adapters/gateways',
-    'src/adapters/gateways/in-memory',
-    'src/frameworks/web',
-    'src/frameworks/db',
-    'src/frameworks/external',
-    'src/main',
-    'tests/unit/entities',
-    'tests/unit/usecases',
-    'tests/unit/adapters/presenters',
-    'tests/unit/adapters/controllers',
-    'tests/integration/gateways',
-    'tests/e2e',
-  ];
+  // Modules: explicit list, else one module named after the domain, else "core".
+  const requested = Array.isArray(args.modules) && args.modules.length
+    ? args.modules
+    : [args.domain ? domain : 'core'];
+  const modules = [...new Set(requested.map(toKebab).filter(Boolean))].slice(0, 20);
+  if (modules.length === 0) modules.push('core');
+  for (const m of modules) {
+    if (RESERVED_MODULE_NAMES.has(m)) {
+      throw new Error(`Module name "${m}" is reserved (it would be ambiguous with a layer folder).`);
+    }
+  }
+
+  // Lean scaffold: only what every project needs. Everything else (shared/, platform/,
+  // ports/, interactors/, in-memory/, test trees, ...) is created on demand by the
+  // skill that first needs it — empty folders are noise.
+  const dirs = ['src/main', 'docs/architecture'];
+  for (const m of modules) {
+    const base = `src/modules/${m}`;
+    dirs.push(`${base}/domain`, `${base}/app`, `${base}/infra`);
+  }
 
   const created = [];
   for (const dir of dirs) {
@@ -418,29 +382,52 @@ function toolScaffold(args) {
     }
   }
 
-  // Stub files
+  // Stub files (.gitkeep keeps otherwise-empty folders in git)
   const stubs = [
     {
-      path: `src/entities/.gitkeep`,
-      content: `# Layer 1: Enterprise Business Rules\n# No imports from any other src layer allowed here.\n`,
-    },
-    {
-      path: `src/usecases/ports/input/.gitkeep`,
-      content: `# Input Port interfaces — define what the use case accepts.\n`,
-    },
-    {
-      path: `src/usecases/ports/output/.gitkeep`,
-      content: `# Output Port & Repository interfaces — define what the use case needs.\n# These interfaces live here (use case layer), NOT in adapters/.\n`,
-    },
-    {
       path: `src/main/index.${ext}`,
-      content: `// MAIN COMPONENT — Composition Root\n// This is the ONLY file allowed to import concrete implementations from all layers.\n// Wire all dependencies here. Nothing imports from main/.\n`,
+      content: `// MAIN COMPONENT — Composition Root\n// This is the ONLY file allowed to import concrete implementations from all modules and layers.\n// Wire all dependencies here. Nothing imports from main/.\n// With several entry points (api, worker, cli) use src/main/<app>/index.${ext} and share the modules.\n`,
     },
     {
-      path: `src/ARCHITECTURE.md`,
-      content: `# ${domain} — Architecture\n\n## Layers\n\n| Layer | Path | Rule |\n|---|---|---|\n| Entities | \`src/entities/\` | No imports from other layers |\n| Use Cases | \`src/usecases/\` | May only import from entities/ |\n| Interface Adapters | \`src/adapters/\` | May import from usecases/ and entities/ |\n| Frameworks & Drivers | \`src/frameworks/\` | May import from all inner layers |\n| Main | \`src/main/\` | Wires everything — not imported by anyone |\n\n## Dependency Rule\n\nAll source code dependencies point **inward only**.\n`,
+      path: `docs/architecture/ARCHITECTURE.md`,
+      content:
+        `# ${domain} — Architecture\n\n` +
+        `## Layout\n\n` +
+        `\`\`\`\nsrc/\n├── modules/<module>/{domain, app, infra}   # business code, one folder per module\n├── shared/                                 # shared kernel — create only when needed\n├── platform/                               # web, db, external — create only when needed\n└── main/                                   # composition root (main/<app>/ if several entry points)\ntests/\n├── <module>/{unit, integration}/\n└── e2e/\ndocs/architecture/                          # this file, diagrams, ADRs\n\`\`\`\n\n` +
+        `Subfolders (\`app/ports/{input,output}\`, \`app/interactors\`, \`infra/adapters/{controllers,presenters,gateways}\`, ` +
+        `\`domain/{events,errors,services}\`) are created by the first file that needs them.\n\n` +
+        `## Layers (inside each module)\n\n` +
+        `| Layer | Path | May import |\n|---|---|---|\n` +
+        `| domain | \`modules/<m>/domain/\` | shared |\n` +
+        `| app | \`modules/<m>/app/\` | domain, shared |\n` +
+        `| infra | \`modules/<m>/infra/adapters/\` | app, domain, shared |\n` +
+        `| platform | \`platform/\` | everything inward |\n` +
+        `| main | \`main/\` | everything — imported by no one |\n\n` +
+        `## Dependency Rule\n\nSource code dependencies point **inward only**: infra → app → domain.\n\n` +
+        `## Module Rule\n\nA module never imports another module's \`domain/\` or \`infra/\`.\n` +
+        `The only legal crossing is \`A/infra/adapters\` → \`B/app/ports/input\`, through a port owned by A.\n\n` +
+        `## Optional pieces\n\n` +
+        `- **Input Port** — required when another module (or a second entry point) calls the use case; otherwise the controller may depend on the interactor directly.\n` +
+        `- **Output Port + Presenter** — use when output formatting is non-trivial or several delivery mechanisms exist; otherwise the interactor returns a response model.\n` +
+        `- **Migrations** live with their module (\`infra/adapters/gateways/migrations/\`); the connection and runner live in \`platform/db/\`.\n`,
     },
   ];
+  for (const m of modules) {
+    stubs.push(
+      {
+        path: `src/modules/${m}/domain/.gitkeep`,
+        content: `# Module "${m}" — domain: enterprise business rules.\n# May import only from src/shared/.\n`,
+      },
+      {
+        path: `src/modules/${m}/app/.gitkeep`,
+        content: `# Module "${m}" — app: use cases (interactors) and the ports they need.\n# May import domain and src/shared only.\n`,
+      },
+      {
+        path: `src/modules/${m}/infra/.gitkeep`,
+        content: `# Module "${m}" — infra: adapters (infra/adapters/{controllers,presenters,gateways}).\n# Never imports platform/; framework clients are injected from main/.\n`,
+      },
+    );
+  }
 
   for (const stub of stubs) {
     const full = join(safeRoot, stub.path);
@@ -450,13 +437,16 @@ function toolScaffold(args) {
     }
   }
 
+  const first = modules[0];
+  const entity = args.domain && !(Array.isArray(args.modules) && args.modules.length) ? domain : '<Entity>';
   return {
-    message: `Scaffold created for domain "${domain}" (${lang})`,
+    message: `Scaffold created for domain "${domain}" (${lang}) with module(s): ${modules.join(', ')}`,
+    modules,
     created,
     nextSteps: [
-      `Run /clean-architecture:entity ${domain} to create your first entity`,
-      `Run /clean-architecture:usecase Create${domain} to create your first use case`,
-      `Run /clean-architecture:check to verify the dependency rule`,
+      `Run /clean-architecture:entity ${first}/${entity} to create your first entity`,
+      `Run /clean-architecture:usecase ${first}/Create${entity === '<Entity>' ? '<Entity>' : entity} to create your first use case`,
+      `Run /clean-architecture:check to verify the dependency and module rules`,
     ],
   };
 }
@@ -465,67 +455,69 @@ function toolScaffold(args) {
 
 function toolLayerOf(args) {
   const safeFile = safePath(args.filePath);
-  const layerDef = detectLayer(safeFile);
+  // The file's own src/ (a nested project such as examples/shop has its own), else the cwd's.
+  const srcDir = srcDirForFile(safeFile) ?? srcDirOf(SAFE_ROOT);
+  const rel = toPosix(relative(srcDir, safeFile));
+  const layerDef = detectLayer(rel);
 
   if (!layerDef) {
     return {
       layer: 'unknown',
       message: `Could not determine layer for: ${safeFile}`,
-      suggestion: 'Move the file into one of: src/entities/, src/usecases/, src/adapters/, src/frameworks/, or src/main/',
+      suggestion:
+        'Move the file into one of: src/modules/<module>/{domain,app,infra/adapters}/, ' +
+        'src/shared/, src/platform/, or src/main/',
     };
   }
 
+  const mod = detectModule(rel);
+  const allowedLayers = ALLOWED_LAYERS[layerDef.layer] || [];
+
   let content;
   try { content = readFileSync(safeFile, 'utf8'); } catch {
-    return { layer: layerDef.layer, level: layerDef.level, importViolations: [] };
+    return { layer: layerDef.layer, module: mod, level: layerDef.level, importViolations: [] };
   }
 
-  const allowedLayers = {
-    entities: [],
-    usecases: ['entities'],
-    adapters: ['usecases', 'entities'],
-    frameworks: ['adapters', 'usecases', 'entities'],
-    main: ['frameworks', 'adapters', 'usecases', 'entities'],
-  }[layerDef.layer] || [];
-
-  const imports = extractImports(content);
-  const violations = [];
-  for (const imp of imports) {
-    const importedLayer = detectLayer(imp);
-    if (importedLayer && importedLayer.layer !== layerDef.layer && !allowedLayers.includes(importedLayer.layer)) {
-      violations.push({ import: imp, importedLayer: importedLayer.layer });
-    }
-  }
+  const violations = findViolations(safeFile, srcDir, content).map((v) => ({
+    import: v.import,
+    importedLayer: v.importedLayer,
+    importedModule: v.importedModule,
+    rule: v.rule,
+    message: v.message,
+  }));
 
   return {
     layer: layerDef.layer,
+    module: mod,
     level: layerDef.level,
     dependencyRuleCompliant: violations.length === 0,
     importViolations: violations,
     allowedDependencies: allowedLayers.length ? allowedLayers : ['none — this is the innermost layer'],
+    crossModuleRule: 'Only adapters may reach another module, and only via its app/ports/input.',
   };
 }
 
 // ── Tool: ca_cycles ───────────────────────────────────────────────────────
+// Cycles are searched between components: modules, shared, platform, main.
 
 function toolCycles(args) {
   const root = safePath(args.path);
-  const srcDir = existsSync(join(root, 'src')) ? join(root, 'src') : root;
+  const srcDir = srcDirOf(root);
   const files = walkSrc(srcDir);
 
   // Build adjacency map: component → Set<component>
   const graph = {};
-  for (const def of LAYER_PATTERNS) graph[def.layer] = new Set();
-
   for (const file of files) {
-    const layerDef = detectLayer(file);
-    if (!layerDef) continue;
+    const comp = componentOf(toPosix(relative(srcDir, file)));
+    if (!comp) continue;
+    graph[comp] ??= new Set();
     let content;
     try { content = readFileSync(file, 'utf8'); } catch { continue; }
     for (const imp of extractImports(content)) {
-      const importedLayer = detectLayer(imp);
-      if (importedLayer && importedLayer.layer !== layerDef.layer) {
-        graph[layerDef.layer].add(importedLayer.layer);
+      const impComp = componentOf(importToSrcRelative(file, imp, srcDir));
+      if (impComp && impComp !== comp) {
+        graph[comp].add(impComp);
+        graph[impComp] ??= new Set();
       }
     }
   }
@@ -554,7 +546,7 @@ function toolCycles(args) {
 
   const fixes = cycles.map((cycle) => ({
     cycle: cycle.join(' → '),
-    fix: `Break the cycle by extracting a shared abstraction or introducing an interface (DIP) at one of: ${cycle.slice(0, -1).join(' or ')}`,
+    fix: `Break the cycle by extracting a shared abstraction or introducing a port (DIP) at one of: ${cycle.slice(0, -1).join(' or ')}`,
   }));
 
   return {

@@ -50,11 +50,11 @@ Determine:
 For each boundary crossing, create interface files in the **inner** layer:
 
 ```
-src/
-├── usecases/
-│   └── ports/
-│       ├── input/          ← Boundary interfaces the outer layer calls IN
-│       └── output/         ← Boundary interfaces the outer layer must implement
+src/modules/<module>/
+└── app/
+    └── ports/
+        ├── input/          ← Boundary interfaces the outer layer calls IN
+        └── output/         ← Boundary interfaces the outer layer must implement
 ```
 
 ### Step 3: Implement the Full Boundary (if applicable)
@@ -62,7 +62,7 @@ src/
 **Input Side** (outer layer calls inner layer):
 ```typescript
 // Inner layer defines the interface
-// src/usecases/ports/input/I<BoundaryName>InputPort.ts
+// src/modules/<module>/app/ports/input/<boundary-name>.ts
 export interface I<BoundaryName>InputPort {
   execute(request: <BoundaryName>Request): Promise<void>;
 }
@@ -71,17 +71,17 @@ export interface I<BoundaryName>InputPort {
 **Output Side** (inner layer calls outer layer — DIP required):
 ```typescript
 // Inner layer defines what it needs
-// src/usecases/ports/output/I<BoundaryName>OutputPort.ts
+// src/modules/<module>/app/ports/output/<boundary-name>.ts
 export interface I<BoundaryName>OutputPort {
   send(data: <BoundaryName>Response): void;
 }
 ```
 
-The outer layer (adapters) implements these interfaces:
+The outer layer (`infra/adapters`) implements these interfaces:
 ```typescript
 // Outer layer satisfies the contract
-// src/adapters/<type>/<BoundaryName>Adapter.ts
-import { I<BoundaryName>OutputPort } from '../../usecases/ports/output/I<BoundaryName>OutputPort';
+// src/modules/<module>/infra/adapters/<type>/<boundary-name>-adapter.ts
+import { I<BoundaryName>OutputPort } from '../../../app/ports/output/<boundary-name>';
 
 export class <BoundaryName>Adapter implements I<BoundaryName>OutputPort {
   send(data: <BoundaryName>Response): void {
@@ -90,27 +90,32 @@ export class <BoundaryName>Adapter implements I<BoundaryName>OutputPort {
 }
 ```
 
-### Step 4: Subsystem Boundary (Between High-Level Components)
+### Step 4: Module Boundary (Between High-Level Components)
 
-When drawing a boundary between two major subsystems (e.g., `Billing` and `Inventory`):
+In this layout every module under `src/modules/` is a component, and the line between two modules is a boundary. Example with `billing` and `inventory`:
 
 ```
-src/
+src/modules/
 ├── billing/
-│   ├── entities/
-│   ├── usecases/
+│   ├── domain/
+│   ├── app/
 │   │   └── ports/
 │   │       └── output/
-│   │           └── IInventoryQueryPort.ts  ← Billing defines what it needs
-│   └── adapters/
+│   │           └── inventory-query.ts          ← billing defines what it needs (port owned by billing)
+│   └── infra/
+│       └── adapters/
+│           └── gateways/
+│               └── inventory-query-gateway.ts  ← implements it, calling inventory's INPUT port
 └── inventory/
-    ├── entities/
-    ├── usecases/
-    └── adapters/
-        └── InventoryQueryAdapter.ts        ← Inventory satisfies billing's interface
+    ├── domain/
+    ├── app/
+    │   └── ports/
+    │       └── input/
+    │           └── check-stock.ts              ← the only inventory file billing's infra may import
+    └── infra/
 ```
 
-The `Billing` subsystem does NOT import from `Inventory` directly. It imports only from the interface it defines, and the adapter in `Inventory` implements it.
+The `billing` module does NOT import `inventory`'s `domain/` or `infra/`. The port is owned by the **caller** (`billing`), its implementation lives in the caller's `infra/adapters`, and that gateway calls only `inventory/app/ports/input/`. `src/main/` injects inventory's interactor into the gateway. Data crossing the boundary is plain data, and `billing`'s domain refers to inventory items by id only.
 
 ### Step 5: Partial Boundary (Strategy)
 
@@ -120,7 +125,7 @@ When a full boundary is overkill but you want to preserve the option:
 // Keep the interface in place but co-locate impl in the same package
 // Mark it clearly so future teams can split it
 
-// src/usecases/ports/output/I<Name>Service.ts
+// src/modules/<module>/app/ports/output/<name>-service.ts
 /** @partial-boundary — may be extracted to a separate deployable in future */
 export interface I<Name>Service {
   process(data: <Name>Data): Promise<<Name>Result>;
@@ -129,7 +134,7 @@ export interface I<Name>Service {
 
 ### Step 6: Document the Boundary Decision
 
-Create or update `src/ARCHITECTURE.md`:
+Create or update `docs/architecture/ARCHITECTURE.md`:
 ```markdown
 ## Boundary: <Name>
 
@@ -138,8 +143,8 @@ Create or update `src/ARCHITECTURE.md`:
 **Type**: Full | Partial (Strategy) | Partial (Façade)
 
 **Interfaces defined in inner layer**:
-- `usecases/ports/input/I<Name>InputPort` — called by outer → inner
-- `usecases/ports/output/I<Name>OutputPort` — implemented by outer, called by inner
+- `modules/<module>/app/ports/input/<name>` — called by outer → inner
+- `modules/<module>/app/ports/output/<name>` — implemented by outer, called by inner
 
 **Reason for this boundary**:
 - <Outer> changes frequently (e.g., DB schema, HTTP API, third-party)
@@ -152,7 +157,7 @@ Create or update `src/ARCHITECTURE.md`:
 ### Step 7: Verify Boundary Integrity
 
 Check that:
-1. No import crosses the boundary in the wrong direction.
+1. No import crosses the boundary in the wrong direction (layers: `infra → app → domain`; modules: only `A/infra/adapters → B/app/ports/input`).
 2. All cross-boundary data is passed as **simple data structures** (no domain objects leaking out, no framework objects leaking in).
 3. The boundary interface lives in the **inner** layer.
 4. The implementation lives in the **outer** layer.
@@ -175,7 +180,7 @@ From Chapter 19:
 - [ ] Outer layer code depends on boundary interfaces, not on inner implementations.
 - [ ] Cross-boundary data uses **plain data structures** (no entity objects, no framework objects).
 - [ ] The boundary type is documented (full vs. partial + reason).
-- [ ] Import rules are enforced (lint rules, module boundaries, ArchUnit, etc.).
+- [ ] Import rules are enforced on both axes — layers and modules (lint rules, module boundaries, ArchUnit, etc.).
 - [ ] Main component wires together across boundaries.
 
 ## Output

@@ -1,0 +1,275 @@
+/**
+ * Shared architecture rules — the single source of truth used by both the MCP
+ * server (src/server.js) and the PostToolUse hook (src/hooks/dependency-check.js).
+ *
+ * Layout (feature-first, domain / app / infra):
+ *
+ *   src/
+ *   ├── modules/<module>/
+ *   │   ├── domain/            Enterprise business rules
+ *   │   ├── app/               Use cases: ports/{input,output} + interactors
+ *   │   └── infra/adapters/    controllers, presenters, gateways
+ *   ├── shared/                Shared kernel (pure, minimal)
+ *   ├── platform/              Frameworks & drivers: web, db, external
+ *   └── main/                  Composition root
+ *
+ * Two axes of rules:
+ *   1. Layers  — dependencies point inward: infra → app → domain.
+ *   2. Modules — a module never reaches into another module. The ONLY legal
+ *      crossing is  A/infra/adapters  →  B/app/ports/input.
+ *
+ * Detection always runs on a path RELATIVE to src/, never on the absolute path,
+ * so a project that happens to live under /app/ is not misclassified, and it is
+ * positional: a layer is the folder at its place in the layout (see classifyPath).
+ */
+
+import { dirname, resolve, relative } from 'path';
+
+// ── Layers ─────────────────────────────────────────────────────────────────
+
+export const LAYERS = {
+  shared:   { layer: 'shared',   level: 0 },
+  domain:   { layer: 'domain',   level: 1 },
+  app:      { layer: 'app',      level: 2 },
+  adapters: { layer: 'adapters', level: 3 },
+  platform: { layer: 'platform', level: 4 },
+  main:     { layer: 'main',     level: 5 },
+};
+
+// Top-level folders of src/ and the layer each one is.
+const TOP_LEVEL = {
+  shared: 'shared',
+  platform: 'platform',
+  main: 'main',
+  bootstrap: 'main',
+  composition: 'main',
+};
+
+// Layer folder directly under modules/<module>/. The whole infra/ folder is the adapters layer
+// (not only infra/adapters/): a file placed directly under infra/ must not escape the rules.
+const MODULE_LAYER = { domain: 'domain', app: 'app', infra: 'adapters' };
+
+export const ALLOWED_LAYERS = {
+  shared:   [],
+  domain:   ['shared'],
+  app:      ['domain', 'shared'],
+  adapters: ['app', 'domain', 'shared'],
+  platform: ['adapters', 'app', 'domain', 'shared'],
+  main:     ['platform', 'adapters', 'app', 'domain', 'shared'],
+};
+
+/** Folder names that would be ambiguous as a module name. */
+export const RESERVED_MODULE_NAMES = new Set([
+  'shared', 'platform', 'main', 'app', 'domain', 'infra', 'modules', 'adapters', 'bootstrap', 'composition',
+]);
+
+// ── Path helpers ───────────────────────────────────────────────────────────
+
+export function toPosix(p) {
+  return p.replace(/\\/g, '/');
+}
+
+function norm(p) {
+  return '/' + toPosix(p).replace(/^\.?\//, '');
+}
+
+// Classify the path as if `segs[i]` were the root of src/. Returns null if segs[i] is not a known
+// top-level folder. `module` is set for anything under modules/<m>/, even without a layer folder
+// (e.g. a barrel import of '@/modules/customers'), so the Module Rule still applies to it.
+function classifyAt(segs, i) {
+  const top = segs[i];
+  if (top === 'modules') {
+    const mod = segs[i + 1];
+    if (!mod) return null;
+    const layer = MODULE_LAYER[segs[i + 2]];
+    return { layer: layer ? LAYERS[layer] : null, module: mod };
+  }
+  if (TOP_LEVEL[top] && segs.length > i + 1) return { layer: LAYERS[TOP_LEVEL[top]], module: null };
+  return null;
+}
+
+/**
+ * Classify a path relative to src/ (or an import specifier converted with importToSrcRelative)
+ * by POSITION, never by a folder name found anywhere in the path:
+ *   - src/main/app/index.ts is main (not app), src/modules/orders/domain/shared/x.ts is domain (not shared);
+ *   - src/main/compose/modules/x or src/platform/modules/x is not a module.
+ * An alias prefix ("@/", "~/", "src/") is skipped, and so is a Maven/Gradle source set (main/java/...).
+ * When the root is not a known folder — a Java or Python package such as com/acme/modules/... or
+ * shop/modules/... — the first known folder further down the path is used as the root instead.
+ */
+export function classifyPath(relPath) {
+  let segs = toPosix(relPath).split('/').filter((s) => s !== '' && s !== '.');
+  if (segs.length === 0 || segs[0] === '..') return { layer: null, module: null };
+  while (['@', '~', 'src'].includes(segs[0])) segs = segs.slice(1);
+  if (['main', 'test'].includes(segs[0]) && ['java', 'kotlin', 'scala'].includes(segs[1])) segs = segs.slice(2);
+
+  const anchored = classifyAt(segs, 0);
+  if (anchored) return anchored;
+  for (let i = 1; i < segs.length; i++) {
+    const found = classifyAt(segs, i);
+    if (found) return found;
+  }
+  return { layer: null, module: null };
+}
+
+export function detectLayer(relPath) {
+  return classifyPath(relPath).layer;
+}
+
+export function detectModule(relPath) {
+  return classifyPath(relPath).module;
+}
+
+/**
+ * Component = the unit of cohesion/coupling analysis.
+ * Every module is its own component; shared / platform / main are components too.
+ */
+export function componentOf(relPath) {
+  const { layer, module } = classifyPath(relPath);
+  if (module) return `modules/${module}`;
+  return layer ? layer.layer : null;
+}
+
+/**
+ * The src/ directory a file belongs to: the nearest enclosing "src" folder (so a file in a nested
+ * project such as examples/shop/src/... is classified against examples/shop/src, not ./src).
+ * Returns null when the file is not under a src/ folder.
+ */
+export function srcDirForFile(file) {
+  const p = toPosix(file);
+  const idx = p.lastIndexOf('/src/');
+  return idx === -1 ? null : p.slice(0, idx + '/src'.length);
+}
+
+// ── Import extraction ──────────────────────────────────────────────────────
+
+const IMPORT_REGEXES = [
+  // JS/TS: import ... from '...'
+  /(?:import|export)\s+(?:[^'"]*\s+from\s+)?['"]([^'"]+)['"]/g,
+  // JS/TS: require('...')
+  /require\(\s*['"]([^'"]+)['"]\s*\)/g,
+  // Python: from ... import / import ...
+  /^(?:from\s+([\w./]+)\s+import|import\s+([\w./]+))/gm,
+  // Java/Kotlin: import ...;
+  /^import\s+([\w.]+);/gm,
+  // Go: import "..."
+  /import\s+"([^"]+)"/g,
+];
+
+export function extractImports(content) {
+  const imports = [];
+  for (const regex of IMPORT_REGEXES) {
+    let m;
+    const re = new RegExp(regex.source, regex.flags);
+    while ((m = re.exec(content)) !== null) {
+      const imp = m[1] || m[2];
+      if (imp) imports.push(imp);
+    }
+  }
+  return [...new Set(imports)];
+}
+
+/**
+ * Turn an import specifier into a path relative to srcDir so that it can be
+ * classified (layer + module) exactly like a file path.
+ */
+export function importToSrcRelative(file, imp, srcDir) {
+  // Python relative imports: ".", "..", "...pkg.mod"
+  const py = /^(\.+)([\w.]*)$/.exec(imp);
+  if (py) {
+    const [, dots, rest] = py;
+    let base = dirname(file);
+    for (let i = 1; i < dots.length; i++) base = dirname(base);
+    return toPosix(relative(srcDir, resolve(base, rest.replace(/\./g, '/'))));
+  }
+  // JS/TS relative paths
+  if (imp.startsWith('.')) {
+    return toPosix(relative(srcDir, resolve(dirname(file), imp)));
+  }
+  // Dotted module paths (Python absolute / Java / Kotlin)
+  if (!imp.includes('/') && imp.includes('.')) {
+    return imp.replace(/\./g, '/');
+  }
+  // Aliases ('@/modules/orders/domain/order') and packages are classified as written.
+  return imp;
+}
+
+// ── Rules ──────────────────────────────────────────────────────────────────
+
+/**
+ * The only legal way for one module to reach another:
+ *   adapters of module A  →  app/ports/input of module B
+ */
+export function isLegalCrossModuleImport(fromLayer, toLayer, importedRelPath) {
+  return (
+    fromLayer === 'adapters' &&
+    toLayer === 'app' &&
+    /\/app\/ports\/input(\/|$)/.test(norm(importedRelPath))
+  );
+}
+
+function severityFor(layer) {
+  if (layer === 'shared' || layer === 'domain') return 'CRITICAL';
+  if (layer === 'app') return 'HIGH';
+  return 'MEDIUM';
+}
+
+/**
+ * Check one file's imports against both axes (layers and modules).
+ * Returns [] for files that do not belong to a known layer.
+ */
+export function findViolations(file, srcDir, content) {
+  const rel = toPosix(relative(srcDir, file));
+  const layerDef = detectLayer(rel);
+  if (!layerDef) return [];
+
+  const mod = detectModule(rel);
+  const allowedLayers = ALLOWED_LAYERS[layerDef.layer] || [];
+  const out = [];
+
+  for (const imp of extractImports(content)) {
+    const impRel = importToSrcRelative(file, imp, srcDir);
+    const { layer: importedLayer, module: impMod } = classifyPath(impRel);
+    // A module's root (e.g. a barrel '@/modules/customers') has no layer but still belongs to a module.
+    if (!importedLayer && !impMod) continue;
+
+    // Axis 1 — layers
+    if (importedLayer && importedLayer.layer !== layerDef.layer && !allowedLayers.includes(importedLayer.layer)) {
+      out.push({
+        severity: severityFor(layerDef.layer),
+        rule: 'dependency-rule',
+        layer: layerDef.layer,
+        module: mod,
+        import: imp,
+        importedLayer: importedLayer.layer,
+        importedModule: impMod,
+        message: `${layerDef.layer} must not depend on ${importedLayer.layer}`,
+        fix:
+          "Define an interface (port) in this module's app/ports/ and inject the concrete " +
+          'implementation from main/.',
+      });
+      continue;
+    }
+
+    // Axis 2 — modules
+    if (mod && impMod && mod !== impMod &&
+        !isLegalCrossModuleImport(layerDef.layer, importedLayer?.layer, impRel)) {
+      out.push({
+        severity: 'HIGH',
+        rule: 'cross-module',
+        layer: layerDef.layer,
+        module: mod,
+        import: imp,
+        importedLayer: importedLayer ? importedLayer.layer : null,
+        importedModule: impMod,
+        message: `module "${mod}" must not import module "${impMod}" directly`,
+        fix:
+          `Declare a port owned by "${mod}" (app/ports/output), implement it in ` +
+          `"${mod}/infra/adapters" by calling "${impMod}/app/ports/input", and reference ` +
+          `"${impMod}" entities from the domain by id only.`,
+      });
+    }
+  }
+
+  return out;
+}

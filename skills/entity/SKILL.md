@@ -2,7 +2,9 @@ You are a Clean Architecture expert following Robert C. Martin's book *Clean Arc
 
 The user wants to create or review an **Entity** — the innermost layer of Clean Architecture, containing Enterprise Business Rules.
 
-The argument after the command is the entity name (e.g., `Order`, `Customer`, `Invoice`).
+The argument after the command is `<module>/<EntityName>` (e.g., `orders/Order`, `customers/Customer`, `billing/Invoice`). The module selects the folder under `src/modules/`. If the project has a single module, the prefix may be omitted; if the module does not exist yet, create `src/modules/<module>/` with its `domain/`, `app/` and `infra/` folders first.
+
+In this layout the Entities layer is the module's `domain/` folder.
 
 ## What is an Entity?
 
@@ -31,13 +33,15 @@ An entity should contain:
 
 ### Step 3: Generate the Entity File
 
-Place the file at: `src/entities/<EntityName>.<ext>`
+Place the file at: `src/modules/<module>/domain/<entity-name>.<ext>` (kebab-case file name).
+
+References to entities of **other modules** are by id only (`customerId: string`). Never import another module's `domain/`.
 
 #### TypeScript template:
 ```typescript
-// src/entities/<EntityName>.ts
-// Layer: Enterprise Business Rules
-// Dependencies: NONE — this file must never import from usecases/, adapters/, frameworks/, or main/
+// src/modules/<module>/domain/<entity-name>.ts
+// Layer: domain (Enterprise Business Rules)
+// Dependencies: at most src/shared/ — this file must never import from app/, infra/, platform/, main/, or another module
 
 export type <EntityName>Id = string; // Use a branded type for safety
 
@@ -85,9 +89,9 @@ export class <EntityName> {
 
 #### Python template:
 ```python
-# src/entities/<entity_name>.py
-# Layer: Enterprise Business Rules
-# Dependencies: NONE
+# src/modules/<module>/domain/<entity_name>.py
+# Layer: domain (Enterprise Business Rules)
+# Dependencies: at most src/shared/
 
 from dataclasses import dataclass
 from typing import NewType
@@ -110,14 +114,20 @@ class <EntityName>:
 ```
 
 ### Step 4: Create Value Objects (if needed)
-- If the entity has complex attributes (Money, Address, DateRange), create value objects in `src/entities/value-objects/`.
+- If the entity has complex attributes (Address, DateRange), create value objects in `src/modules/<module>/domain/value-objects/`.
+- If a value object is genuinely used by several modules (Money, Id), put it in `src/shared/` instead — keep that folder minimal and free of module-specific policy.
 - Value objects are immutable, equality by value (not identity).
 
-### Step 5: Create Domain Events (if needed)
-- If the entity triggers important business events (OrderPlaced, PaymentReceived), define domain event types in `src/entities/events/`.
+### Step 5: Domain building blocks — only when the first one exists
+Keep `domain/` flat while it is small: one file per entity (and its value objects). Create a subfolder the first time its content appears, never in advance:
+- **Events** — when the entity raises an important business event (OrderPlaced, PaymentReceived): `domain/events/<event>.<ext>`.
+- **Errors** — when a rule violation deserves a named domain error (OutOfStockError) instead of a generic one: `domain/errors/<error>.<ext>`.
+- **Domain services** — only for a rule that spans several entities and does not belong to any of them (PricingPolicy): `domain/services/<service>.<ext>`.
+- **Aggregates** — when several entities must change together under one invariant, make one the aggregate root and reference the others only through it; the repository interface is then per aggregate root.
+If none of these exists yet, create none of these folders.
 
 ### Step 6: Create Entity Tests
-Create `tests/unit/entities/<EntityName>.test.<ext>`:
+Create `tests/<module>/unit/domain/<entity-name>.test.<ext>`:
 - Test each critical business rule method.
 - Test invariant enforcement (invalid state should throw/raise).
 - Test equality.
@@ -126,7 +136,8 @@ Create `tests/unit/entities/<EntityName>.test.<ext>`:
 ## Validation Checklist
 
 After creating the entity, verify:
-- [ ] The entity file has **zero imports** from `usecases/`, `adapters/`, `frameworks/`, `main/`, or any third-party library.
+- [ ] The entity file has **zero imports** from `app/`, `infra/`, `platform/`, `main/`, another module, or any third-party library (only `src/shared/` is allowed).
+- [ ] Entities of other modules are referenced by id only.
 - [ ] All business rules that are enterprise-wide are in the entity (not scattered in use cases).
 - [ ] The entity uses a factory method or constructor that enforces invariants.
 - [ ] State is private; access is through methods that enforce rules.

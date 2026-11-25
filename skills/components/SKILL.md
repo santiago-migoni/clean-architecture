@@ -74,17 +74,18 @@ These three principles govern **relationships between components**:
 ## Your Task
 
 ### Step 1: Identify Components
-Map the project's components (top-level packages/modules/folders under `src/`):
+Map the project's components. In the feature-first layout every folder under `src/modules/` is a component (its `domain/`, `app/` and `infra/` layers are sub-components), alongside `shared/`, `platform/` and `main/`:
 
 ```
 Component Map:
-- entities/
-- usecases/
-- adapters/
-- frameworks/
+- modules/orders/        (domain, app, infra)
+- modules/customers/     (domain, app, infra)
+- shared/
+- platform/
 - main/
-- (subsystem components if present)
 ```
+
+The `ca_metrics` and `ca_cycles` MCP tools compute fan-in/fan-out, instability, abstractness and cycles using exactly these components.
 
 ### Step 2: Build the Dependency Graph
 
@@ -94,11 +95,11 @@ For each component, list:
 
 ```
 Dependency Graph:
-  entities      ← usecases, adapters, frameworks (incoming: 3)
-  usecases      ← adapters, frameworks             (incoming: 2)
-  adapters      ← frameworks                       (incoming: 1)
-  frameworks    ← main                             (incoming: 1)
-  main          ←                                  (incoming: 0)
+  shared             ← modules/orders, modules/customers      (incoming: 2)
+  modules/customers  ← modules/orders (input port), platform, main   (incoming: 3)
+  modules/orders     ← platform, main                          (incoming: 2)
+  platform           ← main                                    (incoming: 1)
+  main               ←                                         (incoming: 0)
 ```
 
 ### Step 3: ADP — Detect Cycles
@@ -129,12 +130,12 @@ For each component, calculate:
 
 ```
 STABILITY METRICS:
-Component      | Fan-in | Fan-out | Instability (I)
-entities       |   3    |    0    |   0.00  (stable)
-usecases       |   2    |    1    |   0.33  (stable-ish)
-adapters       |   1    |    2    |   0.67  (unstable-ish)
-frameworks     |   1    |    3    |   0.75  (unstable)
-main           |   0    |    4    |   1.00  (maximally unstable)
+Component          | Fan-in | Fan-out | Instability (I)
+shared             |   2    |    0    |   0.00  (stable)
+modules/customers  |   3    |    1    |   0.25  (stable-ish)
+modules/orders     |   2    |    2    |   0.50  (balanced)
+platform           |   1    |    3    |   0.75  (unstable)
+main               |   0    |    4    |   1.00  (maximally unstable)
 ```
 
 SDP check: For every dependency A → B, verify I(A) > I(B). If I(A) < I(B), it's a violation (A is more stable than the thing it depends on).
@@ -149,11 +150,11 @@ For each component:
 
 ```
 ABSTRACTNESS METRICS:
-Component   | Classes | Abstract | A    | I    | D
-entities    |   10    |    3     | 0.30 | 0.00 | 0.70  ← Zone of Pain risk!
-usecases    |   15    |   12     | 0.80 | 0.33 | 0.13  ← Good
-adapters    |   20    |    5     | 0.25 | 0.67 | 0.08  ← Good
-frameworks  |   30    |    2     | 0.07 | 0.75 | 0.18  ← Acceptable
+Component          | Classes | Abstract | A    | I    | D
+shared             |    8    |    1     | 0.13 | 0.00 | 0.87  ← Zone of Pain, but expected: a tiny kernel of value objects. Keep it small.
+modules/customers  |   40    |   14     | 0.35 | 0.25 | 0.40  ← Watch: stable and mostly concrete
+modules/orders     |   45    |   16     | 0.36 | 0.50 | 0.14  ← Good
+platform           |   30    |    2     | 0.07 | 0.75 | 0.18  ← Acceptable
 ```
 
 Zone of Pain: D close to 1 with low A and low I → need to add abstractions or reduce stability.
