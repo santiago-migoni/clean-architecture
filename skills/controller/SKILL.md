@@ -2,7 +2,7 @@ You are a Clean Architecture expert following Robert C. Martin's book *Clean Arc
 
 The user wants to create or review a **Controller** — part of the Interface Adapters layer.
 
-The argument after the command is the controller name (e.g., `PlaceOrderController`, `UserRegistrationController`).
+The argument after the command is `<module>/<Name>` (e.g., `orders/PlaceOrder`, `customers/RegisterCustomer`); the controller class is `<Name>Controller`. The module selects the folder under `src/modules/`. If the project has a single module the prefix may be omitted.
 
 ## What is a Controller?
 
@@ -10,7 +10,7 @@ From the book (Chapter 22 — The Clean Architecture):
 > "The software in the interface adapters layer is a set of adapters that convert data from the format most convenient for the use cases and entities, to the format most convenient for some external agency such as the Database or the Web."
 
 A Controller:
-- Lives in the **Interface Adapters** layer (`src/adapters/controllers/`).
+- Lives in the **Interface Adapters** layer (`src/modules/<module>/infra/adapters/controllers/`).
 - Converts **framework input** (HTTP request, CLI args, message queue payload, gRPC call) → **Use Case Input Model** (a plain data object).
 - Calls the **Input Port** (use case interface) — it depends on the abstraction, not the concrete interactor.
 - Does NOT process business logic.
@@ -23,16 +23,16 @@ A Controller:
 [Framework Request]
       ↓
   Controller
-  (adapters/)
+  (infra/adapters/controllers/)
       ↓ builds RequestModel (plain object)
   Input Port
-  (usecases/ports/input/)
+  (app/ports/input/)
       ↓
   Interactor
-  (usecases/)
+  (app/interactors/)
       ↓ calls Output Port
   Presenter
-  (adapters/presenters/)
+  (infra/adapters/presenters/)
       ↓
   View Model / HTTP Response
 ```
@@ -40,24 +40,24 @@ A Controller:
 ## Your Task
 
 ### Step 1: Identify the Use Case Input Port
-Look for the interface at `src/usecases/ports/input/I<Name>UseCase.<ext>` and the `RequestModel` it expects.
+Look for the interface at `src/modules/<module>/app/ports/input/<name>.<ext>` and the `RequestModel` it expects.
 
 ### Step 2: Identify the Presenter
 The controller must be paired with a Presenter. The Presenter will be injected into the use case's Output Port.
 
 ### Step 3: Create the Controller
 
-File: `src/adapters/controllers/<Name>Controller.<ext>`
+File: `src/modules/<module>/infra/adapters/controllers/<name>-controller.<ext>`
 
 #### TypeScript (Express example):
 ```typescript
-// src/adapters/controllers/<Name>Controller.ts
-// Layer: Interface Adapters
-// May import from: usecases/ports/input/, entities/ (for type references only)
-// May NOT import from: frameworks/ internals, main/, or concrete interactors
+// src/modules/<module>/infra/adapters/controllers/<name>-controller.ts
+// Layer: infra (Interface Adapters)
+// May import from: this module's app/ports/input/, this module's domain/ (type references only), src/shared/
+// May NOT import from: platform/, main/, concrete interactors, or another module's domain/ or infra/
 
 import { Request, Response } from 'express'; // Framework knowledge is OK here
-import { I<Name>UseCase, <Name>RequestModel } from '../../usecases/ports/input/I<Name>UseCase';
+import { I<Name>UseCase, <Name>RequestModel } from '../../../app/ports/input/<name>';
 
 export class <Name>Controller {
   constructor(private readonly useCase: I<Name>UseCase) {}
@@ -79,11 +79,11 @@ export class <Name>Controller {
 
 #### Python (FastAPI example):
 ```python
-# src/adapters/controllers/<name>_controller.py
-# Layer: Interface Adapters
+# src/modules/<module>/infra/adapters/controllers/<name>_controller.py
+# Layer: infra (Interface Adapters)
 
 from fastapi import Request
-from ...usecases.ports.input.i_<name>_use_case import I<Name>UseCase, <Name>RequestModel
+from ....app.ports.input.<name> import I<Name>UseCase, <Name>RequestModel
 
 class <Name>Controller:
     def __init__(self, use_case: I<Name>UseCase):
@@ -99,12 +99,12 @@ class <Name>Controller:
 
 #### Java (Spring example):
 ```java
-// src/adapters/controllers/<Name>Controller.java
-// Layer: Interface Adapters
+// src/modules/<module>/infra/adapters/controllers/<Name>Controller.java
+// Layer: infra (Interface Adapters)
 
 import org.springframework.web.bind.annotation.*;
-import com.example.usecases.ports.input.I<Name>UseCase;
-import com.example.usecases.ports.input.<Name>RequestModel;
+import com.example.modules.<module>.app.ports.input.I<Name>UseCase;
+import com.example.modules.<module>.app.ports.input.<Name>RequestModel;
 
 @RestController
 @RequestMapping("/api/<resource>")
@@ -129,7 +129,7 @@ public class <Name>Controller {
 Keep the HTTP request schema separate from the Use Case Request Model:
 
 ```typescript
-// src/adapters/controllers/dtos/<Name>HttpRequest.ts
+// src/modules/<module>/infra/adapters/controllers/dtos/<name>-http-request.ts
 // HTTP-specific DTO — knows about HTTP, not about the use case
 export interface <Name>HttpRequest {
   // Fields exactly as they arrive in the HTTP body
@@ -137,11 +137,12 @@ export interface <Name>HttpRequest {
 ```
 
 ### Step 5: Wire in Main (reminder)
-The controller should NOT instantiate its own use case. That happens in `src/main/`. Just note what dependencies are needed.
+The controller should NOT instantiate its own use case. That happens in `src/main/`. Just note what dependencies are needed. Route registration for the module lives in `src/platform/web/` (it may import the module's controllers; the controller never imports `platform/`).
 
 ## Validation Checklist
 
-- [ ] Controller lives in `src/adapters/controllers/`.
+- [ ] Controller lives in `src/modules/<module>/infra/adapters/controllers/`.
+- [ ] Controller does not import `platform/`, `main/`, or another module.
 - [ ] Controller depends only on the **Input Port interface** — never on the concrete `Interactor` class.
 - [ ] No business logic in the controller — only data translation.
 - [ ] No `res.json()` / response formatting — that's the Presenter's job.

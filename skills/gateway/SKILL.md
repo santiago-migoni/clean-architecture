@@ -2,7 +2,7 @@ You are a Clean Architecture expert following Robert C. Martin's book *Clean Arc
 
 The user wants to create or review a **Gateway** (also called Repository or Data Mapper) — the adapter that connects the application to the database or external services.
 
-The argument after the command is the gateway name (e.g., `OrderRepository`, `PaymentGateway`, `EmailGateway`).
+The argument after the command is `<module>/<Name>` (e.g., `orders/OrderRepository`, `billing/PaymentGateway`, `customers/EmailGateway`). The module selects the folder under `src/modules/`. If the project has a single module the prefix may be omitted.
 
 ## What is a Gateway?
 
@@ -10,8 +10,8 @@ From the book (Chapter 22 — The Clean Architecture):
 > "The database is a detail. The web is a detail. These things are on the outer layers, not the inner ones."
 
 A Gateway:
-- Lives in the **Interface Adapters** layer (`src/adapters/gateways/`).
-- **Implements** a Repository/Gateway interface defined in the **Use Cases** layer (`src/usecases/ports/output/`).
+- Lives in the **Interface Adapters** layer (`src/modules/<module>/infra/adapters/gateways/`).
+- **Implements** a Repository/Gateway interface defined in the **app** layer of the same module (`src/modules/<module>/app/ports/output/`).
 - Translates between **Domain Entities** (inner layer) and **Database rows / external API responses** (outer layer).
 - Hides all knowledge of the database schema, ORM, or external API format from the use cases.
 - The use case **never knows** whether data comes from SQL, NoSQL, a REST API, or an in-memory store.
@@ -23,30 +23,32 @@ This is a central theme of the book. The architecture must not be coupled to:
 - Whether data is stored locally or remotely.
 - The ORM framework (TypeORM, SQLAlchemy, Hibernate, Prisma).
 
-The interface defined in `usecases/ports/output/` is the **contract**; the gateway is the **implementation detail**.
+The interface defined in `app/ports/output/` is the **contract**; the gateway is the **implementation detail**.
+
+The gateway may import third-party libraries (an ORM, an HTTP client SDK), but it MUST NOT import this project's `platform/` folder: the connection/client object is created in `platform/db` (or `platform/external`) and **injected from `main/`** through the constructor.
 
 ## Data Flow
 
 ```
-Interactor
-  → I<Domain>Repository (interface in usecases/ports/output/)
-  ← <Domain>RepositoryImpl (gateway in adapters/gateways/)
-       → ORM / DB driver (in frameworks/db/)
+Interactor (app/interactors/)
+  → I<Domain>Repository (interface in app/ports/output/)
+  ← <Domain>RepositoryImpl (gateway in infra/adapters/gateways/)
+       → ORM client / DB connection (created in platform/db/, injected by main/)
          → Database
 ```
 
 ## Your Task
 
 ### Step 1: Verify the Repository Interface
-The interface should already exist (created during `/clean-architecture:usecase`). Check `src/usecases/ports/output/I<Domain>Repository.<ext>`.
+The interface should already exist (created during `/clean-architecture:usecase`). Check `src/modules/<module>/app/ports/output/<domain>-repository.<ext>`.
 
-If it does not exist, create it now in the USE CASE layer:
+If it does not exist, create it now in the module's APP layer:
 ```typescript
-// src/usecases/ports/output/I<Domain>Repository.ts
-// This interface belongs to the USE CASE layer — NOT the adapter layer.
+// src/modules/<module>/app/ports/output/<domain>-repository.ts
+// This interface belongs to the APP layer — NOT the infra layer.
 // The use case defines what it needs; the gateway satisfies it.
 
-import { <Entity>, <EntityId> } from '../../entities/<Entity>';
+import { <Entity>, <EntityId> } from '../../../domain/<entity-name>';
 
 export interface I<Domain>Repository {
   findById(id: <EntityId>): Promise<<Entity> | null>;
@@ -60,11 +62,13 @@ export interface I<Domain>Repository {
 ### Step 2: Create the Data Mapper / Persistence Model
 Keep the DB schema separate from the domain entity (they can evolve independently):
 
-File: `src/adapters/gateways/persistence/<Domain>PersistenceModel.<ext>`
+File: `src/modules/<module>/infra/adapters/gateways/persistence/<domain>-persistence-model.<ext>`
 ```typescript
-// src/adapters/gateways/persistence/<Domain>PersistenceModel.ts
-// This is the ORM/DB schema model — lives in the adapter layer only
-// The entity layer never knows about this
+// src/modules/<module>/infra/adapters/gateways/persistence/<domain>-persistence-model.ts
+// This is the ORM/DB schema model — lives in the infra layer only
+// The domain never knows about this
+
+import { <Entity> } from '../../../../domain/<entity-name>';
 
 export interface <Domain>Row {  // or: @Entity() class for ORM
   id: string;
@@ -93,24 +97,24 @@ export function toPersistence(entity: <Entity>): <Domain>Row {
 
 ### Step 3: Create the Gateway Implementation
 
-File: `src/adapters/gateways/<Domain>RepositoryImpl.<ext>`
+File: `src/modules/<module>/infra/adapters/gateways/<domain>-repository-impl.<ext>`  (name it after the technology when several exist, e.g. `sql-<domain>-repository.<ext>`)
 
 #### TypeScript (TypeORM example):
 ```typescript
-// src/adapters/gateways/<Domain>RepositoryImpl.ts
-// Layer: Interface Adapters
-// Implements: I<Domain>Repository (from usecases layer)
-// May import from: usecases/ports/output/ (for the interface), entities/ (for entity types)
-// Framework-specific (TypeORM/Prisma/Knex) code is acceptable here
+// src/modules/<module>/infra/adapters/gateways/<domain>-repository-impl.ts
+// Layer: infra (Interface Adapters)
+// Implements: I<Domain>Repository (from this module's app layer)
+// May import from: this module's app/ports/output/, this module's domain/, src/shared/, third-party ORMs
+// May NOT import from: platform/, main/, or another module (see the cross-module gateway below)
+// The ORM repository is injected from main/ — it is created in platform/db/
 
-import { Repository } from 'typeorm'; // ORM import OK in adapters layer
-import { I<Domain>Repository } from '../../usecases/ports/output/I<Domain>Repository';
-import { <Entity>, <EntityId> } from '../../entities/<Entity>';
-import { <Domain>OrmEntity } from '../persistence/<Domain>OrmEntity';
-import { toDomain, toPersistence } from '../persistence/<Domain>PersistenceMapper';
+import { Repository } from 'typeorm'; // third-party ORM import is OK in infra
+import { I<Domain>Repository } from '../../../app/ports/output/<domain>-repository';
+import { <Entity>, <EntityId> } from '../../../domain/<entity-name>';
+import { <Domain>Row, toDomain, toPersistence } from './persistence/<domain>-persistence-model';
 
 export class <Domain>RepositoryImpl implements I<Domain>Repository {
-  constructor(private readonly ormRepo: Repository<<Domain>OrmEntity>) {}
+  constructor(private readonly ormRepo: Repository<<Domain>Row>) {}
 
   async findById(id: <EntityId>): Promise<<Entity> | null> {
     const row = await this.ormRepo.findOne({ where: { id } });
@@ -136,10 +140,10 @@ export class <Domain>RepositoryImpl implements I<Domain>Repository {
 
 #### Python (SQLAlchemy example):
 ```python
-# src/adapters/gateways/<domain>_repository_impl.py
-from sqlalchemy.orm import Session
-from ...usecases.ports.output.i_<domain>_repository import I<Domain>Repository
-from ...entities.<entity> import <Entity>, <EntityId>
+# src/modules/<module>/infra/adapters/gateways/<domain>_repository_impl.py
+from sqlalchemy.orm import Session  # the session is created in platform/db and injected by main
+from ....app.ports.output.<domain>_repository import I<Domain>Repository
+from ....domain.<entity_name> import <Entity>, <EntityId>
 from .persistence.<domain>_persistence_model import <Domain>Row, to_domain, to_persistence
 
 class <Domain>RepositoryImpl(I<Domain>Repository):
@@ -165,10 +169,11 @@ class <Domain>RepositoryImpl(I<Domain>Repository):
 ```
 
 ### Step 4: Create an In-Memory Gateway for Testing
-File: `src/adapters/gateways/in-memory/<Domain>InMemoryRepository.<ext>`
+File: `src/modules/<module>/infra/adapters/gateways/in-memory/<domain>-in-memory-repository.<ext>`
 
 ```typescript
 // Used in unit tests — no DB needed
+// Imports (from this file): '../../../../app/ports/output/<domain>-repository' and '../../../../domain/<entity-name>'
 export class <Domain>InMemoryRepository implements I<Domain>Repository {
   private store = new Map<<EntityId>, <Entity>>();
 
@@ -191,18 +196,44 @@ export class <Domain>InMemoryRepository implements I<Domain>Repository {
 ```
 
 ### Step 5: Create Gateway Integration Tests
-File: `tests/integration/gateways/<Domain>RepositoryImpl.test.<ext>`
+File: `tests/integration/<module>/infra/adapters/gateways/<domain>-repository-impl.test.<ext>`
 - Use a real (test) database connection.
 - Test round-trip: save → findById returns correct domain entity.
 - Test the mapper: verify domain fields map correctly to/from DB columns.
 - Test not-found: findById returns null for missing ID.
 
+### Step 6: Gateway that reaches ANOTHER module (cross-module recipe)
+When the use case needs something owned by another module (e.g. `orders` must check that a customer exists):
+
+1. The calling module declares a port in its own vocabulary: `src/modules/orders/app/ports/output/customer-lookup.<ext>`.
+2. The gateway implementing it lives in the **calling** module's infra and calls the other module's **input port**:
+
+```typescript
+// src/modules/orders/infra/adapters/gateways/customer-lookup-gateway.ts
+// The ONLY kind of cross-module import allowed: adapters → another module's app/ports/input/
+import { ICustomerLookup } from '../../../app/ports/output/customer-lookup';
+import { IGetCustomerUseCase } from '../../../../customers/app/ports/input/get-customer';
+
+export class CustomerLookupGateway implements ICustomerLookup {
+  constructor(private readonly getCustomer: IGetCustomerUseCase) {} // injected by main/
+
+  async exists(customerId: string): Promise<boolean> {
+    // translate between the two modules' models here (anti-corruption layer)
+    return false;
+  }
+}
+```
+3. `src/main/` injects the other module's interactor (as its input port) into this gateway.
+4. Never import `customers/domain/` or `customers/infra/`; the calling module's domain stores only `customerId`.
+
 ## Validation Checklist
 
-- [ ] Repository interface lives in `src/usecases/ports/output/` (NOT in adapters).
-- [ ] Gateway implementation lives in `src/adapters/gateways/`.
+- [ ] Repository interface lives in `src/modules/<module>/app/ports/output/` (NOT in infra).
+- [ ] Gateway implementation lives in `src/modules/<module>/infra/adapters/gateways/`.
+- [ ] The gateway does not import `platform/`, `main/`, or another module — except another module's `app/ports/input/` in a cross-module gateway.
 - [ ] ORM/DB-specific code (TypeORM decorators, SQLAlchemy models) is ONLY in the gateway/persistence files.
 - [ ] The use case interactor imports only the interface — never the implementation.
+- [ ] The DB connection / ORM client is injected from `main/`, never imported from `platform/`.
 - [ ] Data mapper correctly translates domain ↔ persistence (field names, types, nullability).
 - [ ] An in-memory implementation exists for use case unit tests.
 - [ ] The gateway does NOT enforce business rules — it just stores/retrieves data.

@@ -1,8 +1,8 @@
 You are a Clean Architecture expert following Robert C. Martin's book *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
 
-The user wants to create or review a **Use Case** — the Application Business Rules layer.
+The user wants to create or review a **Use Case** — the Application Business Rules layer (the `app/` layer of a module).
 
-The argument after the command is the use case name (e.g., `PlaceOrder`, `RegisterUser`, `ProcessPayment`).
+The argument after the command is `<module>/<UseCaseName>` (e.g., `orders/PlaceOrder`, `customers/RegisterCustomer`, `billing/ProcessPayment`). The module selects the folder under `src/modules/`. If the project has a single module the prefix may be omitted.
 
 ## What is a Use Case?
 
@@ -10,28 +10,29 @@ From the book (Chapter 20 — Business Rules):
 > "Use cases contain the rules that specify how and when the Critical Business Rules within the Entities are invoked. Use cases control the dance of the Entities."
 
 Use Cases are:
-- **Application-specific** business rules (not enterprise-wide — those belong in Entities).
+- **Application-specific** business rules (not enterprise-wide — those belong in the domain).
 - Orchestrators that direct entities to perform their critical business rules.
 - **Independent of UI, DB, frameworks** — a use case should work with a command-line, a REST API, or a batch job.
 - Defined by their **Input Port** (what they accept) and **Output Port** (what they produce).
 
 ## Architecture: Request/Response with Ports
 
+All paths below are inside `src/modules/<module>/`.
+
 ```
 Controller → [Input Port Interface] → Interactor → [Output Port Interface] → Presenter
                     ↑                      ↓
-              (in usecases/ports/      Entities
-               input/)               (in entities/)
+              (app/ports/input/)       Entities
+                                     (domain/)
                                           ↓
-                              [Repository Interface] → Gateway (in adapters/)
-                              (in usecases/ports/
-                               output/)
+                              [Repository Interface] → Gateway
+                              (app/ports/output/)      (infra/adapters/gateways/)
 ```
 
 ## Your Task
 
 ### Step 1: Define the Input Port Interface
-File: `src/usecases/ports/input/I<UseCaseName>UseCase.<ext>`
+File: `src/modules/<module>/app/ports/input/<use-case-name>.<ext>`
 
 ```typescript
 // TypeScript
@@ -46,7 +47,7 @@ export interface I<UseCaseName>UseCase {
 ```
 
 ```python
-# Python
+# Python — src/modules/<module>/app/ports/input/<use_case_name>.py
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
@@ -62,7 +63,7 @@ class I<UseCaseName>UseCase(ABC):
 ```
 
 ### Step 2: Define the Output Port Interface
-File: `src/usecases/ports/output/I<UseCaseName>OutputPort.<ext>`
+File: `src/modules/<module>/app/ports/output/<use-case-name>-output.<ext>`
 
 ```typescript
 // TypeScript
@@ -77,12 +78,14 @@ export interface I<UseCaseName>OutputPort {
 ```
 
 ### Step 3: Define the Repository Interface (if data access is needed)
-File: `src/usecases/ports/output/I<Domain>Repository.<ext>`
+File: `src/modules/<module>/app/ports/output/<domain>-repository.<ext>`
 
-**Important**: This interface is defined in the USE CASE layer, not in the adapters layer. This is the Dependency Inversion Principle in action — the use case defines what it needs; the gateway (adapter) implements it.
+**Important**: This interface is defined in the `app` layer, not in `infra`. This is the Dependency Inversion Principle in action — the use case defines what it needs; the gateway (infra) implements it.
 
 ```typescript
 // TypeScript
+import { <Entity> } from '../../../domain/<entity-name>';
+
 export interface I<Domain>Repository {
   findById(id: string): Promise<<Entity> | null>;
   save(entity: <Entity>): Promise<void>;
@@ -90,19 +93,35 @@ export interface I<Domain>Repository {
 }
 ```
 
-### Step 4: Create the Interactor
-File: `src/usecases/interactors/<UseCaseName>Interactor.<ext>`
+### Step 4: Need data or behaviour from another module?
+Never import the other module's `domain/` or `infra/`. Use the cross-module recipe:
+
+1. **Declare a port owned by this module**, expressed in this module's own vocabulary:
+   `src/modules/<module>/app/ports/output/<other>-lookup.<ext>`
+   ```typescript
+   export interface ICustomerLookup {
+     exists(customerId: string): Promise<boolean>;
+   }
+   ```
+2. **Implement it in this module's `infra`** by calling the other module's *input port*:
+   `src/modules/<module>/infra/adapters/gateways/<other>-lookup-gateway.<ext>`
+   (see the `gateway` skill — this is the only place allowed to import `src/modules/<other>/app/ports/input/`).
+3. **Reference the other module's entities by id** in this module's domain (`customerId: string`).
+4. Wire both sides in `src/main/`.
+
+### Step 5: Create the Interactor
+File: `src/modules/<module>/app/interactors/<use-case-name>.<ext>`
 
 ```typescript
 // TypeScript
-// Layer: Application Business Rules
-// May import from: entities/ only (for domain types)
-// May NOT import from: adapters/, frameworks/, main/
+// Layer: app (Application Business Rules)
+// May import from: this module's domain/, this module's app/ports/, src/shared/
+// May NOT import from: infra/, platform/, main/, or any other module
 // Dependencies injected via constructor (DIP)
 
-import { I<UseCaseName>UseCase, <UseCaseName>RequestModel } from '../ports/input/I<UseCaseName>UseCase';
-import { I<UseCaseName>OutputPort } from '../ports/output/I<UseCaseName>OutputPort';
-import { I<Domain>Repository } from '../ports/output/I<Domain>Repository';
+import { I<UseCaseName>UseCase, <UseCaseName>RequestModel } from '../ports/input/<use-case-name>';
+import { I<UseCaseName>OutputPort } from '../ports/output/<use-case-name>-output';
+import { I<Domain>Repository } from '../ports/output/<domain>-repository';
 
 export class <UseCaseName>Interactor implements I<UseCaseName>UseCase {
   constructor(
@@ -125,11 +144,11 @@ export class <UseCaseName>Interactor implements I<UseCaseName>UseCase {
 ```
 
 ```python
-# Python
-# Layer: Application Business Rules
-from .ports.input.i_<use_case>_use_case import I<UseCaseName>UseCase, <UseCaseName>RequestModel
-from .ports.output.i_<use_case>_output_port import I<UseCaseName>OutputPort
-from .ports.output.i_<domain>_repository import I<Domain>Repository
+# Python — src/modules/<module>/app/interactors/<use_case_name>.py
+# Layer: app (Application Business Rules)
+from ..ports.input.<use_case_name> import I<UseCaseName>UseCase, <UseCaseName>RequestModel
+from ..ports.output.<use_case_name>_output import I<UseCaseName>OutputPort
+from ..ports.output.<domain>_repository import I<Domain>Repository
 
 class <UseCaseName>Interactor(I<UseCaseName>UseCase):
     def __init__(
@@ -148,8 +167,8 @@ class <UseCaseName>Interactor(I<UseCaseName>UseCase):
             self._output_port.present_error(e)
 ```
 
-### Step 5: Create Use Case Tests
-File: `tests/unit/usecases/<UseCaseName>Interactor.test.<ext>`
+### Step 6: Create Use Case Tests
+File: `tests/unit/<module>/app/<use-case-name>.test.<ext>`
 
 **Test strategy**: Use mocks/stubs for the Output Port and Repository — never touch the real DB or HTTP.
 
@@ -177,10 +196,11 @@ describe('<UseCaseName>Interactor', () => {
 
 ## Validation Checklist
 
-- [ ] Interactor file imports ONLY from `entities/` and its own `usecases/ports/` — never from `adapters/`, `frameworks/`, or `main/`.
-- [ ] The Input Port interface is defined in `usecases/ports/input/`.
-- [ ] The Output Port interface is defined in `usecases/ports/output/`.
-- [ ] The Repository interface is defined in `usecases/ports/output/` (NOT in `adapters/`).
+- [ ] Interactor file imports ONLY from its own module's `domain/` and `app/ports/`, plus `src/shared/` — never from `infra/`, `platform/`, `main/`, or another module.
+- [ ] The Input Port interface is defined in `app/ports/input/`.
+- [ ] The Output Port interface is defined in `app/ports/output/`.
+- [ ] The Repository interface is defined in `app/ports/output/` (NOT in `infra/`).
+- [ ] Anything needed from another module goes through a port owned by this module (Step 4), never a direct import.
 - [ ] The interactor receives all dependencies via constructor injection (DIP).
 - [ ] The interactor's `execute` method uses only the Input Port's request model — no HTTP request objects, no ORM entities.
 - [ ] Application-level validation is in the interactor; enterprise rules are delegated to entities.
@@ -195,4 +215,5 @@ After creating files, show:
 1. The data flow diagram: Controller → Input Port → Interactor → Repository/Output Port → Presenter.
 2. Which entity methods are invoked.
 3. What the output model contains.
-4. Suggested edge cases to test.
+4. Any cross-module port introduced and where it is implemented.
+5. Suggested edge cases to test.

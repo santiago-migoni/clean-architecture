@@ -9,225 +9,209 @@ From the book (Chapter 26 — The Main Component):
 
 Main is:
 - The **composition root** — the single place where the entire object graph is assembled.
-- The **most volatile** component — it changes whenever a new use case, adapter, or framework is added.
+- The **most volatile** component — it changes whenever a new use case, adapter, module or framework is added.
 - The **only** place where concrete implementations are instantiated.
 - The **only** place where dependency injection is wired (if not using a DI framework).
+- The **only** place that connects modules to each other.
 - A **plugin** to the rest of the system — the system doesn't know about Main.
 
 ## The Plugin Architecture
 
+Main composes one module at a time, then connects them:
+
 ```
          Main (dirty, knows everything)
            │
-           ├── creates → PostgresOrderRepository (adapters/gateways)
-           │                 implements IOrderRepository (usecases/ports)
+           ├── platform: createDbConnection()          (src/platform/db)
            │
-           ├── creates → PlaceOrderPresenter (adapters/presenters)
-           │                 implements IPlaceOrderOutputPort (usecases/ports)
+           ├── composeCustomers({ db })                (src/main/modules/customers)
+           │     ├── creates SqlCustomerRepository     (customers/infra/adapters/gateways)
+           │     ├── creates GetCustomerInteractor     (customers/app/interactors)
+           │     └── exposes input port IGetCustomerUseCase  ← the only thing others may use
            │
-           ├── creates → PlaceOrderInteractor (usecases/interactors)
-           │                 ← injects presenter + repository
+           ├── composeOrders({ db, getCustomer })      (src/main/modules/orders)
+           │     ├── creates SqlOrderRepository        (orders/infra/adapters/gateways)
+           │     ├── creates CustomerLookupGateway(getCustomer)   ← cross-module link
+           │     └── per request: PlaceOrderPresenter + PlaceOrderInteractor + PlaceOrderController
            │
-           ├── creates → PlaceOrderController (adapters/controllers)
-           │                 ← injects interactor (as IPlaceOrderUseCase)
-           │
-           └── registers routes → Express/FastAPI/Spring router
+           └── registerRoutes(app, routes)             (src/platform/web)
 ```
 
 ## Your Task
 
 ### Step 1: Audit the Current State
-- Scan the codebase for any `new ConcreteClass()` calls outside of `main/` or `tests/`.
-- Identify all dependencies that need wiring.
-- List all use cases, their interactors, presenters, and gateways.
+- Scan the codebase for any `new ConcreteClass()` calls outside of `src/main/` or `tests/`.
+- Identify all dependencies that need wiring, module by module.
+- List all use cases, their interactors, presenters, and gateways per module.
+- List the cross-module ports (`<other>-lookup`, …) and which input port implements each.
 
-### Step 2: Create the Main File
+### Step 2: Create the Main Files
 
-File: `src/main/index.<ext>` (or `src/main/app.<ext>`, `src/main/bootstrap.<ext>`)
+```
+src/main/
+├── index.<ext>               ← entry point: platform → modules → server
+├── modules/
+│   ├── customers.<ext>       ← compose<Module>(deps) per module
+│   └── orders.<ext>
+├── index.test.<ext>          ← test composition root (in-memory implementations)
+└── config/
+    └── environment.<ext>     ← environment variable parsing (a detail)
+```
 
-#### TypeScript (Express, manual DI):
+#### TypeScript (Express, manual DI)
+
+`src/main/modules/orders.ts` — wires ONE module:
+```typescript
+// src/main/modules/orders.ts
+// Composition of the `orders` module. Only src/main/ may import concrete classes.
+
+import type { DbConnection } from '../../platform/db/connection';
+import type { IGetCustomerUseCase } from '../../modules/customers/app/ports/input/get-customer';
+
+import { SqlOrderRepository } from '../../modules/orders/infra/adapters/gateways/sql-order-repository';
+import { CustomerLookupGateway } from '../../modules/orders/infra/adapters/gateways/customer-lookup-gateway';
+import { PlaceOrderPresenter } from '../../modules/orders/infra/adapters/presenters/place-order-presenter';
+import { PlaceOrderInteractor } from '../../modules/orders/app/interactors/place-order';
+import { PlaceOrderController } from '../../modules/orders/infra/adapters/controllers/place-order-controller';
+
+export interface OrdersDeps {
+  db: DbConnection;
+  getCustomer: IGetCustomerUseCase; // customers' INPUT port — the only legal cross-module link
+}
+
+export function composeOrders({ db, getCustomer }: OrdersDeps) {
+  // Gateways (stateless, shared)
+  const orderRepository = new SqlOrderRepository(db);
+  const customerLookup = new CustomerLookupGateway(getCustomer);
+
+  // Presenters are stateful (they hold the view model) → build one per request
+  const makePlaceOrder = () => {
+    const presenter = new PlaceOrderPresenter();
+    const interactor = new PlaceOrderInteractor(presenter, orderRepository, customerLookup);
+    return { presenter, controller: new PlaceOrderController(interactor) };
+  };
+
+  return { routes: { placeOrder: makePlaceOrder } };
+}
+```
+
+`src/main/modules/customers.ts` — same shape; it also **exposes its input ports** for other modules:
+```typescript
+export function composeCustomers({ db }: { db: DbConnection }) {
+  const customerRepository = new SqlCustomerRepository(db);
+  const getCustomer: IGetCustomerUseCase = new GetCustomerInteractor(customerRepository);
+  // ... routes ...
+  return { ports: { getCustomer }, routes: { /* ... */ } };
+}
+```
+
+`src/main/index.ts` — the entry point:
 ```typescript
 // src/main/index.ts
 // THE MAIN COMPONENT — The Composition Root
 //
-// This file knows about ALL layers. That is by design.
-// It is the ONLY file allowed to import concrete implementations from all layers.
-// Nothing imports from main/ except the OS entry point (e.g., server.ts).
-//
-// Layer: Main (outermost)
-// Imports from: ALL layers (entities, usecases, adapters, frameworks)
+// This is the ONLY place that knows about ALL modules and layers. That is by design.
+// Nothing imports from main/ except the OS entry point.
 
 import express from 'express';
-
-// Framework setup (frameworks layer)
-import { createDbConnection } from '../frameworks/db/connection';
-
-// Concrete gateway implementations (adapters layer)
-import { OrderRepositoryImpl } from '../adapters/gateways/OrderRepositoryImpl';
-import { CustomerRepositoryImpl } from '../adapters/gateways/CustomerRepositoryImpl';
-
-// Concrete presenters (adapters layer)
-import { PlaceOrderPresenter } from '../adapters/presenters/PlaceOrderPresenter';
-import { GetOrderPresenter } from '../adapters/presenters/GetOrderPresenter';
-
-// Concrete interactors (usecases layer)
-import { PlaceOrderInteractor } from '../usecases/interactors/PlaceOrderInteractor';
-import { GetOrderInteractor } from '../usecases/interactors/GetOrderInteractor';
-
-// Concrete controllers (adapters layer)
-import { PlaceOrderController } from '../adapters/controllers/PlaceOrderController';
-import { GetOrderController } from '../adapters/controllers/GetOrderController';
-
-// Route registration (frameworks layer)
-import { registerOrderRoutes } from '../frameworks/web/orderRoutes';
+import { createDbConnection } from '../platform/db/connection';
+import { registerRoutes } from '../platform/web/routes';
+import { composeCustomers } from './modules/customers';
+import { composeOrders } from './modules/orders';
 
 export async function bootstrap(): Promise<void> {
-  // 1. Initialize infrastructure
-  const dbConnection = await createDbConnection({
+  // 1. Initialize infrastructure (platform)
+  const db = await createDbConnection({
     host: process.env.DB_HOST ?? 'localhost',
     port: Number(process.env.DB_PORT ?? 5432),
     database: process.env.DB_NAME ?? 'app_db',
   });
 
-  // 2. Create repositories (gateways)
-  const orderRepository = new OrderRepositoryImpl(dbConnection);
-  const customerRepository = new CustomerRepositoryImpl(dbConnection);
+  // 2. Compose modules in dependency order; cross-module ties are INPUT PORTS
+  const customers = composeCustomers({ db });
+  const orders = composeOrders({ db, getCustomer: customers.ports.getCustomer });
 
-  // 3. Wire use cases (inject repositories and presenters as ports)
-  const placeOrderPresenter = new PlaceOrderPresenter();
-  const placeOrderInteractor = new PlaceOrderInteractor(
-    placeOrderPresenter,    // output port
-    orderRepository,         // repository port
-    customerRepository,      // repository port
-  );
-
-  const getOrderPresenter = new GetOrderPresenter();
-  const getOrderInteractor = new GetOrderInteractor(
-    getOrderPresenter,
-    orderRepository,
-  );
-
-  // 4. Create controllers (inject use cases as input port interfaces)
-  const placeOrderController = new PlaceOrderController(placeOrderInteractor);
-  const getOrderController = new GetOrderController(getOrderInteractor);
-
-  // 5. Set up the web framework
+  // 3. Set up the web framework and register every module's routes
   const app = express();
   app.use(express.json());
+  registerRoutes(app, { ...customers.routes, ...orders.routes });
 
-  // 6. Register routes (frameworks layer handles HTTP, controllers handle adaptation)
-  registerOrderRoutes(app, {
-    placeOrder: placeOrderController,
-    getOrder: getOrderController,
-  });
-
-  // 7. Start the server
+  // 4. Start the server
   const port = Number(process.env.PORT ?? 3000);
-  app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-  });
+  app.listen(port, () => console.log(`Server running on port ${port}`));
 }
 
 bootstrap().catch(console.error);
 ```
 
-#### Python (FastAPI, manual DI):
+#### Python (FastAPI, manual DI)
 ```python
-# src/main/app.py
-# THE MAIN COMPONENT — Composition Root
+# src/main/modules/orders.py
+from ...modules.orders.infra.adapters.gateways.sql_order_repository import SqlOrderRepository
+from ...modules.orders.infra.adapters.gateways.customer_lookup_gateway import CustomerLookupGateway
+from ...modules.orders.infra.adapters.presenters.place_order_presenter import PlaceOrderPresenter
+from ...modules.orders.app.interactors.place_order import PlaceOrderInteractor
+from ...modules.orders.infra.adapters.controllers.place_order_controller import PlaceOrderController
 
+def compose_orders(db_session, get_customer):
+    order_repo = SqlOrderRepository(db_session)
+    customer_lookup = CustomerLookupGateway(get_customer)
+
+    def make_place_order():
+        presenter = PlaceOrderPresenter()
+        interactor = PlaceOrderInteractor(presenter, order_repo, customer_lookup)
+        return presenter, PlaceOrderController(interactor)
+
+    return {"routes": {"place_order": make_place_order}}
+
+# src/main/app.py
 from fastapi import FastAPI
-from ..frameworks.db.connection import create_db_session
-from ..adapters.gateways.order_repository_impl import OrderRepositoryImpl
-from ..adapters.presenters.place_order_presenter import PlaceOrderPresenter
-from ..usecases.interactors.place_order_interactor import PlaceOrderInteractor
-from ..adapters.controllers.place_order_controller import PlaceOrderController
-from ..frameworks.web.order_routes import register_order_routes
+from ..platform.db.connection import create_db_session
+from ..platform.web.routes import register_routes
+from .modules.customers import compose_customers
+from .modules.orders import compose_orders
 
 def create_app() -> FastAPI:
     app = FastAPI()
-
-    # Infrastructure
-    db_session = create_db_session()
-
-    # Gateways
-    order_repo = OrderRepositoryImpl(db_session)
-
-    # Use cases with injected dependencies
-    place_order_presenter = PlaceOrderPresenter()
-    place_order_interactor = PlaceOrderInteractor(
-        output_port=place_order_presenter,
-        order_repository=order_repo,
-    )
-
-    # Controllers
-    place_order_controller = PlaceOrderController(place_order_interactor)
-
-    # Routes
-    register_order_routes(app, place_order_controller)
-
+    db = create_db_session()
+    customers = compose_customers(db)
+    orders = compose_orders(db, customers["ports"]["get_customer"])
+    register_routes(app, {**customers["routes"], **orders["routes"]})
     return app
 
 app = create_app()
 ```
 
-#### With a DI Framework (TypeScript + tsyringe / NestJS / InversifyJS):
+#### With a DI Framework (TypeScript + tsyringe / NestJS / InversifyJS)
 ```typescript
 // src/main/container.ts
 import 'reflect-metadata';
 import { container } from 'tsyringe';
 
-// Register interfaces → concrete implementations
-container.register<IOrderRepository>('IOrderRepository', {
-  useClass: OrderRepositoryImpl,
-});
-container.register<IPlaceOrderOutputPort>('IPlaceOrderOutputPort', {
-  useClass: PlaceOrderPresenter,
-});
-container.register<IPlaceOrderUseCase>('IPlaceOrderUseCase', {
-  useClass: PlaceOrderInteractor,
-});
+// Register interfaces → concrete implementations, per module
+container.register<IOrderRepository>('IOrderRepository', { useClass: SqlOrderRepository });
+container.register<ICustomerLookup>('ICustomerLookup', { useClass: CustomerLookupGateway });
+container.register<IPlaceOrderUseCase>('IPlaceOrderUseCase', { useClass: PlaceOrderInteractor });
 
 // The container IS the Main component — wiring lives here, not scattered throughout the app.
+// Decorators (@injectable) in modules/ are a framework dependency: prefer registering by token here
+// so domain/ and app/ stay free of the DI library.
 ```
 
-### Step 3: Extract Factory Methods (if wiring is complex)
+### Step 3: Environment-Specific Main Files
 
-For complex wiring, extract factory methods:
+Different environments can have different main files. The test composition root swaps infrastructure for in-memory implementations **of the same ports**:
 
-```typescript
-// src/main/factories/makePlaceOrderUseCase.ts
-export function makePlaceOrderUseCase(dbConnection: DbConnection): IPlaceOrderUseCase {
-  const repository = new OrderRepositoryImpl(dbConnection);
-  const presenter = new PlaceOrderPresenter();
-  return new PlaceOrderInteractor(presenter, repository);
-}
-```
-
-### Step 4: Environment-Specific Main Files
-
-Different environments can have different main files:
-
-```
-src/main/
-├── index.ts              ← Production composition root
-├── index.test.ts         ← Test composition root (uses in-memory implementations)
-├── factories/
-│   ├── makeOrderUseCases.ts
-│   └── makeUserUseCases.ts
-└── config/
-    └── environment.ts    ← Environment variable parsing (detail)
-```
-
-Test composition root:
 ```typescript
 // src/main/index.test.ts — used by integration/e2e tests
 export function bootstrapTestApp(): App {
-  // Use in-memory repositories instead of real DB
   const orderRepository = new OrderInMemoryRepository();
-  const placeOrderPresenter = new PlaceOrderPresenter();
-  const placeOrderInteractor = new PlaceOrderInteractor(placeOrderPresenter, orderRepository);
-  const placeOrderController = new PlaceOrderController(placeOrderInteractor);
+  const customerLookup: ICustomerLookup = { exists: async () => true }; // fake port, no customers module needed
+  const makePlaceOrder = () => {
+    const presenter = new PlaceOrderPresenter();
+    return { presenter, controller: new PlaceOrderController(
+      new PlaceOrderInteractor(presenter, orderRepository, customerLookup)) };
+  };
   // ... return wired app
 }
 ```
@@ -235,8 +219,11 @@ export function bootstrapTestApp(): App {
 ## Validation Checklist
 
 - [ ] `src/main/` is the ONLY location with `new ConcreteGateway()` or `new ConcreteInteractor()`.
+- [ ] `src/platform/` registers routes and creates connections, but never instantiates interactors or gateways.
 - [ ] No other production code file (outside `main/`) uses `new` on a cross-layer dependency.
-- [ ] No layer inside `src/` imports from `main/`.
+- [ ] No module and no layer inside `src/` imports from `main/`.
+- [ ] Modules are connected only here, and only through input ports (`compose<Module>` returns the ports others may use).
+- [ ] Module composition order has no cycles (A needs B's port ⇒ B is composed first, B does not need A).
 - [ ] Environment variables are read ONLY in main (or in a config module loaded by main).
 - [ ] The DI wiring is in one place — not scattered across the app.
 - [ ] A test composition root exists that swaps infrastructure for in-memory alternatives.
@@ -244,14 +231,15 @@ export function bootstrapTestApp(): App {
 
 ## SRP of Main
 Main changes when:
-- A new use case is added (new wiring needed).
+- A new module or use case is added (new wiring needed).
 - An implementation is swapped (e.g., switch DB engine).
 - A new environment is added.
-It does NOT change because of business rule changes — those are in entities/use cases.
+It does NOT change because of business rule changes — those are in domain/app.
 
 ## Output
 After creating/updating Main:
-1. The complete wiring diagram.
+1. The complete wiring diagram, module by module.
 2. All dependencies wired and where their interfaces are defined.
-3. How to add a new use case (step-by-step).
-4. How to swap an implementation (e.g., switch from PostgreSQL to DynamoDB).
+3. The cross-module links and the input port behind each.
+4. How to add a new use case, and how to add a new module (step-by-step).
+5. How to swap an implementation (e.g., switch from PostgreSQL to DynamoDB).

@@ -2,82 +2,133 @@ You are a Clean Architecture expert following Robert C. Martin's book *Clean Arc
 
 The user wants to initialize a new project (or retrofit an existing one) with a full Clean Architecture structure. Arguments provided after the command describe the project domain/technology.
 
+The plugin uses a **feature-first** layout: business capabilities are **modules** under `src/modules/`, and every module has the three layers `domain`, `app` and `infra`.
+
 ## Your Task
 
 1. **Detect the language and framework** from the project context (check package.json, go.mod, pom.xml, Pipfile, etc.). If none exists, infer from the user's description.
-2. **Identify the domain** from the description. The architecture must scream the domain, not the framework (Screaming Architecture principle).
-3. **Create the full directory structure** with all four Clean Architecture layers plus the Main component.
-4. **Generate a base set of files** for each layer: interfaces, placeholder implementations, and barrel/index exports.
-5. **Create a README** inside the `src/` (or equivalent) folder explaining the architecture.
-6. **Enforce the Dependency Rule** from the start by setting up linting rules or module boundary checks appropriate to the language.
+2. **Identify the modules** from the description. Each module is a business capability (`orders`, `customers`, `billing`), named in kebab-case. The architecture must scream the domain, not the framework (Screaming Architecture principle). If the user names only one capability, create one module; if the description is vague, ask for the module names rather than inventing a generic one.
+3. **Create the full directory structure** below: one folder set per module, plus `shared/`, `platform/` and `main/`.
+4. **Generate a base set of files** for the first module: interfaces, placeholder implementations, and barrel/index exports.
+5. **Create a README** at `src/ARCHITECTURE.md` explaining the architecture.
+6. **Enforce both rules from the start** (Dependency Rule and Module Rule) by setting up linting rules or module boundary checks appropriate to the language.
+
+Module names `shared`, `platform`, `main`, `app`, `domain`, `infra`, `modules` and `adapters` are reserved — they would be ambiguous with layer folders.
 
 ## Directory Structure to Create
 
 ```
 <project-root>/
 ├── src/
-│   ├── entities/               # Layer 1: Enterprise Business Rules
-│   │   └── index.<ext>
-│   ├── usecases/               # Layer 2: Application Business Rules
-│   │   ├── ports/
-│   │   │   ├── input/          # Input Port interfaces (driven by controllers)
-│   │   │   └── output/         # Output Port interfaces (implemented by gateways/presenters)
-│   │   └── interactors/        # Use case implementations
-│   ├── adapters/               # Layer 3: Interface Adapters
-│   │   ├── controllers/        # Convert framework input → use case input model
-│   │   ├── presenters/         # Implement Output Ports, build view models
-│   │   └── gateways/           # Implement repository interfaces, talk to DB/external
-│   ├── frameworks/             # Layer 4: Frameworks & Drivers
-│   │   ├── web/                # HTTP framework wiring (Express, FastAPI, Spring, etc.)
-│   │   ├── db/                 # Database drivers, ORM config, migrations
-│   │   └── external/           # Third-party API clients, message queues, etc.
-│   └── main/                   # Composition Root — the only place dependencies are wired
+│   ├── modules/
+│   │   └── <module>/                       # repeat per module
+│   │       ├── domain/                     # Enterprise Business Rules
+│   │       │   └── <entity>.<ext>
+│   │       ├── app/                        # Application Business Rules
+│   │       │   ├── ports/
+│   │       │   │   ├── input/              # Input Ports (called by controllers, and by other modules)
+│   │       │   │   └── output/             # Output Ports + repository interfaces
+│   │       │   └── interactors/            # Use case implementations
+│   │       └── infra/
+│   │           └── adapters/
+│   │               ├── controllers/        # Framework input → use case input model
+│   │               ├── presenters/         # Implement Output Ports, build view models
+│   │               └── gateways/           # Implement repository interfaces
+│   │                   └── in-memory/      # In-memory repos for unit tests
+│   ├── shared/                             # Shared kernel — pure, minimal, imports nothing
+│   ├── platform/                           # Frameworks & Drivers (global, not per module)
+│   │   ├── web/                            # HTTP framework wiring, route registration
+│   │   ├── db/                             # Database drivers, ORM config, migrations
+│   │   └── external/                       # Third-party API clients, message queues
+│   └── main/                               # Composition Root — the only place dependencies are wired
 │       └── index.<ext>
 ├── tests/
-│   ├── unit/                   # Pure unit tests for entities and use cases
-│   ├── integration/            # Tests for gateways and adapters
-│   └── e2e/                    # End-to-end tests (outermost layer)
+│   ├── unit/<module>/{domain,app,infra/adapters}/
+│   ├── integration/<module>/infra/adapters/gateways/
+│   └── e2e/
 └── <config files>
 ```
 
-## Files to Generate
+File names are kebab-case (snake_case in Python).
 
-### 1. Entity barrel (`src/entities/index.<ext>`)
-- Export comment explaining entities are enterprise-wide business rules.
-- Show that entities must never import from any other src layer.
+## Files to Generate (for the first module `<module>`)
+
+### 1. Entity (`src/modules/<module>/domain/<entity>.<ext>`)
+- Header comment: enterprise business rules; imports at most from `src/shared/`.
+- Never imports from `app/`, `infra/`, `platform/`, `main/` or any other module.
 
 ### 2. Use Case port interfaces
-- `src/usecases/ports/input/I<Domain>InputPort.<ext>` — interface with a single `execute(request)` method.
-- `src/usecases/ports/output/I<Domain>OutputPort.<ext>` — interface with `present(response)` method.
+- `src/modules/<module>/app/ports/input/<use-case>.<ext>` — interface with a single `execute(request)` method.
+- `src/modules/<module>/app/ports/output/<use-case>-output.<ext>` — interface with `present(response)` / `presentError(error)`.
 
-### 3. Gateway interface
-- `src/usecases/ports/output/I<Domain>Repository.<ext>` — repository interface living in the use case layer (not in the adapters layer), following DIP.
+### 3. Repository interface
+- `src/modules/<module>/app/ports/output/<entity>-repository.<ext>` — lives in the `app` layer (not in `infra`), following DIP.
 
 ### 4. Example interactor stub
-- `src/usecases/interactors/<Domain>Interactor.<ext>` — implements Input Port, depends on Output Port and Repository interfaces.
+- `src/modules/<module>/app/interactors/<use-case>.<ext>` — implements the Input Port, depends on the Output Port and the repository interface.
 
-### 5. Dependency Rule enforcement
-- For **TypeScript/JavaScript**: Generate `.eslintrc` with `import/no-restricted-paths` rules or `eslint-plugin-boundaries` config.
-- For **Python**: Generate a `pyproject.toml` note or `import-linter` config.
-- For **Java/Kotlin**: Note on using ArchUnit.
-- For **Go**: Note on using `go-cleanarch` linter.
-- For **C#**: Note on NDepend or architecture tests.
+### 5. Composition root
+- `src/main/index.<ext>` — comment explaining that it is the only file allowed to instantiate concrete classes.
 
-### 6. Architecture README (`src/ARCHITECTURE.md`)
-Explain the layers, the Dependency Rule, and how to add new features following the architecture.
+### 6. Rule enforcement
+Both axes must be enforced:
+
+- **Axis 1 — layers** (`infra → app → domain`, `adapters ↛ platform`).
+- **Axis 2 — modules** (no cross-module imports except `A/infra/adapters → B/app/ports/input`).
+
+By language:
+- **TypeScript/JavaScript**: `.eslintrc` with `eslint-plugin-boundaries` (element types `domain`, `app`, `adapters`, `platform`, `shared`, `main`, each with a `module` capture) or `import/no-restricted-paths` zones.
+- **Python**: `import-linter` contracts (a `layers` contract per module plus a `forbidden` contract between modules).
+- **Java/Kotlin**: ArchUnit layered-architecture and package-slice tests.
+- **Go**: `go-cleanarch` plus `internal/` packages per module.
+- **C#**: NDepend or architecture tests.
+
+Example `eslint-plugin-boundaries` configuration (TypeScript):
+```json
+{
+  "settings": {
+    "boundaries/elements": [
+      { "type": "shared",   "pattern": "src/shared" },
+      { "type": "domain",   "pattern": "src/modules/*/domain",          "capture": ["module"] },
+      { "type": "app",      "pattern": "src/modules/*/app",             "capture": ["module"] },
+      { "type": "adapters", "pattern": "src/modules/*/infra/adapters",  "capture": ["module"] },
+      { "type": "platform", "pattern": "src/platform" },
+      { "type": "main",     "pattern": "src/main" }
+    ]
+  },
+  "rules": {
+    "boundaries/element-types": [2, {
+      "default": "disallow",
+      "rules": [
+        { "from": "domain",   "allow": [["domain", { "module": "${module}" }], "shared"] },
+        { "from": "app",      "allow": [["domain", { "module": "${module}" }], ["app", { "module": "${module}" }], "shared"] },
+        { "from": "adapters", "allow": [["domain", { "module": "${module}" }], ["app", { "module": "${module}" }], ["adapters", { "module": "${module}" }], "shared"] },
+        { "from": "platform", "allow": ["adapters", "app", "domain", "shared", "platform"] },
+        { "from": "main",     "allow": ["platform", "adapters", "app", "domain", "shared"] }
+      ]
+    }]
+  }
+}
+```
+The single allowed cross-module edge (`adapters` → another module's `app/ports/input`) needs one extra rule restricted to that path (for example an `import/no-restricted-paths` exception, or a dedicated element type for `src/modules/*/app/ports/input`).
+
+### 7. Architecture README (`src/ARCHITECTURE.md`)
+Explain the layout, both rules, the cross-module recipe (port owned by the caller, implemented in its `infra`, calling the other module's input port) and how to add a new module or feature.
 
 ## Validation Before Finishing
 
 After creating files, verify:
-- [ ] No file in `entities/` imports from `usecases/`, `adapters/`, `frameworks/`, or `main/`.
-- [ ] No file in `usecases/` imports from `adapters/`, `frameworks/`, or `main/`.
-- [ ] No file in `adapters/` imports from `frameworks/` or `main/`.
-- [ ] The `main/` file is the ONLY place where concrete classes are instantiated and wired together.
-- [ ] Port interfaces live in the `usecases/` layer, not in `adapters/`.
+- [ ] No file in `domain/` imports from `app/`, `infra/`, `platform/`, `main/`, or another module.
+- [ ] No file in `app/` imports from `infra/`, `platform/`, `main/`, or another module.
+- [ ] No file in `infra/adapters/` imports from `platform/` or `main/`; the only cross-module import allowed is into another module's `app/ports/input/`.
+- [ ] `shared/` imports nothing.
+- [ ] `main/` is the ONLY place where concrete classes are instantiated and wired together.
+- [ ] Port interfaces live in the `app/` layer of the module that owns them, not in `infra/`.
+- [ ] No module name is reserved.
 
 ## Output
 
 After creating all files, provide a summary table showing:
-- Each layer and what was created
-- The Dependency Rule map for this specific project
-- Next steps (e.g., "run `/clean-architecture:entity Order` to create your first entity")
+- Each module and layer, and what was created
+- The dependency map for this specific project (layers and modules)
+- Next steps (e.g., "run `/clean-architecture:entity <module>/Order` to create your first entity")
