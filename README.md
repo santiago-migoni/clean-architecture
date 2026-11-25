@@ -120,6 +120,17 @@ The hook and the MCP server share one rule set (`src/lib/architecture.js`), so t
 cd examples/shop && npm ci && npm test && npm start
 ```
 
+## Continuous Integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs two jobs on every pull request and on `main`:
+
+| Job | What it guards |
+|---|---|
+| **Plugin engine** | Syntax of the MCP server, hook and rules; the JSON manifests; and `npm run verify:example`, which checks the scanner **in both directions**: `examples/shop` must be clean, and planted violations (outward import, cross-module import, `infra` → `platform`, a file directly under `infra/`, a folder named `modules/` that is not business code, a legacy layout) must be found. A scanner that reports nothing may simply be broken, so a clean result alone proves nothing. |
+| **Example** (Node 22.13.0, 22, 24) | `npm ci` from the lockfile, `tsc`, ESLint with the architecture rules, and the 52 tests. |
+
+Run the engine check locally with `npm run verify:example`.
+
 ## Clean Architecture Concepts Covered
 
 **Layers (inside every module):** `domain` (Entities) → `app` (Use Cases) → `infra/adapters` (Interface Adapters) → `platform` (Frameworks & Drivers), plus `shared` (shared kernel) and `main` (composition root)
