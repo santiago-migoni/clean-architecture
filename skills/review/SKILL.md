@@ -20,6 +20,7 @@ Check:
 - Does every module have clear `domain/`, `app/` and `infra/` layers, with `shared/`, `platform/` and `main/` alongside?
 - Are module names domain terms (and none of the reserved names `shared`, `platform`, `main`, `app`, `domain`, `infra`)?
 - Is there legacy structure left (`entities/`, `usecases/`, `adapters/`, `frameworks/` at the top of `src/`)?
+- Is documentation in `docs/architecture/` (not inside `src/`), and are there empty or unused folders that add noise (YAGNI)?
 - Is the `main/` or composition root clearly identifiable and separate?
 
 Score: 0-10 points
@@ -58,12 +59,12 @@ Score: 0-10 points
 ## Section 4: Use Case Design
 
 For each use case:
-- Is the **Input Port** (interface) defined in the module's `app/ports/input/`?
-- Is the **Output Port** (interface) defined in the module's `app/ports/output/`?
+- Where an **Input Port** exists, is it in the module's `app/ports/input/`? Does one exist wherever another module or a second entry point calls the use case? (An Input Port elsewhere is optional — do not penalise its absence.)
+- Where an **Output Port** exists, is it in the module's `app/ports/output/`? (Optional — do not penalise a use case that returns a response model.)
 - Is the **Repository interface** defined in `app/ports/output/` (not in `infra/`)?
 - Are needs from other modules expressed as **ports owned by the calling module**, implemented in its `infra/adapters` against the other module's input port?
-- Does the interactor implement the Input Port?
-- Does the interactor call the Output Port (not return data directly to the controller)?
+- Where an Input Port exists, does the interactor implement it?
+- Does the interactor either return a response model or call its Output Port — never HTTP objects?
 - Is the interactor **fully testable with mocks** (no DB, no HTTP)?
 - Are there unit tests that cover the happy path and error paths?
 
@@ -123,11 +124,12 @@ Score: 0-10 points
 
 Check the test structure:
 - Are **unit tests** for entities and use cases framework-free?
-- Do use case tests use **mocks** for the output port and repository?
+- Do use case tests use an **in-memory repository / fakes** for outbound ports (and a mock Output Port only if one exists)?
 - Are **integration tests** in a separate suite from unit tests?
 - Do integration tests for gateways use a **real (test) database**?
 - Are there **no business logic assertions** in e2e tests (those belong in unit tests)?
 - Is the **in-memory repository** pattern used in use case tests?
+- Are tests grouped by module (`tests/<module>/{unit,integration}`) with `tests/e2e/` shared?
 - Is the **test suite runnable without infrastructure** (DB, network)?
 
 Score: 0-5 points

@@ -13,74 +13,108 @@ Use Cases are:
 - **Application-specific** business rules (not enterprise-wide — those belong in the domain).
 - Orchestrators that direct entities to perform their critical business rules.
 - **Independent of UI, DB, frameworks** — a use case should work with a command-line, a REST API, or a batch job.
-- Defined by their **Input Port** (what they accept) and **Output Port** (what they produce).
 
-## Architecture: Request/Response with Ports
+## Keep it as small as the use case allows
+
+A use case has ONE required file — the interactor — plus the repository interface it needs. Everything else is opt-in. Create the extra pieces only when their trigger is true; never scaffold them "just in case".
+
+| Piece | Required? | Create it when |
+|---|---|---|
+| Interactor (`app/interactors/<use-case>`) | Always | — |
+| Request / Response models | Always (in the interactor file) | — |
+| Repository / outbound port (`app/ports/output/<x>`) | When the use case touches data or the outside | — |
+| **Input Port** (`app/ports/input/<use-case>`) | Optional | Another module calls this use case, or there is a second entry point (HTTP + CLI/queue), or you want to swap the interactor behind the controller |
+| **Output Port + Presenter** | Optional | Formatting the output is non-trivial (currency, dates, labels), or several delivery mechanisms need different views |
+| Cross-module port (`app/ports/output/<other>-lookup`) | Only for cross-module needs | The use case needs something owned by another module |
+
+The Dependency Rule is not weakened by skipping the Input Port: a controller in the same module that depends on the interactor still points inward (infra → app). The inversion that is NOT optional is the one for outbound dependencies (repository, payment, clock…): the interactor depends on an interface, never on the implementation.
 
 All paths below are inside `src/modules/<module>/`.
 
+## Default flow (no Input Port, no Presenter)
+
 ```
-Controller → [Input Port Interface] → Interactor → [Output Port Interface] → Presenter
-                    ↑                      ↓
-              (app/ports/input/)       Entities
-                                     (domain/)
-                                          ↓
-                              [Repository Interface] → Gateway
-                              (app/ports/output/)      (infra/adapters/gateways/)
+Controller ──▶ Interactor ──▶ Repository interface (app/ports/output/) ◀── Gateway (infra/adapters/gateways/)
+                  │
+                  ▼
+              Entities (domain/)
+                  │
+                  ▼ returns ResponseModel
+Controller maps ResponseModel → HTTP response
+```
+
+## Flow with the optional pieces
+
+```
+Controller → [Input Port] → Interactor → [Output Port] → Presenter → ViewModel
+                                 ↓
+                             Entities   → Repository interface → Gateway
 ```
 
 ## Your Task
 
-### Step 1: Define the Input Port Interface
-File: `src/modules/<module>/app/ports/input/<use-case-name>.<ext>`
+### Step 1: Create the Interactor (required)
+File: `src/modules/<module>/app/interactors/<use-case-name>.<ext>`
 
 ```typescript
 // TypeScript
-export interface <UseCaseName>RequestModel {
-  // Raw data from the controller — primitive types only, no domain objects
-  // (avoids coupling the controller to the entity model)
+// Layer: app (Application Business Rules)
+// May import from: this module's domain/, this module's app/ports/, src/shared/
+// May NOT import from: infra/, platform/, main/, or any other module
+// Dependencies injected via constructor (DIP)
+
+import { I<Domain>Repository } from '../ports/output/<domain>-repository';
+
+export interface <UseCaseName>Request {
+  // Primitive types only — no domain objects, no framework objects
 }
 
-export interface I<UseCaseName>UseCase {
-  execute(request: <UseCaseName>RequestModel): Promise<void>; // void because output goes via Output Port
+export interface <UseCaseName>Response {
+  // Plain data produced by the use case
+}
+
+export class <UseCaseName>Interactor {
+  constructor(private readonly repository: I<Domain>Repository) {}
+
+  async execute(request: <UseCaseName>Request): Promise<<UseCaseName>Response> {
+    // 1. Validate input (application-level validation, not enterprise rules)
+    // 2. Retrieve entities via the repository
+    // 3. Invoke entity business rules
+    // 4. Persist changes via the repository
+    // 5. Return the response model
+    // Failures are thrown as domain/application errors; the controller maps them to a delivery-specific answer.
+    throw new Error('not implemented');
+  }
 }
 ```
 
 ```python
-# Python — src/modules/<module>/app/ports/input/<use_case_name>.py
-from abc import ABC, abstractmethod
+# Python — src/modules/<module>/app/interactors/<use_case_name>.py
+# Layer: app (Application Business Rules)
 from dataclasses import dataclass
+from ..ports.output.<domain>_repository import I<Domain>Repository
 
 @dataclass
-class <UseCaseName>RequestModel:
-    # primitive fields only
+class <UseCaseName>Request:
+    pass  # primitive fields only
+
+@dataclass
+class <UseCaseName>Response:
     pass
 
-class I<UseCaseName>UseCase(ABC):
-    @abstractmethod
-    def execute(self, request: <UseCaseName>RequestModel) -> None:
-        ...
+class <UseCaseName>Interactor:
+    def __init__(self, repository: I<Domain>Repository):
+        self._repository = repository
+
+    def execute(self, request: <UseCaseName>Request) -> <UseCaseName>Response:
+        # 1. Validate, 2. Load entities, 3. Apply rules, 4. Save, 5. Return the response
+        raise NotImplementedError
 ```
 
-### Step 2: Define the Output Port Interface
-File: `src/modules/<module>/app/ports/output/<use-case-name>-output.<ext>`
-
-```typescript
-// TypeScript
-export interface <UseCaseName>ResponseModel {
-  // Data produced by the use case — primitive types, no framework objects
-}
-
-export interface I<UseCaseName>OutputPort {
-  present(response: <UseCaseName>ResponseModel): void;
-  presentError(error: Error): void;
-}
-```
-
-### Step 3: Define the Repository Interface (if data access is needed)
+### Step 2: Define the Repository Interface (if data access is needed)
 File: `src/modules/<module>/app/ports/output/<domain>-repository.<ext>`
 
-**Important**: This interface is defined in the `app` layer, not in `infra`. This is the Dependency Inversion Principle in action — the use case defines what it needs; the gateway (infra) implements it.
+**Important**: This interface is defined in the `app` layer, not in `infra`. This is the Dependency Inversion Principle in action — the use case defines what it needs; the gateway (infra) implements it. Only declare the methods this module's use cases actually call.
 
 ```typescript
 // TypeScript
@@ -93,127 +127,94 @@ export interface I<Domain>Repository {
 }
 ```
 
-### Step 4: Need data or behaviour from another module?
+### Step 3 (optional): Input Port
+Create it only if its trigger is true (another module calls it, a second entry point exists, or you need to swap the interactor).
+
+File: `src/modules/<module>/app/ports/input/<use-case-name>.<ext>` — move `<UseCaseName>Request`/`Response` here and make the interactor `implements I<UseCaseName>UseCase`:
+
+```typescript
+export interface I<UseCaseName>UseCase {
+  execute(request: <UseCaseName>Request): Promise<<UseCaseName>Response>;
+}
+```
+This file is the module's **public surface**: it is the only thing another module's infra may import. Keep it free of domain objects.
+
+### Step 4 (optional): Output Port + Presenter
+Create them only if output formatting is non-trivial. The interactor then returns `Promise<void>` and calls the Output Port:
+
+File: `src/modules/<module>/app/ports/output/<use-case-name>-output.<ext>`
+```typescript
+export interface I<UseCaseName>OutputPort {
+  present(response: <UseCaseName>Response): void;
+  presentError(error: Error): void;
+}
+```
+Then run `/clean-architecture:presenter <module>/<UseCaseName>`.
+
+### Step 5: Need data or behaviour from another module?
 Never import the other module's `domain/` or `infra/`. Use the cross-module recipe:
 
 1. **Declare a port owned by this module**, expressed in this module's own vocabulary:
-   `src/modules/<module>/app/ports/output/<other>-lookup.<ext>`
+   `app/ports/output/<other>-lookup.<ext>`
    ```typescript
    export interface ICustomerLookup {
      exists(customerId: string): Promise<boolean>;
    }
    ```
-2. **Implement it in this module's `infra`** by calling the other module's *input port*:
-   `src/modules/<module>/infra/adapters/gateways/<other>-lookup-gateway.<ext>`
+2. **Implement it in this module's `infra`** by calling the other module's *input port* (which therefore must exist — create it in the other module, Step 3):
+   `infra/adapters/gateways/<other>-lookup-gateway.<ext>`
    (see the `gateway` skill — this is the only place allowed to import `src/modules/<other>/app/ports/input/`).
 3. **Reference the other module's entities by id** in this module's domain (`customerId: string`).
 4. Wire both sides in `src/main/`.
 
-### Step 5: Create the Interactor
-File: `src/modules/<module>/app/interactors/<use-case-name>.<ext>`
-
-```typescript
-// TypeScript
-// Layer: app (Application Business Rules)
-// May import from: this module's domain/, this module's app/ports/, src/shared/
-// May NOT import from: infra/, platform/, main/, or any other module
-// Dependencies injected via constructor (DIP)
-
-import { I<UseCaseName>UseCase, <UseCaseName>RequestModel } from '../ports/input/<use-case-name>';
-import { I<UseCaseName>OutputPort } from '../ports/output/<use-case-name>-output';
-import { I<Domain>Repository } from '../ports/output/<domain>-repository';
-
-export class <UseCaseName>Interactor implements I<UseCaseName>UseCase {
-  constructor(
-    private readonly outputPort: I<UseCaseName>OutputPort,
-    private readonly repository: I<Domain>Repository,
-  ) {}
-
-  async execute(request: <UseCaseName>RequestModel): Promise<void> {
-    try {
-      // 1. Validate input (application-level validation, not enterprise rules)
-      // 2. Retrieve entities via repository
-      // 3. Invoke entity business rules
-      // 4. Persist changes via repository
-      // 5. Call outputPort.present() with results
-    } catch (error) {
-      this.outputPort.presentError(error as Error);
-    }
-  }
-}
-```
-
-```python
-# Python — src/modules/<module>/app/interactors/<use_case_name>.py
-# Layer: app (Application Business Rules)
-from ..ports.input.<use_case_name> import I<UseCaseName>UseCase, <UseCaseName>RequestModel
-from ..ports.output.<use_case_name>_output import I<UseCaseName>OutputPort
-from ..ports.output.<domain>_repository import I<Domain>Repository
-
-class <UseCaseName>Interactor(I<UseCaseName>UseCase):
-    def __init__(
-        self,
-        output_port: I<UseCaseName>OutputPort,
-        repository: I<Domain>Repository,
-    ):
-        self._output_port = output_port
-        self._repository = repository
-
-    def execute(self, request: <UseCaseName>RequestModel) -> None:
-        try:
-            # 1. Validate, 2. Load entities, 3. Apply rules, 4. Save, 5. Present
-            pass
-        except Exception as e:
-            self._output_port.present_error(e)
-```
-
 ### Step 6: Create Use Case Tests
-File: `tests/unit/<module>/app/<use-case-name>.test.<ext>`
+File: `tests/<module>/unit/app/<use-case-name>.test.<ext>`
 
-**Test strategy**: Use mocks/stubs for the Output Port and Repository — never touch the real DB or HTTP.
+**Test strategy**: Use stubs or an in-memory repository — never touch the real DB or HTTP. (Create the in-memory repository with the `gateway` skill the first time a test needs one.)
 
 ```typescript
 describe('<UseCaseName>Interactor', () => {
   let interactor: <UseCaseName>Interactor;
-  let mockOutputPort: jest.Mocked<I<UseCaseName>OutputPort>;
   let mockRepository: jest.Mocked<I<Domain>Repository>;
 
   beforeEach(() => {
-    mockOutputPort = { present: jest.fn(), presentError: jest.fn() };
     mockRepository = { findById: jest.fn(), save: jest.fn() };
-    interactor = new <UseCaseName>Interactor(mockOutputPort, mockRepository);
+    interactor = new <UseCaseName>Interactor(mockRepository);
   });
 
   it('should [describe happy path]', async () => {
-    // Arrange, Act, Assert
+    const response = await interactor.execute({ /* ... */ });
+    // assert on the response and on repository.save
   });
 
-  it('should present error when [failure condition]', async () => {
-    // ...
+  it('should throw when [failure condition]', async () => {
+    await expect(interactor.execute({ /* ... */ })).rejects.toThrow();
   });
 });
 ```
+With an Output Port, replace the response/throw assertions with `expect(outputPort.present).toHaveBeenCalledWith(...)` / `presentError`.
 
 ## Validation Checklist
 
-- [ ] Interactor file imports ONLY from its own module's `domain/` and `app/ports/`, plus `src/shared/` — never from `infra/`, `platform/`, `main/`, or another module.
-- [ ] The Input Port interface is defined in `app/ports/input/`.
-- [ ] The Output Port interface is defined in `app/ports/output/`.
+- [ ] The interactor imports ONLY from its own module's `domain/` and `app/ports/`, plus `src/shared/` — never from `infra/`, `platform/`, `main/`, or another module.
 - [ ] The Repository interface is defined in `app/ports/output/` (NOT in `infra/`).
-- [ ] Anything needed from another module goes through a port owned by this module (Step 4), never a direct import.
+- [ ] An Input Port exists only if one of its triggers is true; if another module calls the use case, it exists in `app/ports/input/`.
+- [ ] An Output Port / Presenter exists only if output formatting justifies it.
+- [ ] Anything needed from another module goes through a port owned by this module (Step 5), never a direct import.
 - [ ] The interactor receives all dependencies via constructor injection (DIP).
-- [ ] The interactor's `execute` method uses only the Input Port's request model — no HTTP request objects, no ORM entities.
+- [ ] `execute` uses only the request model — no HTTP request objects, no ORM entities.
 - [ ] Application-level validation is in the interactor; enterprise rules are delegated to entities.
-- [ ] Tests use mocks for infrastructure; the test suite runs without a database.
+- [ ] Tests use stubs or in-memory implementations; the suite runs without a database.
 
 ## SRP Check
 - The interactor has one reason to change: when the APPLICATION BUSINESS RULES for `<UseCaseName>` change.
-- It does NOT change because the DB changes (gateway changes), or the UI changes (presenter changes).
+- It does NOT change because the DB changes (gateway changes), or the UI changes (controller/presenter changes).
 
 ## Output
 After creating files, show:
-1. The data flow diagram: Controller → Input Port → Interactor → Repository/Output Port → Presenter.
+1. The data flow for this use case (default flow, or the flow with the optional pieces actually created).
 2. Which entity methods are invoked.
-3. What the output model contains.
-4. Any cross-module port introduced and where it is implemented.
-5. Suggested edge cases to test.
+3. What the response model contains.
+4. Which optional pieces were created and which trigger justified each.
+5. Any cross-module port introduced and where it is implemented.
+6. Suggested edge cases to test.

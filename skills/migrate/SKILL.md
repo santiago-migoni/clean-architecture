@@ -127,7 +127,7 @@ class OrderService {
 **Goal**: Define the boundaries between business logic and infrastructure.
 
 Steps:
-1. For each "service" method that represents a user action, define an Input Port interface.
+1. For each "service" method that another module (or a second entry point) will call, define an Input Port interface. For use cases only called by one controller in the same module an Input Port is optional — skip it.
 2. For each database access pattern used by a service, define a Repository interface.
 3. Place all interfaces in `src/modules/<module>/app/ports/` (`input/` and `output/`).
 4. Have existing services implement the Input Port interfaces.
@@ -159,7 +159,7 @@ export class OrderService implements IPlaceOrderUseCase { /* ... */ }
 Steps:
 1. Create `src/modules/<module>/app/interactors/` directory.
 2. Create an Interactor class that:
-   - Implements the Input Port.
+   - Implements the Input Port (if one was defined).
    - Accepts Repository interface via constructor injection.
    - Has no ORM imports, no HTTP imports.
 3. Move the actual business logic from the service into the interactor.
@@ -329,7 +329,7 @@ PHASE 1 — Entity Extraction (0 risk — pure extraction)
   [ ] Verify all existing tests still pass
 
 PHASE 2 — Port Definition (0 risk — adding interfaces)
-  [ ] Create src/modules/<module>/app/ports/input/<name>.ts
+  [ ] Create src/modules/<module>/app/ports/input/<name>.ts (only where another module / entry point needs it)
   [ ] Create src/modules/<module>/app/ports/output/<name>-repository.ts
   [ ] Create cross-module ports (e.g. <other>-lookup.ts) where a capability calls another module
   [ ] Have existing classes implement the interfaces

@@ -2,7 +2,7 @@ You are a Clean Architecture expert following Robert C. Martin's book *Clean Arc
 
 The user wants to create tests that comply with the **Test Boundary** principle.
 
-The argument after the command is `<module>/<Name>` of the class/use case/entity to test (e.g., `orders/PlaceOrderInteractor`, `orders/Order`, `orders/OrderGateway`). Tests mirror the source tree: `tests/unit/<module>/{domain,app,infra/adapters}/`, `tests/integration/<module>/infra/adapters/gateways/`, and `tests/e2e/`.
+The argument after the command is `<module>/<Name>` of the class/use case/entity to test (e.g., `orders/PlaceOrderInteractor`, `orders/Order`, `orders/OrderGateway`). Tests mirror the source tree: `tests/<module>/unit/{domain,app,infra/adapters}/`, `tests/<module>/integration/infra/adapters/gateways/`, and `tests/e2e/`.
 
 In the examples below, `@/` is an alias for `src/` (`moduleNameMapper` in Jest, `paths` in tsconfig, `pythonpath` in pytest) so that test imports do not depend on directory depth.
 
@@ -41,7 +41,7 @@ Determine the type of target (entity, use case, gateway, controller, presenter) 
 
 ### Test Type 1: Entity Tests
 
-File: `tests/unit/<module>/domain/<entity-name>.test.<ext>`
+File: `tests/<module>/unit/domain/<entity-name>.test.<ext>`
 
 ```typescript
 // Entity tests need NO mocks — entities are pure
@@ -100,48 +100,38 @@ describe('Order Entity', () => {
 
 ### Test Type 2: Use Case Interactor Tests
 
-File: `tests/unit/<module>/app/<use-case-name>.test.<ext>`
+File: `tests/<module>/unit/app/<use-case-name>.test.<ext>`
 
 ```typescript
-// Use case tests use mocks for output port and repository
+// Use case tests use an in-memory repository and fakes for outbound ports
 // They do NOT use a real DB or HTTP
 import { PlaceOrderInteractor } from '@/modules/orders/app/interactors/place-order';
-import { IPlaceOrderOutputPort } from '@/modules/orders/app/ports/output/place-order-output';
 import { IOrderRepository } from '@/modules/orders/app/ports/output/order-repository';
 import { ICustomerLookup } from '@/modules/orders/app/ports/output/customer-lookup';
 import { OrderInMemoryRepository } from '@/modules/orders/infra/adapters/gateways/in-memory/order-in-memory-repository';
 
 describe('PlaceOrderInteractor', () => {
   let interactor: PlaceOrderInteractor;
-  let outputPort: jest.Mocked<IPlaceOrderOutputPort>;
   let repository: IOrderRepository;
   let customerLookup: jest.Mocked<ICustomerLookup>;
 
   beforeEach(() => {
-    outputPort = {
-      present: jest.fn(),
-      presentError: jest.fn(),
-    };
-    repository = new OrderInMemoryRepository(); // In-memory — no real DB
+    repository = new OrderInMemoryRepository(); // In-memory — no real DB (create it on demand with the gateway skill)
     // The `customers` module is NOT imported: its port is faked from orders' own vocabulary
     customerLookup = { exists: jest.fn().mockResolvedValue(true) };
-    interactor = new PlaceOrderInteractor(outputPort, repository, customerLookup);
+    interactor = new PlaceOrderInteractor(repository, customerLookup);
   });
 
   describe('Happy Path', () => {
-    it('should place a valid order and present the result', async () => {
-      await interactor.execute({
+    it('should place a valid order and return the response model', async () => {
+      const response = await interactor.execute({
         customerId: 'cust-1',
         items: [{ productId: 'p1', quantity: 1, unitPrice: 1000 }],
       });
 
-      expect(outputPort.present).toHaveBeenCalledWith(
-        expect.objectContaining({
-          orderId: expect.any(String),
-          status: 'PENDING',
-        })
+      expect(response).toEqual(
+        expect.objectContaining({ orderId: expect.any(String), status: 'PENDING' })
       );
-      expect(outputPort.presentError).not.toHaveBeenCalled();
     });
 
     it('should persist the order to the repository', async () => {
@@ -153,25 +143,32 @@ describe('PlaceOrderInteractor', () => {
   });
 
   describe('Error Cases', () => {
-    it('should present error when items list is empty', async () => {
-      await interactor.execute({ customerId: 'cust-1', items: [] });
-
-      expect(outputPort.presentError).toHaveBeenCalledWith(
-        expect.objectContaining({ message: expect.stringContaining('item') })
-      );
+    it('should reject when items list is empty', async () => {
+      await expect(interactor.execute({ customerId: 'cust-1', items: [] }))
+        .rejects.toThrow(/item/);
     });
 
-    it('should present error when customer is not found', async () => {
+    it('should reject when customer is not found', async () => {
       customerLookup.exists.mockResolvedValue(false);
-      // ... execute and assert outputPort.presentError was called
+      await expect(interactor.execute({ customerId: 'missing', items: [/* ... */] }))
+        .rejects.toThrow();
     });
   });
 });
 ```
 
-### Test Type 3: Presenter Tests
+**Variant with an Output Port** (only if the use case has one): the interactor returns `void`; mock the port and assert on it instead of on the return value / thrown error:
+```typescript
+const outputPort: jest.Mocked<IPlaceOrderOutputPort> = { present: jest.fn(), presentError: jest.fn() };
+interactor = new PlaceOrderInteractor(outputPort, repository, customerLookup);
+// ...
+expect(outputPort.present).toHaveBeenCalledWith(expect.objectContaining({ status: 'PENDING' }));
+expect(outputPort.presentError).not.toHaveBeenCalled();
+```
 
-File: `tests/unit/<module>/infra/adapters/presenters/<name>-presenter.test.<ext>`
+### Test Type 3: Presenter Tests (only if the use case has a Presenter)
+
+File: `tests/<module>/unit/infra/adapters/presenters/<name>-presenter.test.<ext>`
 
 ```typescript
 // Presenter tests need NO HTTP stack
@@ -212,7 +209,7 @@ describe('PlaceOrderPresenter', () => {
 
 ### Test Type 4: Gateway Integration Tests
 
-File: `tests/integration/<module>/infra/adapters/gateways/<name>-repository-impl.test.<ext>`
+File: `tests/<module>/integration/infra/adapters/gateways/<name>-repository-impl.test.<ext>`
 
 ```typescript
 // Integration tests use a REAL database (test schema)
@@ -255,22 +252,20 @@ describe('OrderRepositoryImpl', () => {
 
 ### Test Type 5: Controller Tests
 
-File: `tests/unit/<module>/infra/adapters/controllers/<name>-controller.test.<ext>`
+File: `tests/<module>/unit/infra/adapters/controllers/<name>-controller.test.<ext>`
 
 ```typescript
-// Controller tests mock the use case input port
+// Controller tests stub the use case — the Input Port if the module has one, otherwise the
+// interactor's `execute` (an object with just `execute` is enough; no real interactor, no DB)
 import { PlaceOrderController } from '@/modules/orders/infra/adapters/controllers/place-order-controller';
-import { IPlaceOrderUseCase } from '@/modules/orders/app/ports/input/place-order';
 
 describe('PlaceOrderController', () => {
   it('should map HTTP request to use case request model', async () => {
-    const mockUseCase: jest.Mocked<IPlaceOrderUseCase> = {
-      execute: jest.fn().mockResolvedValue(undefined),
-    };
-    const controller = new PlaceOrderController(mockUseCase);
+    const mockUseCase = { execute: jest.fn().mockResolvedValue({ orderId: 'o-1' }) };
+    const controller = new PlaceOrderController(mockUseCase as any);
 
     const mockReq = { body: { customerId: 'cust-1', items: [{ productId: 'p1', qty: 2 }] } };
-    const mockRes = { /* ... */ };
+    const mockRes = { status: jest.fn().mockReturnThis(), json: jest.fn() };
 
     await controller.handle(mockReq as any, mockRes as any);
 
@@ -278,13 +273,14 @@ describe('PlaceOrderController', () => {
       customerId: 'cust-1',
       items: [{ productId: 'p1', quantity: 2 }], // mapped from 'qty' to 'quantity'
     });
+    expect(mockRes.json).toHaveBeenCalledWith({ orderId: 'o-1' }); // response model mapped to HTTP
   });
 });
 ```
 
 ### Test Type 6: Cross-Module Gateway Tests
 
-File: `tests/unit/<module>/infra/adapters/gateways/<other>-lookup-gateway.test.<ext>`
+File: `tests/<module>/unit/infra/adapters/gateways/<other>-lookup-gateway.test.<ext>`
 
 ```typescript
 // The gateway is the ONLY adapter allowed to touch another module — and only its input port.
@@ -309,16 +305,16 @@ it('translates the customers module answer into orders vocabulary', async () => 
     "projects": [
       {
         "displayName": "unit",
-        "testMatch": ["<rootDir>/tests/unit/**/*.test.ts"],
+        "testMatch": ["<rootDir>/tests/*/unit/**/*.test.ts"],
         "testEnvironment": "node",
         "moduleNameMapper": { "^@/(.*)$": "<rootDir>/src/$1" }
       },
       {
         "displayName": "integration",
-        "testMatch": ["<rootDir>/tests/integration/**/*.test.ts"],
+        "testMatch": ["<rootDir>/tests/*/integration/**/*.test.ts"],
         "testEnvironment": "node",
         "moduleNameMapper": { "^@/(.*)$": "<rootDir>/src/$1" },
-        "globalSetup": "<rootDir>/tests/integration/setup.ts"
+        "globalSetup": "<rootDir>/tests/setup/integration.ts"
       }
     ]
   }
@@ -337,10 +333,10 @@ markers =
 ## Validation Checklist
 
 - [ ] Unit tests for entities: zero mocks, zero I/O, test all business rules.
-- [ ] Unit tests for use cases: mock Output Port and Repository only (in-memory impl preferred).
+- [ ] Unit tests for use cases: in-memory repository and fakes for outbound ports (mock the Output Port only if the use case has one).
 - [ ] Use case tests do NOT connect to a real database.
 - [ ] Integration tests are in a separate directory and test suite.
-- [ ] Presenter tests run without starting an HTTP server.
+- [ ] Presenter tests (if a Presenter exists) run without starting an HTTP server.
 - [ ] A test of one module never imports another module's `domain/` or `infra/` (cross-module ports are faked).
 - [ ] Controller tests mock the use case interface.
 - [ ] No business logic is tested only in integration or e2e tests.

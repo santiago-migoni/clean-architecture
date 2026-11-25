@@ -84,10 +84,10 @@ const TOOLS = [
   {
     name: 'ca_scaffold',
     description:
-      'Create the full Clean Architecture directory and file scaffold (feature-first) for a new project. ' +
-      'Generates src/modules/<module>/{domain, app/{ports/{input,output},interactors}, ' +
-      'infra/adapters/{controllers,presenters,gateways}} for each module, plus src/shared/, ' +
-      'src/platform/{web,db,external}/, src/main/ and the matching tests/ tree, with README stubs.',
+      'Create the lean Clean Architecture scaffold (feature-first) for a new project: ' +
+      'src/modules/<module>/{domain,app,infra} for each module, src/main/, docs/architecture/ARCHITECTURE.md ' +
+      'and .gitkeep stubs. Everything else (shared/, platform/, ports/, interactors/, in-memory/, test trees) ' +
+      'is created on demand by the skills that need it.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -363,30 +363,13 @@ function toolScaffold(args) {
     }
   }
 
-  const dirs = [
-    'src/shared',
-    'src/platform/web',
-    'src/platform/db',
-    'src/platform/external',
-    'src/main',
-    'tests/e2e',
-  ];
+  // Lean scaffold: only what every project needs. Everything else (shared/, platform/,
+  // ports/, interactors/, in-memory/, test trees, ...) is created on demand by the
+  // skill that first needs it — empty folders are noise.
+  const dirs = ['src/main', 'docs/architecture'];
   for (const m of modules) {
     const base = `src/modules/${m}`;
-    dirs.push(
-      `${base}/domain`,
-      `${base}/app/ports/input`,
-      `${base}/app/ports/output`,
-      `${base}/app/interactors`,
-      `${base}/infra/adapters/controllers`,
-      `${base}/infra/adapters/presenters`,
-      `${base}/infra/adapters/gateways`,
-      `${base}/infra/adapters/gateways/in-memory`,
-      `tests/unit/${m}/domain`,
-      `tests/unit/${m}/app`,
-      `tests/unit/${m}/infra/adapters`,
-      `tests/integration/${m}/infra/adapters/gateways`,
-    );
+    dirs.push(`${base}/domain`, `${base}/app`, `${base}/infra`);
   }
 
   const created = [];
@@ -398,22 +381,20 @@ function toolScaffold(args) {
     }
   }
 
-  // Stub files
+  // Stub files (.gitkeep keeps otherwise-empty folders in git)
   const stubs = [
     {
-      path: `src/shared/.gitkeep`,
-      content: `# Shared kernel — pure, minimal, imports nothing.\n# Value objects and base errors used by several modules (Money, Id, ...).\n`,
-    },
-    {
       path: `src/main/index.${ext}`,
-      content: `// MAIN COMPONENT — Composition Root\n// This is the ONLY file allowed to import concrete implementations from all modules and layers.\n// Wire all dependencies here. Nothing imports from main/.\n`,
+      content: `// MAIN COMPONENT — Composition Root\n// This is the ONLY file allowed to import concrete implementations from all modules and layers.\n// Wire all dependencies here. Nothing imports from main/.\n// With several entry points (api, worker, cli) use src/main/<app>/index.${ext} and share the modules.\n`,
     },
     {
-      path: `src/ARCHITECTURE.md`,
+      path: `docs/architecture/ARCHITECTURE.md`,
       content:
         `# ${domain} — Architecture\n\n` +
         `## Layout\n\n` +
-        `\`\`\`\nsrc/\n├── modules/<module>/{domain, app, infra}\n├── shared/      # shared kernel (pure, minimal)\n├── platform/    # web, db, external (frameworks & drivers)\n└── main/        # composition root\n\`\`\`\n\n` +
+        `\`\`\`\nsrc/\n├── modules/<module>/{domain, app, infra}   # business code, one folder per module\n├── shared/                                 # shared kernel — create only when needed\n├── platform/                               # web, db, external — create only when needed\n└── main/                                   # composition root (main/<app>/ if several entry points)\ntests/\n├── <module>/{unit, integration}/\n└── e2e/\ndocs/architecture/                          # this file, diagrams, ADRs\n\`\`\`\n\n` +
+        `Subfolders (\`app/ports/{input,output}\`, \`app/interactors\`, \`infra/adapters/{controllers,presenters,gateways}\`, ` +
+        `\`domain/{events,errors,services}\`) are created by the first file that needs them.\n\n` +
         `## Layers (inside each module)\n\n` +
         `| Layer | Path | May import |\n|---|---|---|\n` +
         `| domain | \`modules/<m>/domain/\` | shared |\n` +
@@ -423,7 +404,11 @@ function toolScaffold(args) {
         `| main | \`main/\` | everything — imported by no one |\n\n` +
         `## Dependency Rule\n\nSource code dependencies point **inward only**: infra → app → domain.\n\n` +
         `## Module Rule\n\nA module never imports another module's \`domain/\` or \`infra/\`.\n` +
-        `The only legal crossing is \`A/infra/adapters\` → \`B/app/ports/input\`, through a port owned by A.\n`,
+        `The only legal crossing is \`A/infra/adapters\` → \`B/app/ports/input\`, through a port owned by A.\n\n` +
+        `## Optional pieces\n\n` +
+        `- **Input Port** — required when another module (or a second entry point) calls the use case; otherwise the controller may depend on the interactor directly.\n` +
+        `- **Output Port + Presenter** — use when output formatting is non-trivial or several delivery mechanisms exist; otherwise the interactor returns a response model.\n` +
+        `- **Migrations** live with their module (\`infra/adapters/gateways/migrations/\`); the connection and runner live in \`platform/db/\`.\n`,
     },
   ];
   for (const m of modules) {
@@ -433,12 +418,12 @@ function toolScaffold(args) {
         content: `# Module "${m}" — domain: enterprise business rules.\n# May import only from src/shared/.\n`,
       },
       {
-        path: `src/modules/${m}/app/ports/input/.gitkeep`,
-        content: `# Input ports — what the use cases of "${m}" accept. Other modules may call these.\n`,
+        path: `src/modules/${m}/app/.gitkeep`,
+        content: `# Module "${m}" — app: use cases (interactors) and the ports they need.\n# May import domain and src/shared only.\n`,
       },
       {
-        path: `src/modules/${m}/app/ports/output/.gitkeep`,
-        content: `# Output ports & repository interfaces — what "${m}" needs from the outside.\n# They live here (app layer), NOT in infra/.\n`,
+        path: `src/modules/${m}/infra/.gitkeep`,
+        content: `# Module "${m}" — infra: adapters (infra/adapters/{controllers,presenters,gateways}).\n# Never imports platform/; framework clients are injected from main/.\n`,
       },
     );
   }

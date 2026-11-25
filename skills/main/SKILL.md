@@ -32,7 +32,8 @@ Main composes one module at a time, then connects them:
            ├── composeOrders({ db, getCustomer })      (src/main/modules/orders)
            │     ├── creates SqlOrderRepository        (orders/infra/adapters/gateways)
            │     ├── creates CustomerLookupGateway(getCustomer)   ← cross-module link
-           │     └── per request: PlaceOrderPresenter + PlaceOrderInteractor + PlaceOrderController
+           │     └── PlaceOrderInteractor + PlaceOrderController
+           │         (+ a PlaceOrderPresenter per request ONLY if the use case has an Output Port)
            │
            └── registerRoutes(app, routes)             (src/platform/web)
 ```
@@ -46,6 +47,8 @@ Main composes one module at a time, then connects them:
 - List the cross-module ports (`<other>-lookup`, …) and which input port implements each.
 
 ### Step 2: Create the Main Files
+
+One entry point → `src/main/index.<ext>`. Several (api, worker, cli) → one folder per entry point, all sharing the `modules/<m>.<ext>` compose functions: `src/main/api/index.<ext>`, `src/main/worker/index.<ext>`.
 
 ```
 src/main/
@@ -70,7 +73,6 @@ import type { IGetCustomerUseCase } from '../../modules/customers/app/ports/inpu
 
 import { SqlOrderRepository } from '../../modules/orders/infra/adapters/gateways/sql-order-repository';
 import { CustomerLookupGateway } from '../../modules/orders/infra/adapters/gateways/customer-lookup-gateway';
-import { PlaceOrderPresenter } from '../../modules/orders/infra/adapters/presenters/place-order-presenter';
 import { PlaceOrderInteractor } from '../../modules/orders/app/interactors/place-order';
 import { PlaceOrderController } from '../../modules/orders/infra/adapters/controllers/place-order-controller';
 
@@ -84,15 +86,23 @@ export function composeOrders({ db, getCustomer }: OrdersDeps) {
   const orderRepository = new SqlOrderRepository(db);
   const customerLookup = new CustomerLookupGateway(getCustomer);
 
-  // Presenters are stateful (they hold the view model) → build one per request
-  const makePlaceOrder = () => {
-    const presenter = new PlaceOrderPresenter();
-    const interactor = new PlaceOrderInteractor(presenter, orderRepository, customerLookup);
-    return { presenter, controller: new PlaceOrderController(interactor) };
-  };
+  // Default: the interactor returns a response model — nothing is stateful, build once.
+  const placeOrder = new PlaceOrderController(
+    new PlaceOrderInteractor(orderRepository, customerLookup),
+  );
 
-  return { routes: { placeOrder: makePlaceOrder } };
+  return { routes: { placeOrder } };
 }
+```
+
+Variant — the use case has an Output Port + Presenter. Presenters are stateful (they hold the view model), so build the presenter, interactor and controller **per request** with a factory and never share a presenter between requests:
+```typescript
+const makePlaceOrder = () => {
+  const presenter = new PlaceOrderPresenter();
+  const interactor = new PlaceOrderInteractor(presenter, orderRepository, customerLookup);
+  return { presenter, controller: new PlaceOrderController(interactor) };
+};
+return { routes: { placeOrder: makePlaceOrder } };
 ```
 
 `src/main/modules/customers.ts` — same shape; it also **exposes its input ports** for other modules:
@@ -149,7 +159,6 @@ bootstrap().catch(console.error);
 # src/main/modules/orders.py
 from ...modules.orders.infra.adapters.gateways.sql_order_repository import SqlOrderRepository
 from ...modules.orders.infra.adapters.gateways.customer_lookup_gateway import CustomerLookupGateway
-from ...modules.orders.infra.adapters.presenters.place_order_presenter import PlaceOrderPresenter
 from ...modules.orders.app.interactors.place_order import PlaceOrderInteractor
 from ...modules.orders.infra.adapters.controllers.place_order_controller import PlaceOrderController
 
@@ -157,12 +166,11 @@ def compose_orders(db_session, get_customer):
     order_repo = SqlOrderRepository(db_session)
     customer_lookup = CustomerLookupGateway(get_customer)
 
-    def make_place_order():
-        presenter = PlaceOrderPresenter()
-        interactor = PlaceOrderInteractor(presenter, order_repo, customer_lookup)
-        return presenter, PlaceOrderController(interactor)
+    place_order = PlaceOrderController(PlaceOrderInteractor(order_repo, customer_lookup))
 
-    return {"routes": {"place_order": make_place_order}}
+    # With an Output Port + Presenter, build presenter + interactor + controller per request
+    # (a factory returning (presenter, controller)); presenters are stateful.
+    return {"routes": {"place_order": place_order}}
 
 # src/main/app.py
 from fastapi import FastAPI
@@ -207,11 +215,8 @@ Different environments can have different main files. The test composition root 
 export function bootstrapTestApp(): App {
   const orderRepository = new OrderInMemoryRepository();
   const customerLookup: ICustomerLookup = { exists: async () => true }; // fake port, no customers module needed
-  const makePlaceOrder = () => {
-    const presenter = new PlaceOrderPresenter();
-    return { presenter, controller: new PlaceOrderController(
-      new PlaceOrderInteractor(presenter, orderRepository, customerLookup)) };
-  };
+  const placeOrder = new PlaceOrderController(
+    new PlaceOrderInteractor(orderRepository, customerLookup));
   // ... return wired app
 }
 ```
@@ -220,6 +225,7 @@ export function bootstrapTestApp(): App {
 
 - [ ] `src/main/` is the ONLY location with `new ConcreteGateway()` or `new ConcreteInteractor()`.
 - [ ] `src/platform/` registers routes and creates connections, but never instantiates interactors or gateways.
+- [ ] Presenters (if any) are built per request; they are never shared between requests.
 - [ ] No other production code file (outside `main/`) uses `new` on a cross-layer dependency.
 - [ ] No module and no layer inside `src/` imports from `main/`.
 - [ ] Modules are connected only here, and only through input ports (`compose<Module>` returns the ports others may use).

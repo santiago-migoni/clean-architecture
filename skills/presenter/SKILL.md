@@ -4,6 +4,14 @@ The user wants to create or review a **Presenter** using the **Humble Object Pat
 
 The argument after the command is `<module>/<Name>` (e.g., `orders/PlaceOrder`, `customers/UserProfile`); the presenter class is `<Name>Presenter`. The module selects the folder under `src/modules/`. If the project has a single module the prefix may be omitted.
 
+## When to use a Presenter (it is optional)
+
+By default a use case returns a response model and the controller maps it to the HTTP answer — no Presenter needed. Add a Presenter + Output Port only when:
+- Formatting the output is non-trivial (currency, dates, labels, localisation) and you want that logic unit-testable without an HTTP stack, or
+- Several delivery mechanisms (web, CLI, PDF, …) need different views of the same response.
+
+If neither is true, tell the user a Presenter is not justified yet and stop.
+
 ## What is a Presenter?
 
 From the book (Chapter 23 — Presenters and Humble Objects):
@@ -42,6 +50,8 @@ Without this pattern, the View mixes formatting logic (testable) with rendering 
 
 ### Step 1: Verify the Output Port Interface
 Check `src/modules/<module>/app/ports/output/<name>-output.<ext>`. The Presenter implements this interface.
+
+If it does not exist yet, create it now (`present(response)` + `presentError(error)`), change the interactor so `execute` returns `Promise<void>` and calls the Output Port instead of returning the response model, and update the interactor test accordingly (see the `usecase` skill, Step 4).
 
 ### Step 2: Define the View Model
 File: `src/modules/<module>/infra/adapters/presenters/view-models/<name>-view-model.<ext>`
@@ -188,7 +198,7 @@ export function <name>Handler(make: () => <Name>Pair) {
 ```
 
 ### Step 5: Create Presenter Tests (no HTTP stack needed)
-File: `tests/unit/<module>/infra/adapters/presenters/<name>-presenter.test.<ext>`
+File: `tests/<module>/unit/infra/adapters/presenters/<name>-presenter.test.<ext>`
 ```typescript
 describe('<Name>Presenter', () => {
   let presenter: <Name>Presenter;

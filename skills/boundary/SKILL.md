@@ -134,7 +134,7 @@ export interface I<Name>Service {
 
 ### Step 6: Document the Boundary Decision
 
-Create or update `src/ARCHITECTURE.md`:
+Create or update `docs/architecture/ARCHITECTURE.md`:
 ```markdown
 ## Boundary: <Name>
 

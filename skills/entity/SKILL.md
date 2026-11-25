@@ -118,11 +118,16 @@ class <EntityName>:
 - If a value object is genuinely used by several modules (Money, Id), put it in `src/shared/` instead — keep that folder minimal and free of module-specific policy.
 - Value objects are immutable, equality by value (not identity).
 
-### Step 5: Create Domain Events (if needed)
-- If the entity triggers important business events (OrderPlaced, PaymentReceived), define domain event types in `src/modules/<module>/domain/events/`.
+### Step 5: Domain building blocks — only when the first one exists
+Keep `domain/` flat while it is small: one file per entity (and its value objects). Create a subfolder the first time its content appears, never in advance:
+- **Events** — when the entity raises an important business event (OrderPlaced, PaymentReceived): `domain/events/<event>.<ext>`.
+- **Errors** — when a rule violation deserves a named domain error (OutOfStockError) instead of a generic one: `domain/errors/<error>.<ext>`.
+- **Domain services** — only for a rule that spans several entities and does not belong to any of them (PricingPolicy): `domain/services/<service>.<ext>`.
+- **Aggregates** — when several entities must change together under one invariant, make one the aggregate root and reference the others only through it; the repository interface is then per aggregate root.
+If none of these exists yet, create none of these folders.
 
 ### Step 6: Create Entity Tests
-Create `tests/unit/<module>/domain/<entity-name>.test.<ext>`:
+Create `tests/<module>/unit/domain/<entity-name>.test.<ext>`:
 - Test each critical business rule method.
 - Test invariant enforcement (invalid state should throw/raise).
 - Test equality.

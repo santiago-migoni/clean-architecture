@@ -7,24 +7,33 @@ The plugin uses a **feature-first** layout: the code is grouped into **modules**
 ## Project Layout
 
 ```
-src/
-├── modules/
-│   └── <module>/              # one folder per business capability (screams the domain)
-│       ├── domain/            # Enterprise business rules
-│       ├── app/               # Application business rules
-│       │   ├── ports/{input,output}/
-│       │   └── interactors/
-│       └── infra/
-│           └── adapters/{controllers,presenters,gateways}/
-├── shared/                    # Shared kernel — pure and minimal
-├── platform/                  # Frameworks & drivers: web, db, external
-│   └── {web,db,external}/
-└── main/                      # Composition root
-tests/
-├── unit/<module>/{domain,app,infra/adapters}/
-├── integration/<module>/infra/adapters/gateways/
-└── e2e/
+<project-root>/
+├── src/
+│   ├── modules/
+│   │   └── <module>/          # one folder per business capability (screams the domain)
+│   │       ├── domain/        # Enterprise business rules
+│   │       ├── app/           # Application business rules
+│   │       │   ├── ports/{input,output}/
+│   │       │   └── interactors/
+│   │       └── infra/
+│   │           └── adapters/{controllers,presenters,gateways}/
+│   ├── shared/                # Shared kernel — pure and minimal
+│   ├── platform/              # Frameworks & drivers: web, db, external
+│   └── main/                  # Composition root (main/<app>/ if there are several entry points)
+├── tests/
+│   ├── <module>/{unit,integration}/    # mirrors src/modules/<module>/
+│   └── e2e/
+├── docs/architecture/         # ARCHITECTURE.md, diagrams, ADRs (never inside src/)
+└── <config files>
 ```
+
+**Create on demand.** `init` creates only `modules/<m>/{domain,app,infra}`, `main/` and `docs/architecture/`. `shared/`, `platform/`, the `ports/`, `interactors/` and `adapters/` subfolders, `in-memory/` and the test folders are created by the first file that needs them — never as empty folders. The same applies to `domain/{events,errors,services}`: add them when the first event, domain error or domain service exists.
+
+**Macro decisions.**
+- Tests are grouped by module (`tests/<module>/{unit,integration}`) so that removing or extracting a module means deleting `src/modules/<m>` and `tests/<m>`. `tests/e2e/` is shared.
+- Documentation lives only in `docs/architecture/`.
+- One entry point → `src/main/index`. Several (api, worker, cli) → `src/main/<app>/index`, all sharing the modules. A monorepo (`apps/`, `packages/`) is justified only for separately deployed artifacts.
+- Database migrations live with their module (`infra/adapters/gateways/migrations/`); the connection and the runner live in `platform/db/`.
 
 File names are kebab-case (snake_case in Python): `create-order`, `order-repository`, `sql-order-repository`.
 
@@ -80,14 +89,14 @@ A module is a cohesive component (CCP/CRP): it changes and is deployed as a unit
 
 ### 5. App (Use Cases)
 - Orchestrate the flow of data to/from entities.
-- Define **Input Ports** (interfaces the controller calls) in `app/ports/input/`.
-- Define **Output Ports** (interfaces the presenter and gateways implement) in `app/ports/output/`.
-- The interactor implements the Input Port and calls the Output Port.
+- The interactor lives in `app/interactors/`; the interfaces to the outside it needs (repository, payment, clock, …) live in `app/ports/output/`.
+- **Input Port** (`app/ports/input/`): **required** when another module or a second entry point calls the use case; otherwise optional — a controller in the same module may depend on the interactor directly (the dependency still points inward: infra → app).
+- **Output Port + Presenter**: **optional**. By default the interactor returns a response model. Use an Output Port when output formatting is non-trivial or several delivery mechanisms exist.
 - MUST NOT know about HTTP, SQL, UI, or any framework.
 
 ### 6. Infra (Interface Adapters)
 - **Controllers**: Convert framework input (HTTP request, CLI args) → use case input model.
-- **Presenters**: Implement Output Port; convert use case output model → view model.
+- **Presenters** (when the use case uses an Output Port): Implement the Output Port; convert use case output model → view model.
 - **Gateways**: Implement repository interfaces defined in `app/ports/output/`; translate between domain objects and DB rows.
 
 ### 7. Platform (Frameworks & Drivers)
@@ -126,7 +135,7 @@ Always check:
 2. Does any module import another module's `domain/` or `infra/` (other than `adapters → app/ports/input`)?
 3. Do entities contain application or framework logic?
 4. Do use cases reference HTTP status codes, SQL, or ORMs?
-5. Are input/output port interfaces defined in the `app` layer of the module that owns them?
+5. Are port interfaces (repository, input, output) defined in the `app` layer of the module that owns them?
 6. Is `main/` the ONLY place where dependencies are wired together?
 7. Does each component have a single axis of change (SRP)?
 8. Are there cyclic dependencies between modules or layers?

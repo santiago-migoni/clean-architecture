@@ -168,7 +168,9 @@ class <Domain>RepositoryImpl(I<Domain>Repository):
         self._session.commit()
 ```
 
-### Step 4: Create an In-Memory Gateway for Testing
+### Step 4: Create an In-Memory Gateway for Testing (on demand)
+Create it the first time a use case test needs a repository — not before, and not as an empty `in-memory/` folder. Reuse it afterwards.
+
 File: `src/modules/<module>/infra/adapters/gateways/in-memory/<domain>-in-memory-repository.<ext>`
 
 ```typescript
@@ -195,8 +197,11 @@ export class <Domain>InMemoryRepository implements I<Domain>Repository {
 }
 ```
 
+### Migrations
+Schema migrations belong to the module that owns the tables: `src/modules/<module>/infra/adapters/gateways/migrations/`. Only the connection setup and the runner that executes every module's migrations live in `src/platform/db/` and are invoked from `src/main/`.
+
 ### Step 5: Create Gateway Integration Tests
-File: `tests/integration/<module>/infra/adapters/gateways/<domain>-repository-impl.test.<ext>`
+File: `tests/<module>/integration/infra/adapters/gateways/<domain>-repository-impl.test.<ext>`
 - Use a real (test) database connection.
 - Test round-trip: save → findById returns correct domain entity.
 - Test the mapper: verify domain fields map correctly to/from DB columns.
@@ -235,7 +240,8 @@ export class CustomerLookupGateway implements ICustomerLookup {
 - [ ] The use case interactor imports only the interface — never the implementation.
 - [ ] The DB connection / ORM client is injected from `main/`, never imported from `platform/`.
 - [ ] Data mapper correctly translates domain ↔ persistence (field names, types, nullability).
-- [ ] An in-memory implementation exists for use case unit tests.
+- [ ] An in-memory implementation exists once a use case test needs one (created on demand).
+- [ ] Migrations for this module's tables live in `infra/adapters/gateways/migrations/`; the connection and the migration runner live in `platform/db/`.
 - [ ] The gateway does NOT enforce business rules — it just stores/retrieves data.
 
 ## SRP Check

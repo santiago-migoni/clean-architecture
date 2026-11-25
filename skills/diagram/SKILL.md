@@ -83,6 +83,8 @@ Legend: ──► legal cross-module link (adapters → app/ports/input)    ═�
 
 #### Diagram 2: Dependency Flow for Each Use Case
 
+Input Ports, Output Ports and Presenters are optional: draw them only where they exist. A use case without them goes Controller → Interactor → Repository interface → Gateway, and the Controller maps the returned response model to the HTTP answer.
+
 For every use case in the system, generate a flow diagram:
 
 ```
