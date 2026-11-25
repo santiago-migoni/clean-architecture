@@ -82,18 +82,22 @@ export function toDomain(row: <Domain>Row): <Entity> {
   return <Entity>.reconstitute({
     id: row.id,
     // ... map db fields → domain fields
+    createdAt: row.created_at,
   });
 }
 
-export function toPersistence(entity: <Entity>): <Domain>Row {
+export function toPersistence(entity: <Entity>, now: Date): <Domain>Row {
   return {
     id: entity.id,
     // ... map domain fields → db fields
-    created_at: new Date(),
-    updated_at: new Date(),
+    // NEVER `new Date()` here: every save (an upsert) would overwrite the original creation time.
+    // The entity keeps it (set once, from a clock port injected into the use case that creates it).
+    created_at: entity.createdAt,
+    updated_at: now, // the gateway receives the time (e.g. from a clock injected by main/)
   };
 }
 ```
+If the domain does not track the creation time, drop `created_at` from the row instead: let the DB fill it (`created_at ... DEFAULT CURRENT_TIMESTAMP`) and leave it out of the upsert's `DO UPDATE SET` list, so an update never touches it.
 
 ### Step 3: Create the Gateway Implementation
 
@@ -114,7 +118,10 @@ import { <Entity>, <EntityId> } from '../../../domain/<entity-name>';
 import { <Domain>Row, toDomain, toPersistence } from './persistence/<domain>-persistence-model';
 
 export class <Domain>RepositoryImpl implements I<Domain>Repository {
-  constructor(private readonly ormRepo: Repository<<Domain>Row>) {}
+  constructor(
+    private readonly ormRepo: Repository<<Domain>Row>,
+    private readonly now: () => Date, // clock injected by main/ (fixed in tests)
+  ) {}
 
   async findById(id: <EntityId>): Promise<<Entity> | null> {
     const row = await this.ormRepo.findOne({ where: { id } });
@@ -128,7 +135,7 @@ export class <Domain>RepositoryImpl implements I<Domain>Repository {
   }
 
   async save(entity: <Entity>): Promise<void> {
-    const row = toPersistence(entity);
+    const row = toPersistence(entity, this.now());
     await this.ormRepo.save(row);
   }
 
@@ -141,14 +148,17 @@ export class <Domain>RepositoryImpl implements I<Domain>Repository {
 #### Python (SQLAlchemy example):
 ```python
 # src/modules/<module>/infra/adapters/gateways/<domain>_repository_impl.py
+from datetime import datetime
+from typing import Callable
 from sqlalchemy.orm import Session  # the session is created in platform/db and injected by main
 from ....app.ports.output.<domain>_repository import I<Domain>Repository
 from ....domain.<entity_name> import <Entity>, <EntityId>
 from .persistence.<domain>_persistence_model import <Domain>Row, to_domain, to_persistence
 
 class <Domain>RepositoryImpl(I<Domain>Repository):
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, now: Callable[[], datetime]):
         self._session = session
+        self._now = now  # clock injected by main (fixed in tests)
 
     def find_by_id(self, id: <EntityId>) -> <Entity> | None:
         row = self._session.query(<Domain>Row).filter_by(id=id).first()
@@ -159,7 +169,7 @@ class <Domain>RepositoryImpl(I<Domain>Repository):
         return [to_domain(r) for r in rows]
 
     def save(self, entity: <Entity>) -> None:
-        row = to_persistence(entity)
+        row = to_persistence(entity, self._now())  # created_at comes from the entity, never from now()
         self._session.merge(row)
         self._session.commit()
 

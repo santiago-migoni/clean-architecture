@@ -68,6 +68,7 @@ src/main/
 // src/main/compose/orders.ts
 // Composition of the `orders` module. Only src/main/ may import concrete classes.
 
+import type { Request, Response } from 'express';
 import type { DbConnection } from '../../platform/db/connection';
 import type { IGetCustomerUseCase } from '../../modules/customers/app/ports/input/get-customer';
 
@@ -78,20 +79,21 @@ import { PlaceOrderController } from '../../modules/orders/infra/adapters/contro
 
 export interface OrdersDeps {
   db: DbConnection;
+  newId: () => string;              // randomness is injected, never generated inside a use case
   getCustomer: IGetCustomerUseCase; // customers' INPUT port — the only legal cross-module link
 }
 
-export function composeOrders({ db, getCustomer }: OrdersDeps) {
+export function composeOrders({ db, newId, getCustomer }: OrdersDeps) {
   // Gateways (stateless, shared)
   const orderRepository = new SqlOrderRepository(db);
   const customerLookup = new CustomerLookupGateway(getCustomer);
 
   // Default: the interactor returns a response model — nothing is stateful, build once.
-  const placeOrder = new PlaceOrderController(
-    new PlaceOrderInteractor(orderRepository, customerLookup),
+  const placeOrderController = new PlaceOrderController(
+    new PlaceOrderInteractor(orderRepository, customerLookup, newId),
   );
 
-  return { routes: { placeOrder } };
+  return { routes: { placeOrder: (req: Request, res: Response) => placeOrderController.handle(req, res) } };
 }
 ```
 
@@ -99,15 +101,15 @@ Variant — the use case has an Output Port + Presenter. Presenters are stateful
 ```typescript
 const makePlaceOrder = () => {
   const presenter = new PlaceOrderPresenter();
-  const interactor = new PlaceOrderInteractor(presenter, orderRepository, customerLookup);
+  const interactor = new PlaceOrderInteractor(presenter, orderRepository, customerLookup, newId);
   return { presenter, controller: new PlaceOrderController(interactor) };
 };
-return { routes: { placeOrder: makePlaceOrder } };
+return { routes: { makePlaceOrder } }; // platform/web wraps the factory in the humble route handler
 ```
 
 `src/main/compose/customers.ts` — same shape; it also **exposes its input ports** for other modules:
 ```typescript
-export function composeCustomers({ db }: { db: DbConnection }) {
+export function composeCustomers({ db, newId }: { db: DbConnection; newId: () => string }) {
   const customerRepository = new SqlCustomerRepository(db);
   const getCustomer: IGetCustomerUseCase = new GetCustomerInteractor(customerRepository);
   // ... routes ...
@@ -164,17 +166,18 @@ from ...modules.orders.infra.adapters.gateways.customer_lookup_gateway import Cu
 from ...modules.orders.app.interactors.place_order import PlaceOrderInteractor
 from ...modules.orders.infra.adapters.controllers.place_order_controller import PlaceOrderController
 
-def compose_orders(db_session, get_customer):
+def compose_orders(db_session, new_id, get_customer):
     order_repo = SqlOrderRepository(db_session)
     customer_lookup = CustomerLookupGateway(get_customer)
 
-    place_order = PlaceOrderController(PlaceOrderInteractor(order_repo, customer_lookup))
+    place_order = PlaceOrderController(PlaceOrderInteractor(order_repo, customer_lookup, new_id))
 
     # With an Output Port + Presenter, build presenter + interactor + controller per request
     # (a factory returning (presenter, controller)); presenters are stateful.
     return {"routes": {"place_order": place_order}}
 
 # src/main/app.py
+from uuid import uuid4
 from fastapi import FastAPI
 from ..platform.db.connection import create_db_session
 from ..platform.web.routes import register_routes
@@ -184,8 +187,9 @@ from .compose.orders import compose_orders
 def create_app() -> FastAPI:
     app = FastAPI()
     db = create_db_session()
-    customers = compose_customers(db)
-    orders = compose_orders(db, customers["ports"]["get_customer"])
+    new_id = lambda: str(uuid4())  # randomness is injected into use cases
+    customers = compose_customers(db, new_id)
+    orders = compose_orders(db, new_id, customers["ports"]["get_customer"])
     register_routes(app, {**customers["routes"], **orders["routes"]})
     return app
 
@@ -217,8 +221,10 @@ Different environments can have different main files. The test composition root 
 export function bootstrapTestApp() {  // returns { app, ...repositories }: the SAME handlers on in-memory ports
   const orderRepository = new OrderInMemoryRepository();
   const customerLookup: ICustomerLookup = { exists: async () => true }; // fake port, no customers module needed
+  let n = 0;
+  const newId = () => `id-${++n}`; // deterministic ids in tests
   const placeOrder = new PlaceOrderController(
-    new PlaceOrderInteractor(orderRepository, customerLookup));
+    new PlaceOrderInteractor(orderRepository, customerLookup, newId));
   // ... return wired app
 }
 ```

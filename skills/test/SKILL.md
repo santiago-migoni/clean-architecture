@@ -46,52 +46,47 @@ File: `tests/<module>/unit/domain/<entity-name>.test.<ext>`
 ```typescript
 // Entity tests need NO mocks — entities are pure
 import { Order, OrderId } from '@/modules/orders/domain/order';
+import { InvalidOrderError } from '@/modules/orders/domain/errors/invalid-order-error';
+
+const line = { productId: 'p1', quantity: 2, unitPriceCents: 1000 };
 
 describe('Order Entity', () => {
 
   describe('creation', () => {
-    it('should create a valid Order', () => {
-      const order = Order.create({
-        id: 'order-1' as OrderId,
-        customerId: 'cust-1',
-        items: [{ productId: 'p1', quantity: 2, unitPrice: 1000 }],
-        status: 'PENDING',
-      });
+    it('should create a valid Order in PENDING status', () => {
+      // create() sets the initial status itself; only reconstitute() receives one
+      const order = Order.create({ id: 'order-1' as OrderId, customerId: 'cust-1', lines: [line] });
       expect(order.id).toBe('order-1');
       expect(order.status).toBe('PENDING');
     });
 
-    it('should reject Order with no items', () => {
-      expect(() => Order.create({
-        id: 'order-1' as OrderId,
-        customerId: 'cust-1',
-        items: [],
-        status: 'PENDING',
-      })).toThrow('Order must have at least one item');
+    it('should reject an Order with no lines', () => {
+      expect(() => Order.create({ id: 'order-1' as OrderId, customerId: 'cust-1', lines: [] }))
+        .toThrow(InvalidOrderError); // assert the typed error, not the message text
     });
   });
 
   describe('critical business rules', () => {
     it('should allow cancellation when PENDING', () => {
-      const order = Order.create({ /* ... */ });
+      const order = Order.create({ id: 'order-1' as OrderId, customerId: 'cust-1', lines: [line] });
       expect(order.canBeCancelled()).toBe(true);
     });
 
-    it('should not allow cancellation when SHIPPED', () => {
-      const order = Order.reconstitute({ /* ..., status: 'SHIPPED' */ });
+    it('should not allow cancellation when already CANCELLED', () => {
+      const order = Order.reconstitute({ id: 'order-1' as OrderId, customerId: 'cust-1', lines: [line], status: 'CANCELLED' });
       expect(order.canBeCancelled()).toBe(false);
     });
 
-    it('should calculate total correctly', () => {
-      const order = Order.create({ /* items with prices */ });
-      expect(order.total).toBe(2000); // 2 × 1000 cents
+    it('should calculate the total in cents', () => {
+      const order = Order.create({ id: 'order-1' as OrderId, customerId: 'cust-1', lines: [line] });
+      expect(order.totalCents).toBe(2000); // 2 × 1000 cents
     });
   });
 
   describe('equality', () => {
     it('should equal another Order with the same id', () => {
-      const a = Order.reconstitute({ id: 'order-1' as OrderId, /* ... */ });
-      const b = Order.reconstitute({ id: 'order-1' as OrderId, /* ... */ });
+      const a = Order.create({ id: 'order-1' as OrderId, customerId: 'cust-1', lines: [line] });
+      const b = Order.create({ id: 'order-1' as OrderId, customerId: 'cust-2', lines: [line] });
       expect(a.equals(b)).toBe(true);
     });
   });
@@ -106,52 +101,49 @@ File: `tests/<module>/unit/app/<use-case-name>.test.<ext>`
 // Use case tests use an in-memory repository and fakes for outbound ports
 // They do NOT use a real DB or HTTP
 import { PlaceOrderInteractor } from '@/modules/orders/app/interactors/place-order';
-import { IOrderRepository } from '@/modules/orders/app/ports/output/order-repository';
 import { ICustomerLookup } from '@/modules/orders/app/ports/output/customer-lookup';
+import { CustomerNotFoundError } from '@/modules/orders/app/errors/customer-not-found-error';
+import { InvalidOrderError } from '@/modules/orders/domain/errors/invalid-order-error';
 import { OrderInMemoryRepository } from '@/modules/orders/infra/adapters/gateways/in-memory/order-in-memory-repository';
+
+const lines = [{ productId: 'p1', quantity: 1, unitPriceCents: 1000 }];
 
 describe('PlaceOrderInteractor', () => {
   let interactor: PlaceOrderInteractor;
-  let repository: IOrderRepository;
+  let repository: OrderInMemoryRepository;
   let customerLookup: jest.Mocked<ICustomerLookup>;
 
   beforeEach(() => {
     repository = new OrderInMemoryRepository(); // In-memory — no real DB (create it on demand with the gateway skill)
     // The `customers` module is NOT imported: its port is faked from orders' own vocabulary
     customerLookup = { exists: jest.fn().mockResolvedValue(true) };
-    interactor = new PlaceOrderInteractor(repository, customerLookup);
+    let n = 0;
+    interactor = new PlaceOrderInteractor(repository, customerLookup, () => `order-${++n}`); // deterministic ids
   });
 
   describe('Happy Path', () => {
     it('should place a valid order and return the response model', async () => {
-      const response = await interactor.execute({
-        customerId: 'cust-1',
-        items: [{ productId: 'p1', quantity: 1, unitPrice: 1000 }],
-      });
-
-      expect(response).toEqual(
-        expect.objectContaining({ orderId: expect.any(String), status: 'PENDING' })
-      );
+      const response = await interactor.execute({ customerId: 'cust-1', lines });
+      expect(response).toEqual({ orderId: 'order-1', status: 'PENDING', totalCents: 1000 });
     });
 
     it('should persist the order to the repository', async () => {
-      await interactor.execute({ customerId: 'cust-1', items: [/* ... */] });
-
-      const allOrders = await repository.findAll();
-      expect(allOrders).toHaveLength(1);
+      const response = await interactor.execute({ customerId: 'cust-1', lines });
+      // Only methods declared by the port (findById, save) — do not add findAll just for a test
+      expect(await repository.findById(response.orderId)).not.toBeNull();
     });
   });
 
   describe('Error Cases', () => {
-    it('should reject when items list is empty', async () => {
-      await expect(interactor.execute({ customerId: 'cust-1', items: [] }))
-        .rejects.toThrow(/item/);
+    it('should reject when there are no lines', async () => {
+      await expect(interactor.execute({ customerId: 'cust-1', lines: [] }))
+        .rejects.toThrow(InvalidOrderError);
     });
 
-    it('should reject when customer is not found', async () => {
+    it('should reject when the customer is not found', async () => {
       customerLookup.exists.mockResolvedValue(false);
-      await expect(interactor.execute({ customerId: 'missing', items: [/* ... */] }))
-        .rejects.toThrow();
+      await expect(interactor.execute({ customerId: 'missing', lines }))
+        .rejects.toThrow(CustomerNotFoundError);
     });
   });
 });
@@ -160,7 +152,7 @@ describe('PlaceOrderInteractor', () => {
 **Variant with an Output Port** (only if the use case has one): the interactor returns `void`; mock the port and assert on it instead of on the return value / thrown error:
 ```typescript
 const outputPort: jest.Mocked<IPlaceOrderOutputPort> = { present: jest.fn(), presentError: jest.fn() };
-interactor = new PlaceOrderInteractor(outputPort, repository, customerLookup);
+interactor = new PlaceOrderInteractor(outputPort, repository, customerLookup, () => 'order-1');
 // ...
 expect(outputPort.present).toHaveBeenCalledWith(expect.objectContaining({ status: 'PENDING' }));
 expect(outputPort.presentError).not.toHaveBeenCalled();
@@ -173,6 +165,7 @@ File: `tests/<module>/unit/infra/adapters/presenters/<name>-presenter.test.<ext>
 ```typescript
 // Presenter tests need NO HTTP stack
 import { PlaceOrderPresenter } from '@/modules/orders/infra/adapters/presenters/place-order-presenter';
+import { CustomerNotFoundError } from '@/modules/orders/app/errors/customer-not-found-error';
 
 describe('PlaceOrderPresenter', () => {
   let presenter: PlaceOrderPresenter;
@@ -182,27 +175,23 @@ describe('PlaceOrderPresenter', () => {
   });
 
   it('should format the response model into a view model', () => {
-    presenter.present({
-      orderId: 'order-123',
-      totalCents: 4200,
-      createdAt: new Date('2024-01-05T10:00:00Z'),
-      status: 'PENDING',
-    });
+    presenter.present({ orderId: 'order-123', totalCents: 4200, status: 'PENDING' });
 
-    expect(presenter.viewModel).toEqual({
-      orderId: 'order-123',
-      total: '$42.00',
-      createdAt: 'January 5, 2024',
-      statusLabel: 'Pending',
-    });
+    expect(presenter.viewModel).toEqual({ orderId: 'order-123', total: '$42.00', statusLabel: 'Pending' });
     expect(presenter.hasError).toBe(false);
   });
 
-  it('should format error into an error view model', () => {
-    presenter.presentError(new Error('Order creation failed'));
+  it('should map a typed error to its code and keep its message', () => {
+    presenter.presentError(new CustomerNotFoundError('cust-1'));
 
     expect(presenter.hasError).toBe(true);
-    expect(presenter.errorViewModel?.message).toBe('Order creation failed');
+    expect(presenter.errorViewModel?.code).toBe('CUSTOMER_NOT_FOUND');
+  });
+
+  it('should never leak the message of an unexpected error', () => {
+    presenter.presentError(new Error('SQLITE_ERROR: no such table: orders'));
+
+    expect(presenter.errorViewModel).toEqual({ code: 'UNKNOWN_ERROR', message: 'Unexpected error' });
   });
 });
 ```
@@ -256,24 +245,34 @@ File: `tests/<module>/unit/infra/adapters/controllers/<name>-controller.test.<ex
 
 ```typescript
 // Controller tests stub the use case — the Input Port if the module has one, otherwise the
-// interactor's `execute` (an object with just `execute` is enough; no real interactor, no DB)
+// interactor's `execute` (an object with just `execute` is enough; no real interactor, no DB).
+// Default style shown (no Output Port): handle(req, res) maps the response model to HTTP.
 import { PlaceOrderController } from '@/modules/orders/infra/adapters/controllers/place-order-controller';
 
 describe('PlaceOrderController', () => {
-  it('should map HTTP request to use case request model', async () => {
+  it('should map the HTTP request to the use case request model', async () => {
     const mockUseCase = { execute: jest.fn().mockResolvedValue({ orderId: 'o-1' }) };
     const controller = new PlaceOrderController(mockUseCase as any);
 
-    const mockReq = { body: { customerId: 'cust-1', items: [{ productId: 'p1', qty: 2 }] } };
+    // HTTP vocabulary (`items`) differs from the use case vocabulary (`lines`): the controller translates
+    const mockReq = { body: { customerId: 'cust-1', items: [{ productId: 'p1', quantity: '2', unitPriceCents: 1000 }] } };
     const mockRes = { status: jest.fn().mockReturnThis(), json: jest.fn() };
 
     await controller.handle(mockReq as any, mockRes as any);
 
     expect(mockUseCase.execute).toHaveBeenCalledWith({
       customerId: 'cust-1',
-      items: [{ productId: 'p1', quantity: 2 }], // mapped from 'qty' to 'quantity'
+      lines: [{ productId: 'p1', quantity: 2, unitPriceCents: 1000 }], // items → lines, '2' coerced to 2
     });
+    expect(mockRes.status).toHaveBeenCalledWith(201);
     expect(mockRes.json).toHaveBeenCalledWith({ orderId: 'o-1' }); // response model mapped to HTTP
+  });
+
+  it('should rethrow an unexpected error instead of answering 400', async () => {
+    const controller = new PlaceOrderController({ execute: jest.fn().mockRejectedValue(new Error('db down')) } as any);
+    const mockRes = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    await expect(controller.handle({ body: {} } as any, mockRes as any)).rejects.toThrow('db down');
+    expect(mockRes.status).not.toHaveBeenCalled();
   });
 });
 ```

@@ -60,24 +60,35 @@ File: `src/modules/<module>/infra/adapters/controllers/<name>-controller.<ext>`
 import { Request, Response } from 'express'; // Framework knowledge is OK here
 import { <Name>Interactor, <Name>Request } from '../../../app/interactors/<name>';
 // With an Input Port: import { I<Name>UseCase, <Name>Request } from '../../../app/ports/input/<name>';
+// The typed errors this use case can throw (create them with the usecase skill, "Errors"):
+import { Invalid<Entity>Error } from '../../../domain/errors/invalid-<entity>-error';
+import { <Entity>NotFoundError } from '../../../app/errors/<entity>-not-found-error';
 
 export class <Name>Controller {
   constructor(private readonly useCase: <Name>Interactor /* or I<Name>UseCase */) {}
 
   async handle(req: Request, res: Response): Promise<void> {
-    // Step 1: Extract and validate primitive data from the framework request
+    // Step 1: Coerce primitive data from the framework request (no business validation here)
     const request: <Name>Request = {
-      // Map req.body / req.params / req.query → request fields
+      // Map req.body / req.params / req.query → request fields, e.g. String(req.body?.name ?? '')
       // Only primitive types — no Express objects leak into the use case
     };
 
     try {
-      // Step 2: Call the use case and map its response model to HTTP
+      // Step 2: Call the use case and map its response model to HTTP (201 for a creation, 200 otherwise)
       const response = await this.useCase.execute(request);
       res.status(200).json(response);
     } catch (error) {
-      // Map domain/application errors to HTTP statuses HERE — never inside the use case
-      res.status(400).json({ message: (error as Error).message });
+      // Map KNOWN, typed failures to HTTP statuses HERE — never inside the use case, never by message text
+      if (error instanceof Invalid<Entity>Error) {
+        res.status(400).json({ message: error.message });
+        return;
+      }
+      if (error instanceof <Entity>NotFoundError) {
+        res.status(404).json({ message: error.message });
+        return;
+      }
+      throw error; // unexpected → the error handler in platform/web answers 500 without internals
     }
   }
 }

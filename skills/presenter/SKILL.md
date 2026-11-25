@@ -68,9 +68,13 @@ export interface <Name>ViewModel {
   // e.g., statusLabel: 'In Progress' instead of status: 'IN_PROGRESS'
 }
 
+// One code per typed error the use case can report, plus the fallback for anything unexpected.
+// A string-literal union lets the compiler check the presenter's mapping and the route's status table.
+export type <Name>ErrorCode = 'UNKNOWN_ERROR' /* | 'CUSTOMER_NOT_FOUND' | 'INVALID_ORDER' ... */;
+
 export interface <Name>ErrorViewModel {
   message: string;
-  code: string;
+  code: <Name>ErrorCode;
 }
 ```
 
@@ -85,7 +89,9 @@ File: `src/modules/<module>/infra/adapters/presenters/<name>-presenter.<ext>`
 // May NOT import from: platform/, main/, concrete interactors, or another module
 
 import { I<Name>OutputPort, <Name>ResponseModel } from '../../../app/ports/output/<name>-output';
-import { <Name>ViewModel, <Name>ErrorViewModel } from './view-models/<name>-view-model';
+import { <Name>ViewModel, <Name>ErrorViewModel, <Name>ErrorCode } from './view-models/<name>-view-model';
+// The typed errors this use case can report, e.g.:
+// import { CustomerNotFoundError } from '../../../app/errors/customer-not-found-error';
 
 export class <Name>Presenter implements I<Name>OutputPort {
   private _viewModel: <Name>ViewModel | null = null;
@@ -97,9 +103,11 @@ export class <Name>Presenter implements I<Name>OutputPort {
   }
 
   presentError(error: Error): void {
+    const code = this.mapErrorCode(error);
     this._errorViewModel = {
-      message: error.message,
-      code: this.mapErrorCode(error),
+      code,
+      // Never leak the message of an unexpected failure (driver errors, table names, stack details)
+      message: code === 'UNKNOWN_ERROR' ? 'Unexpected error' : error.message,
     };
   }
 
@@ -126,8 +134,9 @@ export class <Name>Presenter implements I<Name>OutputPort {
     };
   }
 
-  private mapErrorCode(error: Error): string {
-    // Map domain errors to display codes
+  private mapErrorCode(error: Error): <Name>ErrorCode {
+    // Map typed domain/application errors to display codes with instanceof — never by message text
+    // if (error instanceof CustomerNotFoundError) return 'CUSTOMER_NOT_FOUND';
     return 'UNKNOWN_ERROR';
   }
 }
@@ -148,9 +157,11 @@ class <Name>Presenter(I<Name>OutputPort):
         self._view_model = self._format_response(response)
 
     def present_error(self, error: Exception) -> None:
+        code = self._map_error_code(error)
         self._error_view_model = <Name>ErrorViewModel(
-            message=str(error),
-            code=self._map_error_code(error),
+            # Never leak the message of an unexpected failure
+            message='Unexpected error' if code == 'UNKNOWN_ERROR' else str(error),
+            code=code,
         )
 
     @property
@@ -166,6 +177,7 @@ class <Name>Presenter(I<Name>OutputPort):
         pass
 
     def _map_error_code(self, error: Exception) -> str:
+        # isinstance on the module's typed errors, e.g. CustomerNotFoundError -> 'CUSTOMER_NOT_FOUND'
         return 'UNKNOWN_ERROR'
 ```
 
@@ -179,18 +191,27 @@ File: `src/platform/web/<name>-route.<ext>` or as part of the router (platform m
 // platform/ never instantiates interactors or gateways: src/main/ builds the
 // presenter + controller pair (one per request) and injects the factory.
 
+import type { Request, Response } from 'express';
+import type { <Name>Controller } from '../../modules/<module>/infra/adapters/controllers/<name>-controller';
+import type { <Name>Presenter } from '../../modules/<module>/infra/adapters/presenters/<name>-presenter';
+import type { <Name>ErrorCode } from '../../modules/<module>/infra/adapters/presenters/view-models/<name>-view-model';
+
 type <Name>Pair = { presenter: <Name>Presenter; controller: <Name>Controller };
+
+// Delivery detail: the HTTP status of each error code. Unexpected failures are 500, never 400.
+const STATUS_BY_CODE: Record<<Name>ErrorCode, number> = { UNKNOWN_ERROR: 500 /* , CUSTOMER_NOT_FOUND: 404, ... */ };
 
 export function <name>Handler(make: () => <Name>Pair) {
   return async (req: Request, res: Response): Promise<void> => {
     const { presenter, controller } = make();
 
-    await controller.handle(req, res);
+    // With an Output Port the controller never receives `res`: handle(req) only
+    await controller.handle(req);
 
     if (presenter.hasError) {
-      res.status(400).json(presenter.errorViewModel);
+      res.status(STATUS_BY_CODE[presenter.errorViewModel!.code]).json(presenter.errorViewModel);
     } else {
-      res.status(200).json(presenter.viewModel);
+      res.status(201).json(presenter.viewModel); // 201 for a creation, 200 for a read
     }
     // No logic here — just "read viewModel, send response"
   };
@@ -213,10 +234,15 @@ describe('<Name>Presenter', () => {
     expect(presenter.viewModel).toEqual({ /* expected formatted data */ });
   });
 
-  it('should format error into error view model', () => {
-    presenter.presentError(new Error('Domain error'));
+  it('should map a typed error to its code and keep its message', () => {
+    presenter.presentError(new <Entity>NotFoundError('id-1')); // one test per typed error
     expect(presenter.hasError).toBe(true);
-    expect(presenter.errorViewModel?.code).toBe('...');
+    expect(presenter.errorViewModel?.code).toBe('<ENTITY>_NOT_FOUND');
+  });
+
+  it('should hide the message of an unexpected error', () => {
+    presenter.presentError(new Error('SQLITE_ERROR: no such table'));
+    expect(presenter.errorViewModel).toEqual({ code: 'UNKNOWN_ERROR', message: 'Unexpected error' });
   });
 });
 ```
