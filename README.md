@@ -216,4 +216,4 @@ MIT
 
 ## Credits
 
-Maintained by [Santiago Migoni](https://github.com/santiago-migoni). Originally created by [MorcosS](https://github.com/morcoss) and released under the MIT license.
+Maintained by [Santiago Migoni](https://github.com/santiago-migoni). Originally created by [Marcos Tawadros (MorcosS)](https://github.com/morcoss). Released under the [MIT license](LICENSE).
