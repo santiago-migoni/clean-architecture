@@ -21,7 +21,7 @@ INNER (most stable, highest level)
   │   │                                    │     │
   │   │   ┌────────────────────────────┐   │     │
   │   │   │  infra   (modules/<m>/     │   │     │
-  │   │   │          infra/adapters/)  │   │     │
+  │   │   │          infra/)           │   │     │
   │   │   │                            │   │     │
   │   │   │   ┌────────────────────┐   │   │     │
   │   │   │   │  platform          │   │   │     │
@@ -69,11 +69,11 @@ through a port owned by A (declared in `A/app/ports/output/`, implemented in `A/
 
 ### Step 1: Read the Project Structure
 
-Resolve every path **relative to `src/`** (never match on the absolute path — a project living under `/app/` must not be misclassified), then identify the layer and module:
+Resolve every path **relative to `src/`** (never match on the absolute path — a project living under `/app/` must not be misclassified), then identify the layer and module **by position**: the top-level folder under `src/` (or, inside `modules/<name>/`, the folder right after the module name) decides the layer. A folder with a layer-like name deeper in the path does not: `src/main/app/` is Main, and `src/modules/orders/domain/shared/` is still `orders`' domain.
 
 - `modules/<name>/domain/` → layer `domain`, module `<name>`
 - `modules/<name>/app/` → layer `app`, module `<name>`
-- `modules/<name>/infra/adapters/` → layer `infra`, module `<name>`
+- `modules/<name>/infra/` → layer `infra`, module `<name>` — the **whole** `infra/` folder, not only `infra/adapters/`: a file placed directly under `infra/` must not escape the rules
 - `shared/` → shared kernel
 - `platform/` → layer `platform`
 - `main/` (or `bootstrap/`, `composition/`) → Main (Composition Root)

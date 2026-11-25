@@ -45,6 +45,14 @@ function callTool(cwd, name, args = {}) {
   try { return JSON.parse(text); } catch { return text; } // errors come back as plain text
 }
 
+// What Claude Code actually sends to a PostToolUse hook: JSON on stdin, path in tool_input.file_path
+const runHookStdin = (file, cwd) =>
+  spawnSync(process.execPath, [HOOK], {
+    env: { ...process.env, CLAUDE_TOOL_FILE: '', CLAUDE_PROJECT_DIR: '' },
+    input: JSON.stringify({ cwd, hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: file } }),
+    encoding: 'utf8',
+  });
+
 const runHook = (file) =>
   spawnSync(process.execPath, [HOOK], { env: { ...process.env, CLAUDE_TOOL_FILE: file }, encoding: 'utf8' });
 
@@ -185,6 +193,21 @@ try {
   check('ca_layer_of: a nested project is classified against its own src/ (module found, violation reported)',
     lo.module === 'orders' && lo.dependencyRuleCompliant === false && lo.importViolations.some((v) => v.rule === 'cross-module'),
     JSON.stringify(lo).slice(0, 200));
+
+  // ── 6. the hook, driven the way Claude Code drives it ───────────────────────────────────
+  console.log('\n[6] the PostToolUse hook reads Claude Code\'s stdin JSON and covers projects without src/');
+  const hk = tmpProject('hook'); temps.push(hk);
+  const outward = write(hk, `${M}/orders/domain/outward.ts`, "import { X } from '../app/interactors/x';\n");
+  const viaStdin = runHookStdin(outward, hk);
+  check('hook: warns when the path comes in tool_input.file_path on stdin',
+    viaStdin.status === 0 && viaStdin.stderr.includes('ARCHITECTURE RULE VIOLATION'), viaStdin.stderr || '(no output)');
+  const noSrc = tmpProject('nosrc'); temps.push(noSrc);
+  const pyOutward = write(noSrc, 'app/modules/orders/domain/outward.py', 'from ..infra.repo import Repo\n');
+  const pyClean = write(noSrc, 'app/modules/orders/domain/clean.py', 'x = 1\n');
+  const r1 = runHookStdin(pyOutward, noSrc);
+  const r2 = runHookStdin(pyClean, noSrc);
+  check('hook: a project without src/ (rooted at app/) is checked against the project root',
+    r1.stderr.includes('ARCHITECTURE RULE VIOLATION') && r2.status === 0 && r2.stderr === '', `${r1.stderr || '(no output)'} | ${r2.stderr}`);
 } finally {
   for (const dir of temps) rmSync(dir, { recursive: true, force: true });
 }

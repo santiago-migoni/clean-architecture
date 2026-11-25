@@ -177,7 +177,10 @@ export class PlaceOrderInteractor implements IPlaceOrderUseCase {
 
   async execute(request: PlaceOrderRequestModel): Promise<void> {
     // Business logic extracted from service/controller
-    const customerExists = await this.customerLookup.exists(request.customerId);
+    if (!(await this.customerLookup.exists(request.customerId))) {
+      this.outputPort.presentError(new CustomerNotFoundError(request.customerId)); // typed app error
+      return;
+    }
     const order = Order.create({ ... });
     await this.repository.save(order);
     this.outputPort.present({ orderId: order.id });
