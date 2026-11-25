@@ -32,7 +32,9 @@ export const LAYER_PATTERNS = [
   { layer: 'app',      patterns: [/\/app\//], level: 2 },
   {
     layer: 'adapters',
-    patterns: [/\/infra\/adapters\//, /\/controllers\//, /\/presenters\//, /\/gateways\//],
+    // The whole infra/ folder is the adapters layer (not only infra/adapters/): a file placed
+    // directly under infra/ must not escape the rules.
+    patterns: [/\/infra\//, /\/controllers\//, /\/presenters\//, /\/gateways\//],
     level: 3,
   },
   { layer: 'platform', patterns: [/\/platform\//], level: 4 },

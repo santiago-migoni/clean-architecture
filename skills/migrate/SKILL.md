@@ -238,34 +238,10 @@ Steps:
 
 Add lint rules or architecture tests for BOTH axes — layers and modules:
 
-#### TypeScript — eslint-plugin-boundaries:
-```json
-{
-  "settings": {
-    "boundaries/elements": [
-      { "type": "shared",   "pattern": "src/shared" },
-      { "type": "domain",   "pattern": "src/modules/*/domain",         "capture": ["module"] },
-      { "type": "app",      "pattern": "src/modules/*/app",            "capture": ["module"] },
-      { "type": "adapters", "pattern": "src/modules/*/infra/adapters", "capture": ["module"] },
-      { "type": "platform", "pattern": "src/platform" },
-      { "type": "main",     "pattern": "src/main" }
-    ]
-  },
-  "rules": {
-    "boundaries/element-types": [2, {
-      "default": "disallow",
-      "rules": [
-        { "from": "domain",   "allow": [["domain", { "module": "${module}" }], "shared"] },
-        { "from": "app",      "allow": [["domain", { "module": "${module}" }], ["app", { "module": "${module}" }], "shared"] },
-        { "from": "adapters", "allow": [["domain", { "module": "${module}" }], ["app", { "module": "${module}" }], ["adapters", { "module": "${module}" }], "shared"] },
-        { "from": "platform", "allow": ["adapters", "app", "domain", "shared", "platform"] },
-        { "from": "main",     "allow": ["platform", "adapters", "app", "domain", "shared"] }
-      ]
-    }]
-  }
-}
-```
-Add one extra exception for the single legal cross-module edge: `adapters` → another module's `src/modules/*/app/ports/input`.
+#### TypeScript — eslint-plugin-boundaries (v7):
+Use the `eslint.config.js` from `/clean-architecture:init` (section "Rule enforcement"). It defines the element types `shared`, `domain`, `input-port`, `app`, `infra`, `platform`, `main` and one policy per allowed edge, with the `{{ from.element.captured.module }}` template so a module may only depend on itself, plus the single legal cross-module edge `infra → input-port`. It uses `boundaries/dependencies` with `policies`; older plugin versions (`boundaries/element-types`) have a different syntax.
+
+During migration, set the rule to `1` (warn) so the existing violations are visible without blocking the build, then raise it to `2` (error) once the module is migrated.
 
 #### Java — ArchUnit test:
 ```java

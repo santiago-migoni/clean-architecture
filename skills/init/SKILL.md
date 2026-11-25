@@ -82,40 +82,77 @@ Both axes must be enforced:
 - **Axis 2 — modules** (no cross-module imports except `A/infra/adapters → B/app/ports/input`).
 
 By language:
-- **TypeScript/JavaScript**: `.eslintrc` with `eslint-plugin-boundaries` (element types `domain`, `app`, `adapters`, `platform`, `shared`, `main`, each with a `module` capture) or `import/no-restricted-paths` zones.
+- **TypeScript/JavaScript**: `eslint.config.js` with `eslint-plugin-boundaries` (element types `shared`, `domain`, `input-port`, `app`, `infra`, `platform`, `main`, each module-scoped one with a `module` capture) — see the tested example below.
 - **Python**: `import-linter` contracts (a `layers` contract per module plus a `forbidden` contract between modules).
 - **Java/Kotlin**: ArchUnit layered-architecture and package-slice tests.
 - **Go**: `go-cleanarch` plus `internal/` packages per module.
 - **C#**: NDepend or architecture tests.
 
-Example `eslint-plugin-boundaries` configuration (TypeScript):
-```json
-{
-  "settings": {
-    "boundaries/elements": [
-      { "type": "shared",   "pattern": "src/shared" },
-      { "type": "domain",   "pattern": "src/modules/*/domain",          "capture": ["module"] },
-      { "type": "app",      "pattern": "src/modules/*/app",             "capture": ["module"] },
-      { "type": "adapters", "pattern": "src/modules/*/infra/adapters",  "capture": ["module"] },
-      { "type": "platform", "pattern": "src/platform" },
-      { "type": "main",     "pattern": "src/main" }
-    ]
+Example for TypeScript — `eslint.config.js` (flat config). **Tested** against `eslint@9`, `typescript-eslint@8` and `eslint-plugin-boundaries@7`, which uses the `boundaries/dependencies` rule with `policies` (older versions used `boundaries/element-types` with a different syntax — check the installed major version before copying):
+
+```js
+// eslint.config.js — enforces the Dependency Rule (layers) and the Module Rule (modules).
+// Written for eslint-plugin-boundaries v7 (`boundaries/dependencies` + policies).
+import tseslint from 'typescript-eslint';
+import boundaries from 'eslint-plugin-boundaries';
+
+// Same module as the importing file
+const same = (type) => ({
+  element: { type, captured: { module: '{{ from.element.captured.module }}' } },
+});
+// Any file of that type
+const any = (type) => ({ element: { type } });
+
+// from → [allowed targets]
+const rule = (from, ...targets) =>
+  targets.map((to) => ({ from: { element: { type: from } }, allow: { to } }));
+
+export default [
+  { files: ['src/**/*.ts'], languageOptions: { parser: tseslint.parser } },
+  {
+    files: ['src/**/*.ts'],
+    plugins: { boundaries },
+    settings: {
+      'import/resolver': { typescript: { project: './tsconfig.json' } },
+      'boundaries/include': ['src/**/*'],
+      // Order matters: the first matching descriptor wins, so `input-port` precedes `app`.
+      'boundaries/elements': [
+        { type: 'shared',     pattern: 'src/shared',                      partialMatch: false },
+        { type: 'domain',     pattern: 'src/modules/*/domain',            partialMatch: false, capture: ['module'] },
+        { type: 'input-port', pattern: 'src/modules/*/app/ports/input',   partialMatch: false, capture: ['module'] },
+        { type: 'app',        pattern: 'src/modules/*/app',               partialMatch: false, capture: ['module'] },
+        { type: 'infra',      pattern: 'src/modules/*/infra',             partialMatch: false, capture: ['module'] },
+        { type: 'platform',   pattern: 'src/platform',                    partialMatch: false },
+        { type: 'main',       pattern: 'src/main',                        partialMatch: false },
+      ],
+    },
+    rules: {
+      'boundaries/dependencies': [2, {
+        default: 'disallow',
+        policies: [
+          // Layers — inward only, and only inside the SAME module
+          ...rule('domain', { element: { type: 'shared' } }, same('domain')),
+          ...rule('app',    { element: { type: 'shared' } }, same('domain'), same('app'), same('input-port')),
+          ...rule('input-port', { element: { type: 'shared' } }, same('domain'), same('app'), same('input-port')),
+          ...rule('infra',  { element: { type: 'shared' } }, same('domain'), same('app'), same('input-port'), same('infra'),
+                            // The ONE legal cross-module edge: infra → another module's app/ports/input
+                            any('input-port')),
+          ...rule('platform', any('shared'), any('domain'), any('app'), any('input-port'), any('infra'), any('platform')),
+          ...rule('main', any('shared'), any('domain'), any('app'), any('input-port'), any('infra'), any('platform'), any('main')),
+        ],
+      }],
+    },
   },
-  "rules": {
-    "boundaries/element-types": [2, {
-      "default": "disallow",
-      "rules": [
-        { "from": "domain",   "allow": [["domain", { "module": "${module}" }], "shared"] },
-        { "from": "app",      "allow": [["domain", { "module": "${module}" }], ["app", { "module": "${module}" }], "shared"] },
-        { "from": "adapters", "allow": [["domain", { "module": "${module}" }], ["app", { "module": "${module}" }], ["adapters", { "module": "${module}" }], "shared"] },
-        { "from": "platform", "allow": ["adapters", "app", "domain", "shared", "platform"] },
-        { "from": "main",     "allow": ["platform", "adapters", "app", "domain", "shared"] }
-      ]
-    }]
-  }
-}
+];
 ```
-The single allowed cross-module edge (`adapters` → another module's `app/ports/input`) needs one extra rule restricted to that path (for example an `import/no-restricted-paths` exception, or a dedicated element type for `src/modules/*/app/ports/input`).
+
+Install: `npm i -D eslint typescript typescript-eslint eslint-plugin-boundaries eslint-import-resolver-typescript` (do **not** add `@eslint/js` pinned to a different ESLint major — it fails with `ERESOLVE`).
+
+Notes for the generated project:
+- `tsconfig.json`: use `"paths": { "@/*": ["./src/*"] }` **without `baseUrl`** (deprecated in TypeScript 6 and an error without `ignoreDeprecations`).
+- The `input-port` element must come **before** `app` in `boundaries/elements`: the first matching descriptor wins, and `app/ports/input` is the only place another module may reach.
+- The whole `src/modules/*/infra` folder is the infra layer, not just `infra/adapters`.
+- After generating the config, verify it by temporarily adding a file that imports outward (for example a `domain/` file importing from `app/`) and checking that ESLint reports it, then delete it. A config that reports nothing may simply not be matching your folders.
 
 ### 7. Architecture README (`docs/architecture/ARCHITECTURE.md`)
 Explain the layout, both rules, the optional pieces (input port, output port + presenter), the cross-module recipe (port owned by the caller, implemented in its `infra`, calling the other module's input port), where tests, docs and migrations live, and how to add a new module or feature.
