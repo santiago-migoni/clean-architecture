@@ -29,6 +29,8 @@ The plugin uses a **feature-first** layout: the code is grouped into **modules**
 
 **Create on demand.** `init` creates only `modules/<m>/{domain,app,infra}`, `main/` and `docs/architecture/`. `shared/`, `platform/`, the `ports/`, `interactors/` and `adapters/` subfolders, `in-memory/` and the test folders are created by the first file that needs them — never as empty folders. The same applies to `domain/{events,errors,services}`: add them when the first event, domain error or domain service exists.
 
+**`.gitkeep` files** exist only so that git keeps an otherwise-empty folder. The scaffold writes one into each of `domain/`, `app/` and `infra/`: **delete a folder's `.gitkeep` in the same change that adds its first real file.** A `.gitkeep` next to other files is leftover noise.
+
 **Macro decisions.**
 - Tests are grouped by module (`tests/<module>/{unit,integration}`) so that removing or extracting a module means deleting `src/modules/<m>` and `tests/<m>`. `tests/e2e/` is shared.
 - Documentation lives only in `docs/architecture/`.

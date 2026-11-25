@@ -1,2 +1,0 @@
-# Module "customers" — app: use cases (interactors) and the ports they need.
-# May import domain and src/shared only.

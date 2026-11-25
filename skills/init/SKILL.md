@@ -157,7 +157,7 @@ Notes for the generated project:
 - After generating the config, verify it by temporarily adding a file that imports outward (for example a `domain/` file importing from `app/`) and checking that ESLint reports it, then delete it. A config that reports nothing may simply not be matching your folders.
 
 ### 7. Architecture README (`docs/architecture/ARCHITECTURE.md`)
-Explain the layout, both rules, the optional pieces (input port, output port + presenter), the cross-module recipe (port owned by the caller, implemented in its `infra`, calling the other module's input port), where tests, docs and migrations live, and how to add a new module or feature.
+The scaffold only writes a **generic stub**: once the modules exist, rewrite it so it describes THIS project (its modules, which optional pieces each use case has and why, the cross-module links, the decisions taken) instead of leaving the template text. Explain the layout, both rules, the optional pieces (input port, output port + presenter), the cross-module recipe (port owned by the caller, implemented in its `infra`, calling the other module's input port), where tests, docs and migrations live, and how to add a new module or feature.
 
 ## Validation Before Finishing
 
@@ -169,7 +169,8 @@ After creating files, verify:
 - [ ] `main/` is the ONLY place where concrete classes are instantiated and wired together.
 - [ ] Port interfaces live in the `app/` layer of the module that owns them, not in `infra/`.
 - [ ] No empty folders were created beyond `domain/`, `app/` and `infra/` per module, `main/` and `docs/architecture/`.
-- [ ] Documentation is in `docs/architecture/`, not in `src/`.
+- [ ] Documentation is in `docs/architecture/`, not in `src/`, and `ARCHITECTURE.md` describes this project rather than the generic stub.
+- [ ] No `.gitkeep` is left in a folder that now contains other files (the scaffold creates them in `domain/`, `app/` and `infra/`; delete each one when its folder gets its first real file).
 - [ ] No module name is reserved.
 
 ## Output

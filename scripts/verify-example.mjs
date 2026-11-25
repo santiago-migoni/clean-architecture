@@ -27,6 +27,13 @@ const check = (name, ok, detail = '') => {
   console.log(`${ok ? '  ok  ' : ' FAIL '} ${name}${ok || !detail ? '' : '\n         ' + detail}`);
   if (!ok) failures.push(name);
 };
+// A .gitkeep only exists to keep an EMPTY folder in git; next to other files it is leftover noise.
+function strayGitkeeps(dir, found = []) {
+  const entries = readdirSync(dir, { withFileTypes: true });
+  if (entries.some((e) => e.name === '.gitkeep') && entries.length > 1) found.push(dir);
+  for (const e of entries) if (e.isDirectory() && e.name !== 'node_modules') strayGitkeeps(join(dir, e.name), found);
+  return found;
+}
 const same = (a, b) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
 
 /** Calls one MCP tool with `cwd` as the project root (the server only reads inside its cwd). */
@@ -59,6 +66,9 @@ try {
   check('ca_scan: every file is classified', scan.summary.unclassifiedFiles === 0);
   check('ca_scan: health score 100', scan.summary.healthScore === 100);
   check('ca_scan: scanned a real project (not an empty directory)', scan.summary.filesScanned >= 30, `filesScanned=${scan.summary.filesScanned}`);
+
+  const stray = strayGitkeeps(EXAMPLE);
+  check('example: no .gitkeep left in a folder that has other files', stray.length === 0, stray.join(', '));
 
   const cycles = callTool(EXAMPLE, 'ca_cycles');
   check('ca_cycles: no cycles between components', cycles.adpCompliant === true);
