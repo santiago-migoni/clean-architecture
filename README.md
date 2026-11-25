@@ -112,6 +112,14 @@ The hook and the MCP server share one rule set (`src/lib/architecture.js`), so t
 /clean-architecture:migrate src/services/
 ```
 
+## Example Project
+
+[`examples/shop`](examples/shop) is a runnable reference built by applying the skills: two modules (`orders`, `customers`), Express, SQLite, 52 tests and the architecture rules enforced by ESLint. It shows the optional pieces in use (an Input Port only where another module calls the use case, a Presenter only where output is formatted), the cross-module recipe, and the guards that a happy-path test misses.
+
+```bash
+cd examples/shop && npm ci && npm test && npm start
+```
+
 ## Clean Architecture Concepts Covered
 
 **Layers (inside every module):** `domain` (Entities) → `app` (Use Cases) → `infra/adapters` (Interface Adapters) → `platform` (Frameworks & Drivers), plus `shared` (shared kernel) and `main` (composition root)
