@@ -168,6 +168,12 @@ class <Domain>RepositoryImpl(I<Domain>Repository):
         self._session.commit()
 ```
 
+### Persistence rules learned the hard way (SQL)
+- **Upsert by id, never `INSERT OR REPLACE`.** In SQLite (and `REPLACE INTO` in MySQL) a conflict on *any* unique constraint deletes the other row: saving a second customer with an existing email silently destroyed the first one. Use `INSERT ... ON CONFLICT(id) DO UPDATE SET ...` (`ON DUPLICATE KEY UPDATE` in MySQL, `session.merge` in SQLAlchemy) so a different row with the same unique value raises a constraint error.
+- **Translate that error, do not let the driver's leak.** Declare the failure on the port's contract (`/** @throws EmailAlreadyRegisteredError */` on `save`, the error lives in `app/errors/`) and have the gateway convert the unique-constraint violation into it. The gateway still enforces no business rule — it only reports a persistence fact in the application's vocabulary.
+- **The in-memory repository must honour the same contract** (same error for the same conflict), otherwise use case tests pass against a repository that behaves differently from production.
+- No foreign key between tables of different modules: modules never share tables.
+
 ### Step 4: Create an In-Memory Gateway for Testing (on demand)
 Create it the first time a use case test needs a repository — not before, and not as an empty `in-memory/` folder. Reuse it afterwards.
 
@@ -239,6 +245,7 @@ export class CustomerLookupGateway implements ICustomerLookup {
 - [ ] ORM/DB-specific code (TypeORM decorators, SQLAlchemy models) is ONLY in the gateway/persistence files.
 - [ ] The use case interactor imports only the interface — never the implementation.
 - [ ] The DB connection / ORM client is injected from `main/`, never imported from `platform/`.
+- [ ] `save` is an upsert by id (no `REPLACE`); a unique-constraint violation is translated into the error declared by the port; a test proves that the pre-existing row survives the conflict.
 - [ ] Data mapper correctly translates domain ↔ persistence (field names, types, nullability).
 - [ ] An in-memory implementation exists once a use case test needs one (created on demand).
 - [ ] Migrations for this module's tables live in `infra/adapters/gateways/migrations/`; the connection and the migration runner live in `platform/db/`.

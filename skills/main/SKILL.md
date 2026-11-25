@@ -115,44 +115,46 @@ export function composeCustomers({ db }: { db: DbConnection }) {
 }
 ```
 
-`src/main/index.ts` — the entry point:
+`src/main/index.ts` — the composition root, as a **factory** (so tests can import the app without opening a port):
 ```typescript
 // src/main/index.ts
 // THE MAIN COMPONENT — The Composition Root
 //
 // This is the ONLY place that knows about ALL modules and layers. That is by design.
-// Nothing imports from main/ except the OS entry point.
+// Nothing imports from main/ except the OS entry point (server.ts) and the tests.
 
-import express from 'express';
+import { randomUUID } from 'node:crypto';
 import { createDbConnection } from '../platform/db/connection';
-import { registerRoutes } from '../platform/web/routes';
-import { composeCustomers } from './compose/customers';
-import { composeOrders } from './compose/orders';
+import { runMigrations } from '../platform/db/migrate';
+import { buildHttpApp } from '../platform/web/app';
+import { composeCustomers, customersMigrations } from './compose/customers';
+import { composeOrders, ordersMigrations } from './compose/orders';
 
-export async function bootstrap(): Promise<void> {
-  // 1. Initialize infrastructure (platform)
-  const db = await createDbConnection({
-    host: process.env.DB_HOST ?? 'localhost',
-    port: Number(process.env.DB_PORT ?? 5432),
-    database: process.env.DB_NAME ?? 'app_db',
-  });
+export function createApp(options: { dbPath?: string } = {}) {
+  // 1. Infrastructure (platform) — environment variables are read here and in server.ts only
+  const db = createDbConnection(options.dbPath ?? process.env.DB_PATH ?? ':memory:');
+  runMigrations(db, [...customersMigrations, ...ordersMigrations]); // each module hands over its own migrations
+  const newId = () => randomUUID(); // randomness is injected into use cases, never generated inside them
 
   // 2. Compose modules in dependency order; cross-module ties are INPUT PORTS
-  const customers = composeCustomers({ db });
-  const orders = composeOrders({ db, getCustomer: customers.ports.getCustomer });
+  const customers = composeCustomers({ db, newId });
+  const orders = composeOrders({ db, newId, getCustomer: customers.ports.getCustomer });
 
-  // 3. Set up the web framework and register every module's routes
-  const app = express();
-  app.use(express.json());
-  registerRoutes(app, { ...customers.routes, ...orders.routes });
-
-  // 4. Start the server
-  const port = Number(process.env.PORT ?? 3000);
-  app.listen(port, () => console.log(`Server running on port ${port}`));
+  // 3. HTTP: platform/web builds the Express app from the handlers each module exposes
+  const app = buildHttpApp({ ...customers.routes, ...orders.routes });
+  return { app, db };
 }
-
-bootstrap().catch(console.error);
 ```
+`src/main/server.ts` — the actual entry point, as small as possible:
+```typescript
+import { createApp } from './index';
+
+const port = Number(process.env.PORT ?? 3000);
+createApp().app.listen(port, () => console.log(`Server running on port ${port}`));
+```
+Each `compose<Module>` returns `{ ports, routes }`: `ports` are the input ports other modules may use, `routes` are ready-to-register handlers (controllers wrapped with `(req, res) => controller.handle(req, res)`). `platform/web/app.ts` owns `express()`, `express.json()`, route registration and the last-resort error handler (malformed JSON → 400, anything else → 500 with no internals).
+
+> Using a synchronous driver such as `node:sqlite`? It must be created once in `platform/db` and injected; the gateways take the connection type as a constructor argument and never import `platform/`.
 
 #### Python (FastAPI, manual DI)
 ```python
@@ -212,7 +214,7 @@ Different environments can have different main files. The test composition root 
 
 ```typescript
 // src/main/index.test.ts — used by integration/e2e tests
-export function bootstrapTestApp(): App {
+export function bootstrapTestApp() {  // returns { app, ...repositories }: the SAME handlers on in-memory ports
   const orderRepository = new OrderInMemoryRepository();
   const customerLookup: ICustomerLookup = { exists: async () => true }; // fake port, no customers module needed
   const placeOrder = new PlaceOrderController(
@@ -225,7 +227,9 @@ export function bootstrapTestApp(): App {
 
 - [ ] `src/main/` is the ONLY location with `new ConcreteGateway()` or `new ConcreteInteractor()`.
 - [ ] `src/platform/` registers routes and creates connections, but never instantiates interactors or gateways.
-- [ ] Presenters (if any) are built per request; they are never shared between requests.
+- [ ] Presenters (if any) are built per request; they are never shared between requests — guarded by a deterministic test on the factory (see the `test` skill), not by a concurrency test.
+- [ ] `index.ts` exports a factory and does not listen; a tiny `server.ts` is the only entry point that starts the server.
+- [ ] The same HTTP scenarios run against the production composition root and the test composition root.
 - [ ] No other production code file (outside `main/`) uses `new` on a cross-layer dependency.
 - [ ] No module and no layer inside `src/` imports from `main/`.
 - [ ] Modules are connected only here, and only through input ports (`compose<Module>` returns the ports others may use).

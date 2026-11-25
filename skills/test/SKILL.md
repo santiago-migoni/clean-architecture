@@ -295,6 +295,11 @@ it('translates the customers module answer into orders vocabulary', async () => 
 });
 ```
 
+### Test Type 7: Guards that a happy-path test cannot give (verified on a running example)
+- **Repository contract tests.** Run the same conflict/not-found scenarios against the real gateway (integration) and the in-memory one (unit), and assert that **pre-existing data survives a failed save** — this is what exposes `INSERT OR REPLACE`.
+- **Deterministic isolation tests for stateful collaborators.** If main builds a presenter per request, test the factory (`make().presenter !== make().presenter`; an interleaved pair keeps its own state). Do not rely on a concurrency test over a synchronous stack: with in-memory repositories or `node:sqlite`, requests never interleave, so a *shared* presenter still passes. Prove any such test with a **mutation check**: break the code on purpose and confirm the test fails.
+- **HTTP e2e through both composition roots.** `describe.each` the same scenarios over the production root (real DB) and the test root (in-memory); serve the app on port `0` and use `fetch`. Assert status AND body, and include malformed JSON, an unknown id, a duplicate and a validation failure.
+
 ## Test Configuration Files
 
 ### Jest config (TypeScript):
@@ -343,6 +348,7 @@ markers =
 - [ ] A test of one module never imports another module's `domain/` or `infra/` (cross-module ports are faked).
 - [ ] Controller tests mock the use case interface.
 - [ ] No business logic is tested only in integration or e2e tests.
+- [ ] Every guard test was proven with a mutation check (the code was broken on purpose and the test failed).
 - [ ] Test files themselves follow the Dependency Rule and the Module Rule (test code can only import from inner layers of the module under test + test utilities).
 
 ## Output

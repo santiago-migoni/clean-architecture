@@ -221,6 +221,12 @@ describe('<Name>Presenter', () => {
 });
 ```
 
+### Step 6: Error codes, status mapping and isolation (verified on a running example)
+- **Typed errors → codes.** `mapErrorCode` uses `instanceof` on the module's typed errors (`CustomerNotFoundError` → `CUSTOMER_NOT_FOUND`, `InvalidOrderError` → `INVALID_ORDER`), never the message text. Make the code a string-literal union in the error view model so the compiler checks the mapping table.
+- **Never leak an unexpected failure.** For `UNKNOWN_ERROR` the view model carries a generic message (`'Unexpected error'`), not `error.message` (driver errors, table names, stack details).
+- **Status mapping belongs to the humble route handler** in `platform/web`, as a table from error code to HTTP status. The presenter stays free of HTTP knowledge.
+- **A presenter is stateful, so the composition root must build one per request.** Test this deterministically on the factory (`make().presenter !== make().presenter`, and an interleaved pair keeps its own state). A concurrency test over a synchronous stack (an in-memory repository, `node:sqlite`) can NOT detect a shared presenter — requests never interleave — and gives false confidence.
+
 ## Validation Checklist
 
 - [ ] Presenter lives in `src/modules/<module>/infra/adapters/presenters/`.
@@ -230,7 +236,8 @@ describe('<Name>Presenter', () => {
 - [ ] All formatting logic is in the Presenter (testable), NOT in the View (Humble Object).
 - [ ] The HTTP handler / View is as thin as possible — no conditional business logic.
 - [ ] Presenter is unit-testable without starting an HTTP server.
-- [ ] Error paths are handled (presentError is implemented).
+- [ ] Error paths are handled (presentError is implemented), by `instanceof`, with a generic message for unknown failures.
+- [ ] The composition root builds a new presenter per request, guarded by a deterministic factory test.
 
 ## SRP Check
 - The Presenter changes only when the **display format** of `<Name>` changes.

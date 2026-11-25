@@ -111,6 +111,12 @@ class <UseCaseName>Interactor:
         raise NotImplementedError
 ```
 
+### Errors: typed, in the layer that owns the rule
+Failures are thrown as **typed errors** so the outer layers can map them without parsing messages:
+- **Enterprise rule** broken by an entity → `domain/errors/invalid-<entity>-error.<ext>` (thrown by the entity itself).
+- **Application failure** of the use case (a needed record is missing, a conflict) → `app/errors/<name>-error.<ext>` (for example `CustomerNotFoundError`, `EmailAlreadyRegisteredError`). Create the folder when the first one exists.
+Plain `Error` for a rule the caller must react to is a smell: the controller/presenter would have to match on text.
+
 ### Step 2: Define the Repository Interface (if data access is needed)
 File: `src/modules/<module>/app/ports/output/<domain>-repository.<ext>`
 
@@ -140,7 +146,7 @@ export interface I<UseCaseName>UseCase {
 This file is the module's **public surface**: it is the only thing another module's infra may import. Keep it free of domain objects.
 
 ### Step 4 (optional): Output Port + Presenter
-Create them only if output formatting is non-trivial. The interactor then returns `Promise<void>` and calls the Output Port:
+Create them only if output formatting is non-trivial. The interactor then returns `Promise<void>` and calls the Output Port (`present` on success, `presentError` in a `catch`). Define the **response model in the Output Port file** (the interactor imports it) — defining it in the interactor file would make the port and the interactor import each other:
 
 File: `src/modules/<module>/app/ports/output/<use-case-name>-output.<ext>`
 ```typescript

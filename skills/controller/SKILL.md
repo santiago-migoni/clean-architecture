@@ -152,6 +152,13 @@ export interface <Name>HttpRequest {
 ### Step 5: Wire in Main (reminder)
 The controller should NOT instantiate its own use case. That happens in `src/main/`. Just note what dependencies are needed. Route registration for the module lives in `src/platform/web/` (it may import the module's controllers; the controller never imports `platform/`).
 
+### Step 6: Error mapping and HTTP details (verified on a running example)
+- **Map known, typed failures; never match on message text.** The use case throws typed errors (`InvalidXxxError` from `domain/errors/`, `XxxNotFoundError`/`XxxAlreadyRegisteredError` from `app/errors/`); the controller turns each into a status with `instanceof` (400 invalid, 404 not found, 409 conflict).
+- **Never swallow the rest.** An error you do not recognise is rethrown. Express 5 forwards a rejected promise from an async handler to the error handler, which answers 500 without leaking internals (the handler lives in `platform/web/app.ts`).
+- **Coerce, do not validate business rules.** `String(body.name ?? '')`, `Number(...)`, `Array.isArray(...)` keep a malformed body from crashing the controller; the entity then rejects `NaN` or empty values with its own typed error.
+- **Translate vocabulary** when the API and the use case differ (HTTP `items` → request `lines`) in a separate HTTP DTO, so the API can change without touching the use case.
+- With an **Output Port**, the controller signature is `handle(req)` and it never receives `res`; with the default style it is `handle(req, res)`.
+
 ## Validation Checklist
 
 - [ ] Controller lives in `src/modules/<module>/infra/adapters/controllers/`.
@@ -159,6 +166,7 @@ The controller should NOT instantiate its own use case. That happens in `src/mai
 - [ ] Controller depends on the Input Port if the module defines one, otherwise on its own module's interactor — never on another module's classes.
 - [ ] No business logic in the controller — only data translation (request in, response model → HTTP out, errors → status codes).
 - [ ] If the use case has an Output Port, the controller does NOT touch `res` — the Presenter and the thin route handler do.
+- [ ] Known failures are mapped by `instanceof` to a status; unknown ones are rethrown, never swallowed or converted into a generic 400.
 - [ ] Framework objects (`Request`, `Response`) do NOT leak into the Use Case layer.
 - [ ] Controller receives the use case via constructor injection (for testability).
 - [ ] Input validation in the controller is limited to HTTP-level concerns (required fields, type coercion); business validation stays in the use case/entity.
