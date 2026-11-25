@@ -32,7 +32,7 @@ curl -X POST localhost:3000/orders -H 'content-type: application/json' \
 |---|---|
 | `POST /customers` | `201 {customerId}` · `400` invalid · `409` email already registered |
 | `GET /customers/:id` | `200` · `404` |
-| `POST /orders` | `201` view model · `404 CUSTOMER_NOT_FOUND` · `400 INVALID_ORDER` |
+| `POST /orders` | `201` view model · `404 CUSTOMER_NOT_FOUND` · `400 INVALID_ORDER` · `500` unexpected (logged, no internals) |
 | malformed JSON | `400`; unexpected failures are `500` with no internals |
 
 ## Structure

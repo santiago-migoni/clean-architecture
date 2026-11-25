@@ -36,6 +36,20 @@ describe('PlaceOrderInteractor (no DB, customers module NOT imported)', () => {
     expect(await repository.findAll()).toHaveLength(0);
   });
 
+  it('rejects a malformed order before asking the customers module', async () => {
+    await interactor.execute({ customerId: '', lines });
+    expect(outputPort.presentError).toHaveBeenCalledWith(expect.any(InvalidOrderError));
+    expect(customerLookup.exists).not.toHaveBeenCalled();
+  });
+
+  it('rethrows an unexpected failure instead of presenting it', async () => {
+    const boom = new Error('SQLITE_BUSY: database is locked');
+    vi.spyOn(repository, 'save').mockRejectedValue(boom);
+    await expect(interactor.execute({ customerId: 'c-1', lines })).rejects.toBe(boom);
+    expect(outputPort.present).not.toHaveBeenCalled();
+    expect(outputPort.presentError).not.toHaveBeenCalled();
+  });
+
   it('presents an InvalidOrderError for an order without lines', async () => {
     await interactor.execute({ customerId: 'c-1', lines: [] });
     expect(outputPort.presentError).toHaveBeenCalledWith(expect.any(InvalidOrderError));

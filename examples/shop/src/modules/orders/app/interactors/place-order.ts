@@ -2,6 +2,7 @@
 // Layer: app. May import: this module's domain/ and app/, src/shared/. Never infra/, platform/, main/ or another module.
 // This use case HAS an Output Port (the response is formatted by a Presenter), so `execute` returns void.
 import { Order } from '../../domain/order';
+import { InvalidOrderError } from '../../domain/errors/invalid-order-error';
 import { CustomerNotFoundError } from '../errors/customer-not-found-error';
 import { IOrderRepository } from '../ports/output/order-repository';
 import { ICustomerLookup } from '../ports/output/customer-lookup';
@@ -22,15 +23,23 @@ export class PlaceOrderInteractor {
 
   async execute(request: PlaceOrderRequest): Promise<void> {
     try {
-      // Application rule: an order needs an existing customer (owned by another module → via the port)
-      if (!(await this.customerLookup.exists(request.customerId))) {
-        throw new CustomerNotFoundError(request.customerId);
-      }
+      // Enterprise rules first: a malformed order (no customer id, empty product id, ...) is invalid
+      // whether or not the customer exists, so it is rejected before calling another module.
       const order = Order.create({ id: this.newId(), customerId: request.customerId, lines: request.lines });
+      // Application rule: an order needs an existing customer (owned by another module → via the port)
+      if (!(await this.customerLookup.exists(order.customerId))) {
+        throw new CustomerNotFoundError(order.customerId);
+      }
       await this.repository.save(order);
       this.outputPort.present({ orderId: order.id, status: order.status, totalCents: order.totalCents });
     } catch (error) {
-      this.outputPort.presentError(error as Error);
+      // Only the failures this use case declares are presented. Anything else (a DB failure, a bug)
+      // is rethrown so the last-resort handler logs it and answers 500 — never swallowed here.
+      if (error instanceof CustomerNotFoundError || error instanceof InvalidOrderError) {
+        this.outputPort.presentError(error);
+        return;
+      }
+      throw error;
     }
   }
 }

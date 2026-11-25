@@ -14,6 +14,14 @@ describe('Order entity', () => {
     expect(() => Order.create({ id: 'o-1', customerId: 'c-1', lines: [] })).toThrow('at least one line');
   });
 
+  it('rejects an order without a customer id', () => {
+    expect(() => Order.create({ id: 'o-1', customerId: '', lines: [line] })).toThrow('must reference a customer');
+  });
+
+  it('rejects a line without a product id', () => {
+    expect(() => Order.create({ id: 'o-1', customerId: 'c-1', lines: [{ ...line, productId: ' ' }] })).toThrow('product id');
+  });
+
   it('rejects a non-positive quantity', () => {
     expect(() => Order.create({ id: 'o-1', customerId: 'c-1', lines: [{ ...line, quantity: 0 }] })).toThrow('quantity');
   });
