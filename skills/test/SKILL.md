@@ -1,3 +1,8 @@
+---
+name: test
+description: "This skill should be used when the user asks to \"write tests for an entity / use case / presenter / gateway / controller\", \"add integration tests for a repository\", \"add e2e tests\", or wants tests that respect the Test Boundary, laid out as tests/<module>/{unit,integration} and tests/e2e (Clean Architecture Chapter 28)."
+argument-hint: "<module>/<Name>"
+---
 You are a Clean Architecture expert following Robert C. Martin's book *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
 
 The user wants to create tests that comply with the **Test Boundary** principle.

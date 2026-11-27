@@ -12,7 +12,7 @@
  *   node scripts/verify-example.mjs
  */
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER = join(ROOT, 'src/server.js');
 const HOOK = join(ROOT, 'src/hooks/dependency-check.js');
+const SESSION_HOOK = join(ROOT, 'src/hooks/session-start.js');
 const EXAMPLE = join(ROOT, 'examples/shop');
 
 const failures = [];
@@ -211,6 +212,35 @@ try {
   const r2 = runHookStdin(pyClean, noSrc);
   check('hook: a project without src/ (rooted at app/) is checked against the project root',
     r1.stderr.includes('ARCHITECTURE RULE VIOLATION') && r2.status === 0 && r2.stderr === '', `${r1.stderr || '(no output)'} | ${r2.stderr}`);
+
+  // ── 7. the SessionStart hook only speaks in projects that use the layout ─────────────────
+  console.log('\n[7] the SessionStart hook points to the rules skill only in projects with modules/');
+  const runSessionStart = (cwd) =>
+    spawnSync(process.execPath, [SESSION_HOOK], {
+      env: { ...process.env, CLAUDE_PROJECT_DIR: '' },
+      input: JSON.stringify({ cwd, hook_event_name: 'SessionStart', source: 'startup' }),
+      encoding: 'utf8',
+    });
+  const ss = runSessionStart(EXAMPLE);
+  let ctx = '';
+  try { ctx = JSON.parse(ss.stdout).hookSpecificOutput.additionalContext; } catch { /* checked below */ }
+  check('session-start: a project with src/modules/ gets the pointer to clean-architecture:rules',
+    ss.status === 0 && ctx.includes('clean-architecture:rules'), ss.stdout || ss.stderr || '(no output)');
+  const plain = tmpProject('plain'); temps.push(plain);
+  write(plain, 'src/index.ts', 'export {};\n');
+  const ssPlain = runSessionStart(plain);
+  check('session-start: any other project gets no context at all', ssPlain.status === 0 && ssPlain.stdout === '', ssPlain.stdout);
+
+  // ── 8. every skill can be discovered by Claude ──────────────────────────────────────────
+  console.log('\n[8] every skill has frontmatter with its name and a description');
+  const SKILLS = join(ROOT, 'skills');
+  for (const name of readdirSync(SKILLS).sort()) {
+    const md = readFileSync(join(SKILLS, name, 'SKILL.md'), 'utf8');
+    const fm = /^---\n([\s\S]*?)\n---\n/.exec(md)?.[1] ?? '';
+    check(`skills/${name}: frontmatter with name "${name}" and a description`,
+      new RegExp(`^name: ${name}$`, 'm').test(fm) && /^description: "This skill should be used .{40,}"$/m.test(fm),
+      fm ? fm.split('\n')[0] : '(no frontmatter)');
+  }
 } finally {
   for (const dir of temps) rmSync(dir, { recursive: true, force: true });
 }

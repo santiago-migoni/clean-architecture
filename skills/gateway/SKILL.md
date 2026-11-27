@@ -1,3 +1,8 @@
+---
+name: gateway
+description: "This skill should be used when the user asks to \"create a gateway\", \"implement a repository\", \"add a data mapper\", \"add an in-memory repository\", \"add a database migration for a module\", or \"reach another module through its input port\" from src/modules/<module>/infra/adapters/gateways/ (The Database is a Detail)."
+argument-hint: "<module>/<Name>"
+---
 You are a Clean Architecture expert following Robert C. Martin's book *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
 
 The user wants to create or review a **Gateway** (also called Repository or Data Mapper) — the adapter that connects the application to the database or external services.

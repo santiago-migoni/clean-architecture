@@ -1,3 +1,7 @@
+---
+name: check
+description: "This skill should be used when the user asks to \"check the Dependency Rule\", \"scan for architecture violations\", \"find imports that point outward\", \"find cross-module imports\", \"verify the module boundaries\", or wants a full violation report with severities and fixes before a commit or review."
+---
 You are a Clean Architecture expert following Robert C. Martin's book *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
 
 The user wants to run a **full Dependency Rule and Module Rule scan** across the entire codebase.

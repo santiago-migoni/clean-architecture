@@ -1,6 +1,10 @@
-# Clean Architecture Plugin — Global Instructions
+---
+name: rules
+description: "This skill should be used before writing, editing or reviewing code in a project that follows the Clean Architecture plugin layout (src/modules/<module>/{domain,app,infra}, src/shared, src/platform, src/main), or when the user asks \"what are the Clean Architecture rules\", \"where does this file go\", \"may this layer import that one\", \"how do two modules talk\", or about the Dependency Rule, the Module Rule, ports, the composition root or the Test Boundary. It is the reference every other clean-architecture skill assumes."
+---
+# Clean Architecture Plugin — Rules
 
-This project uses the **Clean Architecture** plugin. All code you write or review must conform to the principles established by Robert C. Martin in *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
+These are the rules for any project that uses the **Clean Architecture** plugin. All code written or reviewed in such a project must conform to the principles established by Robert C. Martin in *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
 
 The plugin uses a **feature-first** layout: the code is grouped into **modules** (`orders`, `customers`, …) and every module contains the three layers `domain`, `app` and `infra`.
 
@@ -146,6 +150,7 @@ Always check:
 
 Where a skill takes `<module>/<Name>`, the module prefix selects the folder under `src/modules/`. If the project has a single module it may be omitted.
 
+- `/clean-architecture:rules` — These rules (load before writing or reviewing code)
 - `/clean-architecture:init [description]` — Scaffold project
 - `/clean-architecture:entity [module/Name]` — Create entity
 - `/clean-architecture:usecase [module/Name]` — Create use case

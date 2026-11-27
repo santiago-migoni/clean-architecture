@@ -1,3 +1,8 @@
+---
+name: controller
+description: "This skill should be used when the user asks to \"create a controller\", \"add an HTTP endpoint\", \"map a request to a use case\", \"map typed errors to HTTP status codes\", or to review an interface adapter in src/modules/<module>/infra/adapters/controllers/ (The Web is a Detail)."
+argument-hint: "<module>/<Name>"
+---
 You are a Clean Architecture expert following Robert C. Martin's book *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
 
 The user wants to create or review a **Controller** — part of the Interface Adapters layer.

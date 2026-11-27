@@ -1,3 +1,7 @@
+---
+name: main
+description: "This skill should be used when the user asks to \"create the composition root\", \"wire the dependencies\", \"update main\", \"connect two modules\", \"add a new entry point (api, worker, cli)\", or to move object creation out of inner layers into src/main/ (Clean Architecture Chapter 26)."
+---
 You are a Clean Architecture expert following Robert C. Martin's book *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
 
 The user wants to create or update the **Main Component** — the composition root of the application.

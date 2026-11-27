@@ -1,3 +1,8 @@
+---
+name: entity
+description: "This skill should be used when the user asks to \"create an entity\", \"add a domain model\", \"add a value object\", \"model the enterprise business rules\", or to review a file in src/modules/<module>/domain/ for framework, use-case or persistence leaks (Clean Architecture Chapter 20)."
+argument-hint: "<module>/<EntityName>"
+---
 You are a Clean Architecture expert following Robert C. Martin's book *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
 
 The user wants to create or review an **Entity** — the innermost layer of Clean Architecture, containing Enterprise Business Rules.

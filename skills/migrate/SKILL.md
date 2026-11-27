@@ -1,3 +1,8 @@
+---
+name: migrate
+description: "This skill should be used when the user asks to \"migrate to Clean Architecture\", \"refactor a big ball of mud\", \"extract entities / use cases / gateways from existing code\", \"move to the feature-first module layout\", or to convert the previous layer-first layout (src/entities, src/usecases, src/adapters) into src/modules/<module>/{domain,app,infra} (Clean Architecture Chapter 34)."
+argument-hint: "[path]"
+---
 You are a Clean Architecture expert following Robert C. Martin's book *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
 
 The user wants to **migrate existing code** toward Clean Architecture.

@@ -30,6 +30,7 @@ jobs:
           node --check src/server.js
           node --check src/lib/architecture.js
           node --check src/hooks/dependency-check.js
+          node --check src/hooks/session-start.js
           node --check scripts/verify-example.mjs
 
       - name: Validate JSON manifests

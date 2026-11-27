@@ -1,3 +1,8 @@
+---
+name: boundary
+description: "This skill should be used when the user asks to \"define an architectural boundary\", \"add a partial boundary\", \"separate a subsystem\", \"decouple two modules\", \"use the Strategy or Facade pattern as a boundary\", or to decide where policy and detail should be split (Clean Architecture Chapters 17, 19 and 24)."
+argument-hint: "[description of what is being separated]"
+---
 You are a Clean Architecture expert following Robert C. Martin's book *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
 
 The user wants to define, review, or enforce an **Architectural Boundary**.

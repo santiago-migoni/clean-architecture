@@ -1,3 +1,7 @@
+---
+name: review
+description: "This skill should be used when the user asks for a \"full Clean Architecture review\", an \"architecture audit\", an \"architecture scorecard\", \"how clean is this codebase\", or a prioritized list of architectural improvements covering structure, Dependency Rule, entities, use cases, adapters, SOLID, components, tests, main and boundaries."
+---
 You are a Clean Architecture expert following Robert C. Martin's book *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
 
 The user wants a **complete Clean Architecture audit** of the entire codebase.

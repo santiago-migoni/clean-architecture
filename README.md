@@ -50,10 +50,11 @@ No `npm install` needed — the MCP server uses only Node.js built-ins.
 
 ## Available Commands
 
-All commands are namespaced under `/clean-architecture:`.
+All commands are namespaced under `/clean-architecture:`. Every skill has a `description` in its frontmatter, so Claude also loads the right one by itself when the request matches (e.g. "add a use case to orders" loads `usecase`).
 
 | Command | What it does |
 |---|---|
+| `/clean-architecture:rules` | The rules every other skill assumes: layout, Dependency Rule, Module Rule, layer responsibilities, SOLID, Test Boundary. Loaded before writing or reviewing code in a project that uses the layout |
 | `/clean-architecture:init` | Scaffold a full feature-first Clean Architecture project (modules with domain / app / infra) |
 | `/clean-architecture:entity` | Create an Enterprise Business Rule entity in a module's `domain/` |
 | `/clean-architecture:usecase` | Create a Use Case interactor with Input/Output Ports in a module's `app/` |
@@ -82,9 +83,11 @@ The plugin ships an MCP server (`src/server.js`) that gives Claude real file-sys
 | `ca_layer_of` | Identifies which layer and module a file belongs to and checks its imports for compliance |
 | `ca_cycles` | Detects cyclic dependencies between components — modules, `shared`, `platform`, `main` (ADP check) |
 
-## Real-time Hook
+## Hooks
 
-The plugin registers a **PostToolUse hook** that fires after every file edit. If the file you just wrote violates the Dependency Rule or the Module Rule, you'll see a warning inline in Claude Code immediately:
+**SessionStart.** A plugin's `CLAUDE.md` is never loaded into the projects that install it, so the rules ship as the `rules` skill. When a session starts in a project that has a `modules/` folder (under `src/`, `app/` or the root), this hook tells Claude to load `clean-architecture:rules` before writing or reviewing code. Any other project gets no Clean Architecture context at all.
+
+**PostToolUse (real time).** The plugin registers a **PostToolUse hook** that fires after every file edit. If the file you just wrote violates the Dependency Rule or the Module Rule, you'll see a warning inline in Claude Code immediately:
 
 ```
 ⚠️  CLEAN ARCHITECTURE — ARCHITECTURE RULE VIOLATION
