@@ -1,6 +1,6 @@
 ---
 name: presenter
-description: "This skill should be used when the user asks to \"create a presenter\", \"add a view model\", \"format a use case output\", \"apply the Humble Object pattern\", or needs an Output Port implementation in src/modules/<module>/infra/adapters/presenters/ (Clean Architecture Chapter 23). It first checks whether a presenter is justified at all."
+description: "This skill should be used when the user asks to \"create a presenter\", \"add a view model\", \"format a use case output\", \"apply the Humble Object pattern\", or needs an Output Port implementation in src/modules/<module>/infrastructure/presenters/ (Clean Architecture Chapter 23). It first checks whether a presenter is justified at all."
 argument-hint: "<module>/<Name>"
 ---
 You are a Clean Architecture expert following Robert C. Martin's book *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
@@ -23,8 +23,8 @@ From the book (Chapter 23 — Presenters and Humble Objects):
 > "The Humble Object pattern is a design pattern that was originally identified as a way to help unit testers to separate behaviors that are hard to test from behaviors that are easy to test."
 
 The Presenter:
-- Lives in the **Interface Adapters** layer (`src/modules/<module>/infra/adapters/presenters/`).
-- Implements the **Output Port interface** (defined in the module's `app/ports/output/`).
+- Lives in the **Interface Adapters** layer (`src/modules/<module>/infrastructure/presenters/`).
+- Implements the **Output Port interface** (defined in the module's `application/ports/output/`).
 - Receives the Use Case **Response Model** (plain data object) from the interactor.
 - Converts it into a **View Model** — data formatted for display/HTTP response.
 - Is called by the **Interactor** — the use case pushes data to the presenter (not the other way around).
@@ -54,15 +54,15 @@ Without this pattern, the View mixes formatting logic (testable) with rendering 
 ## Your Task
 
 ### Step 1: Verify the Output Port Interface
-Check `src/modules/<module>/app/ports/output/<name>-output.<ext>`. The Presenter implements this interface.
+Check `src/modules/<module>/application/ports/output/<name>-output.<ext>`. The Presenter implements this interface.
 
 If it does not exist yet, create it now (`present(response)` + `presentError(error)`), change the interactor so `execute` returns `Promise<void>` and calls the Output Port instead of returning the response model, and update the interactor test accordingly (see the `usecase` skill, Step 4).
 
 ### Step 2: Define the View Model
-File: `src/modules/<module>/infra/adapters/presenters/view-models/<name>-view-model.<ext>`
+File: `src/modules/<module>/infrastructure/presenters/<name>-view-model.<ext>`
 
 ```typescript
-// src/modules/<module>/infra/adapters/presenters/view-models/<name>-view-model.ts
+// src/modules/<module>/infrastructure/presenters/<name>-view-model.ts
 // Plain data — no methods, no logic
 // Formatted for consumption by the view/HTTP response
 
@@ -84,19 +84,19 @@ export interface <Name>ErrorViewModel {
 ```
 
 ### Step 3: Create the Presenter (Testable Part)
-File: `src/modules/<module>/infra/adapters/presenters/<name>-presenter.<ext>`
+File: `src/modules/<module>/infrastructure/presenters/<name>-presenter.<ext>`
 
 ```typescript
-// src/modules/<module>/infra/adapters/presenters/<name>-presenter.ts
-// Layer: infra (Interface Adapters)
-// Implements: Output Port (defined in this module's app layer)
-// May import from: this module's app/ports/output/ (for interface and response model types), src/shared/
+// src/modules/<module>/infrastructure/presenters/<name>-presenter.ts
+// Layer: infrastructure (Interface Adapters)
+// Implements: Output Port (defined in this module's application layer)
+// May import from: this module's application/ports/output/ (for interface and response model types), src/shared/
 // May NOT import from: platform/, main/, concrete interactors, or another module
 
-import { I<Name>OutputPort, <Name>ResponseModel } from '../../../app/ports/output/<name>-output';
-import { <Name>ViewModel, <Name>ErrorViewModel, <Name>ErrorCode } from './view-models/<name>-view-model';
+import { I<Name>OutputPort, <Name>ResponseModel } from '../../../application/ports/output/<name>-output';
+import { <Name>ViewModel, <Name>ErrorViewModel, <Name>ErrorCode } from './<name>-view-model';
 // The typed errors this use case can report, e.g.:
-// import { CustomerNotFoundError } from '../../../app/errors/customer-not-found-error';
+// import { CustomerNotFoundError } from '../../../application/errors/customer-not-found-error';
 
 export class <Name>Presenter implements I<Name>OutputPort {
   private _viewModel: <Name>ViewModel | null = null;
@@ -149,8 +149,8 @@ export class <Name>Presenter implements I<Name>OutputPort {
 
 ```python
 # Python
-# src/modules/<module>/infra/adapters/presenters/<name>_presenter.py
-from ....app.ports.output.<name>_output import I<Name>OutputPort, <Name>ResponseModel
+# src/modules/<module>/infrastructure/presenters/<name>_presenter.py
+from ....application.ports.output.<name>_output import I<Name>OutputPort, <Name>ResponseModel
 from .view_models.<name>_view_model import <Name>ViewModel, <Name>ErrorViewModel
 
 class <Name>Presenter(I<Name>OutputPort):
@@ -197,9 +197,9 @@ File: `src/platform/web/<name>-route.<ext>` or as part of the router (platform m
 // presenter + controller pair (one per request) and injects the factory.
 
 import type { Request, Response } from 'express';
-import type { <Name>Controller } from '../../modules/<module>/infra/adapters/controllers/<name>-controller';
-import type { <Name>Presenter } from '../../modules/<module>/infra/adapters/presenters/<name>-presenter';
-import type { <Name>ErrorCode } from '../../modules/<module>/infra/adapters/presenters/view-models/<name>-view-model';
+import type { <Name>Controller } from '../../modules/<module>/infrastructure/controllers/<name>-controller';
+import type { <Name>Presenter } from '../../modules/<module>/infrastructure/presenters/<name>-presenter';
+import type { <Name>ErrorCode } from '../../modules/<module>/infrastructure/presenters/<name>-view-model';
 
 type <Name>Pair = { presenter: <Name>Presenter; controller: <Name>Controller };
 
@@ -224,7 +224,7 @@ export function <name>Handler(make: () => <Name>Pair) {
 ```
 
 ### Step 5: Create Presenter Tests (no HTTP stack needed)
-File: `tests/<module>/unit/infra/adapters/presenters/<name>-presenter.test.<ext>`
+File: `tests/<module>/unit/infrastructure/presenters/<name>-presenter.test.<ext>`
 ```typescript
 describe('<Name>Presenter', () => {
   let presenter: <Name>Presenter;
@@ -260,8 +260,8 @@ describe('<Name>Presenter', () => {
 
 ## Validation Checklist
 
-- [ ] Presenter lives in `src/modules/<module>/infra/adapters/presenters/`.
-- [ ] Presenter implements the Output Port interface from the module's `app/ports/output/`.
+- [ ] Presenter lives in `src/modules/<module>/infrastructure/presenters/`.
+- [ ] Presenter implements the Output Port interface from the module's `application/ports/output/`.
 - [ ] Presenter does NOT import from `platform/`, `main/`, another module, or any HTTP library.
 - [ ] View Model is a plain data structure with NO methods.
 - [ ] All formatting logic is in the Presenter (testable), NOT in the View (Humble Object).

@@ -1,6 +1,6 @@
 // src/modules/customers/domain/customer.ts
 // Layer: domain (Enterprise Business Rules)
-// Dependencies: at most src/shared/ — never app/, infra/, platform/, main/ or another module.
+// Dependencies: at most src/shared/ — never application/, infrastructure/, platform/, main/ or another module.
 
 import { InvalidCustomerError } from './errors/invalid-customer-error';
 

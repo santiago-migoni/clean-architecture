@@ -2,21 +2,21 @@
  * Shared architecture rules — the single source of truth used by both the MCP
  * server (src/server.js) and the PostToolUse hook (src/hooks/dependency-check.js).
  *
- * Layout (feature-first, domain / app / infra):
+ * Layout (feature-first, domain / application / infrastructure):
  *
  *   src/
  *   ├── modules/<module>/
  *   │   ├── domain/            Enterprise business rules
- *   │   ├── app/               Use cases: ports/{input,output} + interactors
- *   │   └── infra/adapters/    controllers, presenters, gateways
+ *   │   ├── application/       Use cases: ports/{input,output} + interactors
+ *   │   └── infrastructure/    Interface adapters: controllers, presenters, gateways
  *   ├── shared/                Shared kernel (pure, minimal)
  *   ├── platform/              Frameworks & drivers: web, db, external
  *   └── main/                  Composition root
  *
  * Two axes of rules:
- *   1. Layers  — dependencies point inward: infra → app → domain.
+ *   1. Layers  — dependencies point inward: infrastructure → application → domain.
  *   2. Modules — a module never reaches into another module. The ONLY legal
- *      crossing is  A/infra/adapters  →  B/app/ports/input.
+ *      crossing is  A/infrastructure  →  B/application/ports/input.
  *
  * Detection always runs on a path RELATIVE to src/, never on the absolute path,
  * so a project that happens to live under /app/ is not misclassified, and it is
@@ -28,12 +28,12 @@ import { dirname, resolve, relative } from 'path';
 // ── Layers ─────────────────────────────────────────────────────────────────
 
 export const LAYERS = {
-  shared:   { layer: 'shared',   level: 0 },
-  domain:   { layer: 'domain',   level: 1 },
-  app:      { layer: 'app',      level: 2 },
-  adapters: { layer: 'adapters', level: 3 },
-  platform: { layer: 'platform', level: 4 },
-  main:     { layer: 'main',     level: 5 },
+  shared:         { layer: 'shared',         level: 0 },
+  domain:         { layer: 'domain',         level: 1 },
+  application:    { layer: 'application',    level: 2 },
+  infrastructure: { layer: 'infrastructure', level: 3 },
+  platform:       { layer: 'platform',       level: 4 },
+  main:           { layer: 'main',           level: 5 },
 };
 
 // Top-level folders of src/ and the layer each one is.
@@ -45,22 +45,29 @@ const TOP_LEVEL = {
   composition: 'main',
 };
 
-// Layer folder directly under modules/<module>/. The whole infra/ folder is the adapters layer
-// (not only infra/adapters/): a file placed directly under infra/ must not escape the rules.
-const MODULE_LAYER = { domain: 'domain', app: 'app', infra: 'adapters' };
+// Layer folder directly under modules/<module>/. The whole infrastructure/ folder is the interface
+// adapters layer: controllers/, presenters/ and gateways/ sit directly under it, and any other file
+// placed there is held to the same rules.
+const MODULE_LAYER = { domain: 'domain', application: 'application', infrastructure: 'infrastructure' };
+
+// Folder names of plugin versions before 2.0 (app/, infra/ and infra/adapters/). They are still
+// classified, so the rules keep protecting an old project, but ca_scan asks for the rename.
+export const LEGACY_MODULE_LAYER = { app: 'application', infra: 'infrastructure' };
 
 export const ALLOWED_LAYERS = {
-  shared:   [],
-  domain:   ['shared'],
-  app:      ['domain', 'shared'],
-  adapters: ['app', 'domain', 'shared'],
-  platform: ['adapters', 'app', 'domain', 'shared'],
-  main:     ['platform', 'adapters', 'app', 'domain', 'shared'],
+  shared:         [],
+  domain:         ['shared'],
+  application:    ['domain', 'shared'],
+  infrastructure: ['application', 'domain', 'shared'],
+  platform:       ['infrastructure', 'application', 'domain', 'shared'],
+  main:           ['platform', 'infrastructure', 'application', 'domain', 'shared'],
 };
 
 /** Folder names that would be ambiguous as a module name. */
 export const RESERVED_MODULE_NAMES = new Set([
-  'shared', 'platform', 'main', 'app', 'domain', 'infra', 'modules', 'adapters', 'bootstrap', 'composition',
+  'shared', 'platform', 'main', 'domain', 'application', 'infrastructure', 'modules', 'bootstrap', 'composition',
+  // names of earlier layouts, still classified as layers
+  'app', 'infra', 'adapters',
 ]);
 
 // ── Path helpers ───────────────────────────────────────────────────────────
@@ -81,7 +88,7 @@ function classifyAt(segs, i) {
   if (top === 'modules') {
     const mod = segs[i + 1];
     if (!mod) return null;
-    const layer = MODULE_LAYER[segs[i + 2]];
+    const layer = MODULE_LAYER[segs[i + 2]] ?? LEGACY_MODULE_LAYER[segs[i + 2]];
     return { layer: layer ? LAYERS[layer] : null, module: mod };
   }
   if (TOP_LEVEL[top] && segs.length > i + 1) return { layer: LAYERS[TOP_LEVEL[top]], module: null };
@@ -91,7 +98,7 @@ function classifyAt(segs, i) {
 /**
  * Classify a path relative to src/ (or an import specifier converted with importToSrcRelative)
  * by POSITION, never by a folder name found anywhere in the path:
- *   - src/main/app/index.ts is main (not app), src/modules/orders/domain/shared/x.ts is domain (not shared);
+ *   - src/main/application/index.ts is main (not application), src/modules/orders/domain/shared/x.ts is domain (not shared);
  *   - src/main/compose/modules/x or src/platform/modules/x is not a module.
  * An alias prefix ("@/", "~/", "src/") is skipped, and so is a Maven/Gradle source set (main/java/...).
  * When the root is not a known folder — a Java or Python package such as com/acme/modules/... or
@@ -197,20 +204,28 @@ export function importToSrcRelative(file, imp, srcDir) {
 // ── Rules ──────────────────────────────────────────────────────────────────
 
 /**
+ * True when a path relative to src/ uses a layer folder name of an earlier layout
+ * (modules/<m>/app/ or modules/<m>/infra/) instead of application/ or infrastructure/.
+ */
+export function usesLegacyLayerName(relPath) {
+  return /(^|\/)modules\/[^/]+\/(app|infra)\//.test(toPosix(relPath));
+}
+
+/**
  * The only legal way for one module to reach another:
- *   adapters of module A  →  app/ports/input of module B
+ *   infrastructure of module A  →  application/ports/input of module B
  */
 export function isLegalCrossModuleImport(fromLayer, toLayer, importedRelPath) {
   return (
-    fromLayer === 'adapters' &&
-    toLayer === 'app' &&
-    /\/app\/ports\/input(\/|$)/.test(norm(importedRelPath))
+    fromLayer === 'infrastructure' &&
+    toLayer === 'application' &&
+    /\/(application|app)\/ports\/input(\/|$)/.test(norm(importedRelPath))
   );
 }
 
 function severityFor(layer) {
   if (layer === 'shared' || layer === 'domain') return 'CRITICAL';
-  if (layer === 'app') return 'HIGH';
+  if (layer === 'application') return 'HIGH';
   return 'MEDIUM';
 }
 
@@ -245,7 +260,7 @@ export function findViolations(file, srcDir, content) {
         importedModule: impMod,
         message: `${layerDef.layer} must not depend on ${importedLayer.layer}`,
         fix:
-          "Define an interface (port) in this module's app/ports/ and inject the concrete " +
+          "Define an interface (port) in this module's application/ports/ and inject the concrete " +
           'implementation from main/.',
       });
       continue;
@@ -264,8 +279,8 @@ export function findViolations(file, srcDir, content) {
         importedModule: impMod,
         message: `module "${mod}" must not import module "${impMod}" directly`,
         fix:
-          `Declare a port owned by "${mod}" (app/ports/output), implement it in ` +
-          `"${mod}/infra/adapters" by calling "${impMod}/app/ports/input", and reference ` +
+          `Declare a port owned by "${mod}" (application/ports/output), implement it in ` +
+          `"${mod}/infrastructure/gateways" by calling "${impMod}/application/ports/input", and reference ` +
           `"${impMod}" entities from the domain by id only.`,
       });
     }

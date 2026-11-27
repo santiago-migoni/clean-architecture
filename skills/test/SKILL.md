@@ -7,7 +7,7 @@ You are a Clean Architecture expert following Robert C. Martin's book *Clean Arc
 
 The user wants to create tests that comply with the **Test Boundary** principle.
 
-The argument after the command is `<module>/<Name>` of the class/use case/entity to test (e.g., `orders/PlaceOrderInteractor`, `orders/Order`, `orders/OrderGateway`). Tests mirror the source tree: `tests/<module>/unit/{domain,app,infra/adapters}/`, `tests/<module>/integration/infra/adapters/gateways/`, and `tests/e2e/`.
+The argument after the command is `<module>/<Name>` of the class/use case/entity to test (e.g., `orders/PlaceOrderInteractor`, `orders/Order`, `orders/OrderGateway`). Unit tests mirror the source tree (`tests/<module>/unit/{domain,application,infrastructure}/`); integration tests can only be gateway tests against a real database, so they sit flat in `tests/<module>/integration/`; e2e tests go to `tests/e2e/`.
 
 In the examples below, `@/` is an alias for `src/` (`moduleNameMapper` in Jest, `paths` in tsconfig, `pythonpath` in pytest) so that test imports do not depend on directory depth.
 
@@ -21,7 +21,7 @@ Key principles:
 2. **Tests must be isolated** — use case tests must not touch the DB, HTTP, or any framework.
 3. **Tests should be fragile-free** — don't test implementation details; test behavior through interfaces.
 4. **Test API** — create a specific API for tests that lets the system be put into a testable state without going through the production UI.
-5. **Tests follow the Module Rule too** — a test of module A must not import module B's `domain/` or `infra/`. Fake the cross-module port instead (see Test Type 2).
+5. **Tests follow the Module Rule too** — a test of module A must not import module B's `domain/` or `infrastructure/`. Fake the cross-module port instead (see Test Type 2).
 
 ## Test Pyramid in Clean Architecture
 
@@ -100,16 +100,16 @@ describe('Order Entity', () => {
 
 ### Test Type 2: Use Case Interactor Tests
 
-File: `tests/<module>/unit/app/<use-case-name>.test.<ext>`
+File: `tests/<module>/unit/application/<use-case-name>.test.<ext>`
 
 ```typescript
 // Use case tests use an in-memory repository and fakes for outbound ports
 // They do NOT use a real DB or HTTP
-import { PlaceOrderInteractor } from '@/modules/orders/app/interactors/place-order';
-import { ICustomerLookup } from '@/modules/orders/app/ports/output/customer-lookup';
-import { CustomerNotFoundError } from '@/modules/orders/app/errors/customer-not-found-error';
+import { PlaceOrderInteractor } from '@/modules/orders/application/interactors/place-order';
+import { ICustomerLookup } from '@/modules/orders/application/ports/output/customer-lookup';
+import { CustomerNotFoundError } from '@/modules/orders/application/errors/customer-not-found-error';
 import { InvalidOrderError } from '@/modules/orders/domain/errors/invalid-order-error';
-import { OrderInMemoryRepository } from '@/modules/orders/infra/adapters/gateways/in-memory/order-in-memory-repository';
+import { OrderInMemoryRepository } from '@/modules/orders/infrastructure/gateways/in-memory/order-in-memory-repository';
 
 const lines = [{ productId: 'p1', quantity: 1, unitPriceCents: 1000 }];
 
@@ -165,12 +165,12 @@ expect(outputPort.presentError).not.toHaveBeenCalled();
 
 ### Test Type 3: Presenter Tests (only if the use case has a Presenter)
 
-File: `tests/<module>/unit/infra/adapters/presenters/<name>-presenter.test.<ext>`
+File: `tests/<module>/unit/infrastructure/presenters/<name>-presenter.test.<ext>`
 
 ```typescript
 // Presenter tests need NO HTTP stack
-import { PlaceOrderPresenter } from '@/modules/orders/infra/adapters/presenters/place-order-presenter';
-import { CustomerNotFoundError } from '@/modules/orders/app/errors/customer-not-found-error';
+import { PlaceOrderPresenter } from '@/modules/orders/infrastructure/presenters/place-order-presenter';
+import { CustomerNotFoundError } from '@/modules/orders/application/errors/customer-not-found-error';
 
 describe('PlaceOrderPresenter', () => {
   let presenter: PlaceOrderPresenter;
@@ -203,12 +203,12 @@ describe('PlaceOrderPresenter', () => {
 
 ### Test Type 4: Gateway Integration Tests
 
-File: `tests/<module>/integration/infra/adapters/gateways/<name>-repository-impl.test.<ext>`
+File: `tests/<module>/integration/<name>-repository-impl.test.<ext>`
 
 ```typescript
 // Integration tests use a REAL database (test schema)
 // These are separate from unit tests and require DB setup
-import { OrderRepositoryImpl } from '@/modules/orders/infra/adapters/gateways/order-repository-impl';
+import { OrderRepositoryImpl } from '@/modules/orders/infrastructure/gateways/order-repository-impl';
 import { Order, OrderId } from '@/modules/orders/domain/order';
 // import test DB setup helpers
 
@@ -246,13 +246,13 @@ describe('OrderRepositoryImpl', () => {
 
 ### Test Type 5: Controller Tests
 
-File: `tests/<module>/unit/infra/adapters/controllers/<name>-controller.test.<ext>`
+File: `tests/<module>/unit/infrastructure/controllers/<name>-controller.test.<ext>`
 
 ```typescript
 // Controller tests stub the use case — the Input Port if the module has one, otherwise the
 // interactor's `execute` (an object with just `execute` is enough; no real interactor, no DB).
 // Default style shown (no Output Port): handle(req, res) maps the response model to HTTP.
-import { PlaceOrderController } from '@/modules/orders/infra/adapters/controllers/place-order-controller';
+import { PlaceOrderController } from '@/modules/orders/infrastructure/controllers/place-order-controller';
 
 describe('PlaceOrderController', () => {
   it('should map the HTTP request to the use case request model', async () => {
@@ -284,13 +284,13 @@ describe('PlaceOrderController', () => {
 
 ### Test Type 6: Cross-Module Gateway Tests
 
-File: `tests/<module>/unit/infra/adapters/gateways/<other>-lookup-gateway.test.<ext>`
+File: `tests/<module>/unit/infrastructure/gateways/<other>-lookup-gateway.test.<ext>`
 
 ```typescript
 // The gateway is the ONLY adapter allowed to touch another module — and only its input port.
-// Fake that input port; never import the other module's domain or infra.
-import { CustomerLookupGateway } from '@/modules/orders/infra/adapters/gateways/customer-lookup-gateway';
-import { IGetCustomerUseCase } from '@/modules/customers/app/ports/input/get-customer';
+// Fake that input port; never import the other module's domain or infrastructure.
+import { CustomerLookupGateway } from '@/modules/orders/infrastructure/gateways/customer-lookup-gateway';
+import { IGetCustomerUseCase } from '@/modules/customers/application/ports/input/get-customer';
 
 it('translates the customers module answer into orders vocabulary', async () => {
   const getCustomer: jest.Mocked<IGetCustomerUseCase> = { execute: jest.fn() };
@@ -349,7 +349,7 @@ markers =
 - [ ] Use case tests do NOT connect to a real database.
 - [ ] Integration tests are in a separate directory and test suite.
 - [ ] Presenter tests (if a Presenter exists) run without starting an HTTP server.
-- [ ] A test of one module never imports another module's `domain/` or `infra/` (cross-module ports are faked).
+- [ ] A test of one module never imports another module's `domain/` or `infrastructure/` (cross-module ports are faked).
 - [ ] Controller tests mock the use case interface.
 - [ ] No business logic is tested only in integration or e2e tests.
 - [ ] Every guard test was proven with a mutation check (the code was broken on purpose and the test failed).

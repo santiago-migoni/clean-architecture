@@ -6,7 +6,7 @@
  *   negative  planted violations          -> the scanner must report exactly those
  *
  * A scanner that reports nothing may simply be broken (we hit this twice while building the example:
- * a module detector that misread main/compose as a module, and an infra/ folder that escaped the rules),
+ * a module detector that misread main/compose as a module, and a file under infra/ that escaped the rules),
  * so a clean result alone proves nothing. No dependencies are needed: it drives the repo's own MCP server.
  *
  *   node scripts/verify-example.mjs
@@ -88,7 +88,7 @@ try {
   check('ca_metrics: components are the modules plus platform and main',
     same(components, ['main', 'modules/customers', 'modules/orders', 'platform']), components.join(', '));
 
-  const clean = runHook(join(EXAMPLE, 'src/modules/orders/infra/adapters/gateways/customer-lookup-gateway.ts'));
+  const clean = runHook(join(EXAMPLE, 'src/modules/orders/infrastructure/gateways/customer-lookup-gateway.ts'));
   check('hook: silent on the one legal cross-module import', clean.status === 0 && clean.stderr === '', clean.stderr);
 
   // ── 2. negative: planted violations must be found, exactly those ───────────────────────
@@ -96,13 +96,13 @@ try {
   const bad = tmpProject('bad'); temps.push(bad);
   cpSync(join(EXAMPLE, 'src'), join(bad, 'src'), { recursive: true });
   const M = 'src/modules';
-  write(bad, `${M}/orders/domain/planted-outward.ts`, "import { PlaceOrderInteractor } from '../app/interactors/place-order';\n");
-  write(bad, `${M}/orders/app/interactors/planted-cross.ts`, "import { Customer } from '../../../customers/domain/customer';\n");
-  write(bad, `${M}/orders/infra/adapters/gateways/planted-platform.ts`, "import { createDbConnection } from '../../../../../platform/db/connection';\n");
-  write(bad, `${M}/orders/infra/adapters/gateways/planted-infra.ts`, "import { SqlCustomerRepository } from '../../../../customers/infra/adapters/gateways/sql-customer-repository';\n");
-  // a file placed directly under infra/ (not infra/adapters/) must not escape the rules
-  write(bad, `${M}/customers/infra/escapes.ts`, 'export const escapes = 1;\n');
-  write(bad, `${M}/orders/infra/adapters/gateways/planted-escape.ts`, "import { escapes } from '../../../../customers/infra/escapes';\n");
+  write(bad, `${M}/orders/domain/planted-outward.ts`, "import { PlaceOrderInteractor } from '../application/interactors/place-order';\n");
+  write(bad, `${M}/orders/application/interactors/planted-cross.ts`, "import { Customer } from '../../../customers/domain/customer';\n");
+  write(bad, `${M}/orders/infrastructure/gateways/planted-platform.ts`, "import { createDbConnection } from '../../../../platform/db/connection';\n");
+  write(bad, `${M}/orders/infrastructure/gateways/planted-infra.ts`, "import { SqlCustomerRepository } from '../../../customers/infrastructure/gateways/sql-customer-repository';\n");
+  // a file placed directly under infrastructure/ (not in controllers/presenters/gateways) must not escape the rules
+  write(bad, `${M}/customers/infrastructure/escapes.ts`, 'export const escapes = 1;\n');
+  write(bad, `${M}/orders/infrastructure/gateways/planted-escape.ts`, "import { escapes } from '../../../customers/infrastructure/escapes';\n");
 
   const found = callTool(bad, 'ca_scan');
   const got = found.violations.map((v) => `${v.rule}:${v.file.split('/').pop()}`);
@@ -114,7 +114,7 @@ try {
     'cross-module:planted-escape.ts',
   ];
   check('ca_scan: finds exactly the planted violations', same(got, want), `got:  ${got.sort().join(', ')}\n         want: ${want.sort().join(', ')}`);
-  check('ca_scan: severity CRITICAL for domain -> app', found.violations.some((v) => v.file.endsWith('planted-outward.ts') && v.severity === 'CRITICAL'));
+  check('ca_scan: severity CRITICAL for domain -> application', found.violations.some((v) => v.file.endsWith('planted-outward.ts') && v.severity === 'CRITICAL'));
   check('ca_scan: the legal edge is still not reported', !got.some((g) => g.includes('customer-lookup-gateway')));
   check('ca_scan: grade drops below A', !found.summary.grade.startsWith('A'), found.summary.grade);
 
@@ -126,8 +126,8 @@ try {
   const phantom = tmpProject('phantom'); temps.push(phantom);
   cpSync(join(EXAMPLE, 'src'), join(phantom, 'src'), { recursive: true });
   write(phantom, 'src/main/modules/orders.ts',
-    "import { SqlOrderRepository } from '../../modules/orders/infra/adapters/gateways/sql-order-repository';\n" +
-    "import { SqlCustomerRepository } from '../../modules/customers/infra/adapters/gateways/sql-customer-repository';\n");
+    "import { SqlOrderRepository } from '../../modules/orders/infrastructure/gateways/sql-order-repository';\n" +
+    "import { SqlCustomerRepository } from '../../modules/customers/infrastructure/gateways/sql-customer-repository';\n");
   write(phantom, 'src/platform/modules/helper.ts', "import { Order } from '../../modules/orders/domain/order';\n");
   const ph = callTool(phantom, 'ca_scan');
   check('main/modules/ and platform/modules/ are not read as business modules (no false cross-module violations)',
@@ -145,13 +145,27 @@ try {
   check('ca_scan: warns about the legacy layout', old.warnings.length === 1 && /previous layer-first layout/.test(old.warnings[0]), JSON.stringify(old.warnings));
   check('ca_scan: no health score for code the rules do not cover', old.summary.healthScore === null && old.summary.grade.startsWith('N/A'), old.summary.grade);
 
+  // Projects created before 2.0 use modules/<m>/app/ and modules/<m>/infra/adapters/: still enforced, and flagged
+  const pre2 = tmpProject('pre2'); temps.push(pre2);
+  write(pre2, `${M}/orders/domain/order.ts`, 'export class Order {}\n');
+  write(pre2, `${M}/orders/app/interactors/place-order.ts`, "import { Order } from '../../domain/order';\n");
+  write(pre2, `${M}/orders/infra/adapters/gateways/legal.ts`, "import { G } from '../../../../customers/app/ports/input/get-customer';\n");
+  write(pre2, `${M}/orders/infra/adapters/gateways/illegal.ts`, "import { C } from '../../../../customers/domain/customer';\n");
+  write(pre2, `${M}/customers/domain/customer.ts`, 'export class Customer {}\n');
+  write(pre2, `${M}/customers/app/ports/input/get-customer.ts`, 'export interface G {}\n');
+  const p2 = callTool(pre2, 'ca_scan');
+  const p2Got = p2.violations.map((v) => `${v.rule}:${v.file.split('/').pop()}`);
+  check('pre-2.0 names app/ and infra/adapters/ are still enforced (legal edge allowed, illegal one reported)',
+    same(p2Got, ['cross-module:illegal.ts']) && p2.summary.unclassifiedFiles === 0, p2Got.join(', '));
+  check('pre-2.0 names are flagged with a rename warning', p2.warnings.some((w) => /before 2\.0/.test(w)), JSON.stringify(p2.warnings));
+
   // ── 4. scaffold ─────────────────────────────────────────────────────────────────────────
   console.log('\n[4] ca_scaffold is lean and safe');
   const scaf = tmpProject('scaffold'); temps.push(scaf);
   const out = callTool(scaf, 'ca_scaffold', { rootPath: scaf, language: 'typescript', domain: 'Shop', modules: ['orders', 'customers'] });
   const dirs = out.created.filter((c) => c.endsWith('/')).sort();
-  check('scaffold creates only domain/app/infra per module, main/ and docs/architecture/',
-    same(dirs, ['docs/architecture/', 'src/main/', ...['orders', 'customers'].flatMap((m) => ['domain', 'app', 'infra'].map((l) => `src/modules/${m}/${l}/`))]), dirs.join(', '));
+  check('scaffold creates only domain/application/infrastructure per module, main/ and docs/architecture/',
+    same(dirs, ['docs/architecture/', 'src/main/', ...['orders', 'customers'].flatMap((m) => ['domain', 'application', 'infrastructure'].map((l) => `src/modules/${m}/${l}/`))]), dirs.join(', '));
   check('scaffold writes the architecture doc outside src/', existsSync(join(scaf, 'docs/architecture/ARCHITECTURE.md')) && !existsSync(join(scaf, 'src/ARCHITECTURE.md')));
   check('scaffold creates no shared/ or platform/ until needed', !existsSync(join(scaf, 'src/shared')) && !existsSync(join(scaf, 'src/platform')));
   const rejected = callTool(scaf, 'ca_scaffold', { rootPath: scaf, modules: ['domain'] });
@@ -167,16 +181,16 @@ try {
   console.log('\n[5] layers are classified by position, and barrel / package imports are resolved');
   const pos = tmpProject('positional'); temps.push(pos);
   // must be reported
-  write(pos, `${M}/orders/domain/barrel-outward.ts`, "import { X } from '../app';\n");
-  write(pos, `${M}/orders/app/barrel-cross.ts`, "import { C } from '../../customers/domain';\n");
-  write(pos, `${M}/orders/app/alias-cross.ts`, "import { C } from '@/modules/customers';\n");
-  write(pos, 'src/shop/modules/orders/app/py_cross.py', 'from shop.modules.customers.domain.customer import Customer\n');
-  write(pos, 'src/main/java/com/acme/modules/orders/app/JavaCross.java', 'import com.acme.modules.customers.domain.Customer;\n');
-  // must NOT be reported: main/<app>/ is main, a nested shared/ folder stays in its module's layer,
-  // and the legal cross-module edge also works for Java packages
-  write(pos, 'src/main/app/index.ts', "import { createDbConnection } from '../../platform/db/connection';\n");
+  write(pos, `${M}/orders/domain/barrel-outward.ts`, "import { X } from '../application';\n");
+  write(pos, `${M}/orders/application/barrel-cross.ts`, "import { C } from '../../customers/domain';\n");
+  write(pos, `${M}/orders/application/alias-cross.ts`, "import { C } from '@/modules/customers';\n");
+  write(pos, 'src/shop/modules/orders/application/py_cross.py', 'from shop.modules.customers.domain.customer import Customer\n');
+  write(pos, 'src/main/java/com/acme/modules/orders/application/JavaCross.java', 'import com.acme.modules.customers.domain.Customer;\n');
+  // must NOT be reported: main/<app>/ is main (even when named like a layer), a nested shared/ folder
+  // stays in its module's layer, and the legal cross-module edge also works for Java packages
+  write(pos, 'src/main/application/index.ts', "import { createDbConnection } from '../../platform/db/connection';\n");
   write(pos, `${M}/orders/domain/shared/money.ts`, "import { Order } from '../order';\n");
-  write(pos, 'src/main/java/com/acme/modules/orders/infra/JavaLegal.java', 'import com.acme.modules.customers.app.ports.input.GetCustomer;\n');
+  write(pos, 'src/main/java/com/acme/modules/orders/infrastructure/JavaLegal.java', 'import com.acme.modules.customers.application.ports.input.GetCustomer;\n');
   const ps = callTool(pos, 'ca_scan');
   const psGot = ps.violations.map((v) => `${v.rule}:${v.file.split('/').pop()}`);
   const psWant = [
@@ -192,8 +206,8 @@ try {
   // ca_layer_of on a file of a NESTED project must use that project's src/, not the cwd's
   const nest = tmpProject('nested'); temps.push(nest);
   write(nest, 'src/index.ts', 'export {};\n'); // the cwd has its own src/, like this repo
-  write(nest, `packages/shop/${M}/orders/app/cross.ts`, "import { C } from '../../customers/domain/customer';\n");
-  const lo = callTool(nest, 'ca_layer_of', { filePath: `packages/shop/${M}/orders/app/cross.ts` });
+  write(nest, `packages/shop/${M}/orders/application/cross.ts`, "import { C } from '../../customers/domain/customer';\n");
+  const lo = callTool(nest, 'ca_layer_of', { filePath: `packages/shop/${M}/orders/application/cross.ts` });
   check('ca_layer_of: a nested project is classified against its own src/ (module found, violation reported)',
     lo.module === 'orders' && lo.dependencyRuleCompliant === false && lo.importViolations.some((v) => v.rule === 'cross-module'),
     JSON.stringify(lo).slice(0, 200));
@@ -201,12 +215,12 @@ try {
   // ── 6. the hook, driven the way Claude Code drives it ───────────────────────────────────
   console.log('\n[6] the PostToolUse hook reads Claude Code\'s stdin JSON and covers projects without src/');
   const hk = tmpProject('hook'); temps.push(hk);
-  const outward = write(hk, `${M}/orders/domain/outward.ts`, "import { X } from '../app/interactors/x';\n");
+  const outward = write(hk, `${M}/orders/domain/outward.ts`, "import { X } from '../application/interactors/x';\n");
   const viaStdin = runHookStdin(outward, hk);
   check('hook: warns when the path comes in tool_input.file_path on stdin',
     viaStdin.status === 0 && viaStdin.stderr.includes('ARCHITECTURE RULE VIOLATION'), viaStdin.stderr || '(no output)');
   const noSrc = tmpProject('nosrc'); temps.push(noSrc);
-  const pyOutward = write(noSrc, 'app/modules/orders/domain/outward.py', 'from ..infra.repo import Repo\n');
+  const pyOutward = write(noSrc, 'app/modules/orders/domain/outward.py', 'from ..infrastructure.repo import Repo\n');
   const pyClean = write(noSrc, 'app/modules/orders/domain/clean.py', 'x = 1\n');
   const r1 = runHookStdin(pyOutward, noSrc);
   const r2 = runHookStdin(pyClean, noSrc);

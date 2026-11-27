@@ -7,7 +7,7 @@ You are a Clean Architecture expert following Robert C. Martin's book *Clean Arc
 
 The user wants to create or review an **Entity** — the innermost layer of Clean Architecture, containing Enterprise Business Rules.
 
-The argument after the command is `<module>/<EntityName>` (e.g., `orders/Order`, `customers/Customer`, `billing/Invoice`). The module selects the folder under `src/modules/`. If the project has a single module, the prefix may be omitted; if the module does not exist yet, create `src/modules/<module>/` with its `domain/`, `app/` and `infra/` folders first.
+The argument after the command is `<module>/<EntityName>` (e.g., `orders/Order`, `customers/Customer`, `billing/Invoice`). The module selects the folder under `src/modules/`. If the project has a single module, the prefix may be omitted; if the module does not exist yet, create `src/modules/<module>/` with its `domain/`, `application/` and `infrastructure/` folders first.
 
 In this layout the Entities layer is the module's `domain/` folder.
 
@@ -46,7 +46,7 @@ References to entities of **other modules** are by id only (`customerId: string`
 ```typescript
 // src/modules/<module>/domain/<entity-name>.ts
 // Layer: domain (Enterprise Business Rules)
-// Dependencies: at most src/shared/ — this file must never import from app/, infra/, platform/, main/, or another module
+// Dependencies: at most src/shared/ — this file must never import from application/, infrastructure/, platform/, main/, or another module
 
 export type <EntityName>Id = string; // Use a branded type for safety
 
@@ -142,7 +142,7 @@ Create `tests/<module>/unit/domain/<entity-name>.test.<ext>`:
 ## Validation Checklist
 
 After creating the entity, verify:
-- [ ] The entity file has **zero imports** from `app/`, `infra/`, `platform/`, `main/`, another module, or any third-party library (only `src/shared/` is allowed).
+- [ ] The entity file has **zero imports** from `application/`, `infrastructure/`, `platform/`, `main/`, another module, or any third-party library (only `src/shared/` is allowed).
 - [ ] Entities of other modules are referenced by id only.
 - [ ] All business rules that are enterprise-wide are in the entity (not scattered in use cases).
 - [ ] The entity uses a factory method or constructor that enforces invariants.

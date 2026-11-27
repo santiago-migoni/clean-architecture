@@ -42,39 +42,39 @@ src/
 ├── modules/
 │   ├── customers/
 │   │   ├── domain/            customer.ts, errors/invalid-customer-error.ts
-│   │   ├── app/
+│   │   ├── application/
 │   │   │   ├── ports/input/   get-customer.ts        ← public surface: orders calls it
 │   │   │   ├── ports/output/  customer-repository.ts
 │   │   │   ├── errors/        email-already-registered-error.ts
 │   │   │   └── interactors/   get-customer.ts, register-customer.ts
-│   │   └── infra/adapters/
-│   │       ├── controllers/   register-customer-controller.ts, get-customer-controller.ts, dtos/
-│   │       └── gateways/      sql-customer-repository.ts, persistence/, in-memory/, migrations/
+│   │   └── infrastructure/
+│   │       ├── controllers/   register-customer-controller.ts, get-customer-controller.ts, register-customer-http-request.ts
+│   │       └── gateways/      sql-customer-repository.ts, customer-persistence-model.ts, in-memory/, migrations/
 │   └── orders/
 │       ├── domain/            order.ts, errors/invalid-order-error.ts
-│       ├── app/
+│       ├── application/
 │       │   ├── ports/output/  order-repository.ts, customer-lookup.ts, place-order-output.ts
 │       │   ├── errors/        customer-not-found-error.ts
 │       │   └── interactors/   place-order.ts
-│       └── infra/adapters/
-│           ├── controllers/   place-order-controller.ts, dtos/
-│           ├── presenters/    place-order-presenter.ts, view-models/
-│           └── gateways/      sql-order-repository.ts, customer-lookup-gateway.ts, in-memory/, migrations/
+│       └── infrastructure/
+│           ├── controllers/   place-order-controller.ts, place-order-http-request.ts
+│           ├── presenters/    place-order-presenter.ts, place-order-view-model.ts
+│           └── gateways/      sql-order-repository.ts, order-persistence-model.ts, customer-lookup-gateway.ts, in-memory/, migrations/
 ├── platform/                  db/{connection,migrate}.ts · web/{app,routes,place-order-route}.ts
 └── main/                      index.ts (createApp) · server.ts (listen) · compose/{customers,orders}.ts · index.test.ts
-tests/<module>/{unit,integration}/ · tests/e2e/
+tests/<module>/unit/ (mirrors the module) · tests/<module>/integration/ (flat, gateways) · tests/e2e/
 ```
 
 ## What it demonstrates
 
 | Idea | Where to look |
 |---|---|
-| **Dependency Rule** (`infra → app → domain`) | `eslint.config.js` turns it into lint errors; `/clean-architecture:check` agrees |
-| **Module Rule** — `orders` never imports `customers`' domain or infra | `orders/app/ports/output/customer-lookup.ts` (port owned by `orders`) → `orders/infra/adapters/gateways/customer-lookup-gateway.ts` → `customers/app/ports/input/get-customer.ts` |
+| **Dependency Rule** (`infrastructure → application → domain`) | `eslint.config.js` turns it into lint errors; `/clean-architecture:check` agrees |
+| **Module Rule** — `orders` never imports `customers`' domain or infrastructure | `orders/application/ports/output/customer-lookup.ts` (port owned by `orders`) → `orders/infrastructure/gateways/customer-lookup-gateway.ts` → `customers/application/ports/input/get-customer.ts` |
 | **Optional pieces are optional** | `RegisterCustomer` has no Input Port and no Presenter; `GetCustomer` has an Input Port because another module calls it; `PlaceOrder` has an Output Port + Presenter because it formats money and status |
 | **Humble Object** | `place-order-presenter.ts` holds the logic and is tested without HTTP; `platform/web/place-order-route.ts` only reads it and sends |
 | **Infrastructure is injected** | gateways take the DB connection in their constructor and never import `platform/`; `src/main/` is the only place that instantiates concrete classes |
-| **Typed errors** | `domain/errors/` (entity rules) and `app/errors/` (use case failures) are mapped by `instanceof` in controllers/presenters, never by message text |
+| **Typed errors** | `domain/errors/` (entity rules) and `application/errors/` (use case failures) are mapped by `instanceof` in controllers/presenters, never by message text |
 | **Composition per module** | `main/compose/<module>.ts`; modules are tied together only through input ports |
 | **One composition root for production, one for tests** | `main/index.ts` (SQLite) and `main/index.test.ts` (in-memory); the same HTTP scenarios run against both |
 

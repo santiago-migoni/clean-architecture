@@ -4,17 +4,17 @@ import { readFileSync } from 'node:fs';
 import type { Request, Response } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
 import type { Migration } from '../../platform/db/migrate';
-import type { IGetCustomerUseCase } from '../../modules/customers/app/ports/input/get-customer';
-import { SqlCustomerRepository } from '../../modules/customers/infra/adapters/gateways/sql-customer-repository';
-import { GetCustomerInteractor } from '../../modules/customers/app/interactors/get-customer';
-import { RegisterCustomerInteractor } from '../../modules/customers/app/interactors/register-customer';
-import { RegisterCustomerController } from '../../modules/customers/infra/adapters/controllers/register-customer-controller';
-import { GetCustomerController } from '../../modules/customers/infra/adapters/controllers/get-customer-controller';
+import type { IGetCustomerUseCase } from '../../modules/customers/application/ports/input/get-customer';
+import { SqlCustomerRepository } from '../../modules/customers/infrastructure/gateways/sql-customer-repository';
+import { GetCustomerInteractor } from '../../modules/customers/application/interactors/get-customer';
+import { RegisterCustomerInteractor } from '../../modules/customers/application/interactors/register-customer';
+import { RegisterCustomerController } from '../../modules/customers/infrastructure/controllers/register-customer-controller';
+import { GetCustomerController } from '../../modules/customers/infrastructure/controllers/get-customer-controller';
 
 const sql = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8');
 
 export const customersMigrations: Migration[] = [
-  { name: 'customers/001-create-customers', sql: sql('../../modules/customers/infra/adapters/gateways/migrations/001-create-customers.sql') },
+  { name: 'customers/001-create-customers', sql: sql('../../modules/customers/infrastructure/gateways/migrations/001-create-customers.sql') },
 ];
 
 export function composeCustomers({ db, newId }: { db: DatabaseSync; newId: () => string }) {

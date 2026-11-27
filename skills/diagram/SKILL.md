@@ -13,7 +13,7 @@ Analyze the codebase and generate multiple diagram types to visualize the archit
 ### Step 1: Scan the Codebase
 
 Read all files in `src/` to build a model of:
-- All modules (`src/modules/<module>/`) and, inside each, its layers: `domain/`, `app/`, `infra/adapters/`; plus `shared/`, `platform/`, `main/`.
+- All modules (`src/modules/<module>/`) and, inside each, its layers: `domain/`, `application/`, `infrastructure/`; plus `shared/`, `platform/`, `main/`.
 - All entities and their relationships (references to other modules' entities are by id).
 - All use cases and their input/output ports.
 - All adapters (controllers, presenters, gateways).
@@ -30,33 +30,33 @@ Read all files in `src/` to build a model of:
 CLEAN ARCHITECTURE — [Project Name]
 =====================================
 
-                    ┌─────────────────────────────────────────────────┐
+                    ┌──────────────────────────────────────────────────┐
                     │      FRAMEWORKS & DRIVERS  (platform/)           │
-                    │  [List concrete framework files]                  │
-                    │                                                   │
-                    │  ┌─────────────────────────────────────────────┐ │
-                    │  │  INTERFACE ADAPTERS  (<module>/infra/adapters/) │ │
-                    │  │  Controllers: [list]                         │ │
-                    │  │  Presenters:  [list]                         │ │
-                    │  │  Gateways:    [list]                         │ │
-                    │  │                                               │ │
-                    │  │  ┌─────────────────────────────────────────┐ │ │
-                    │  │  │  APPLICATION BUSINESS RULES (<module>/app/)│ │ │
-                    │  │  │  Use Cases:     [list]                   │ │ │
-                    │  │  │  Input Ports:   [list]                   │ │ │
-                    │  │  │  Output Ports:  [list]                   │ │ │
-                    │  │  │                                           │ │ │
-                    │  │  │  ┌─────────────────────────────────────┐ │ │ │
-                    │  │  │  │  ENTERPRISE RULES (<module>/domain/)  │ │ │ │
-                    │  │  │  │  Entities:  [list]                   │ │ │ │
-                    │  │  │  │  Value Obj: [list]                   │ │ │ │
-                    │  │  │  └─────────────────────────────────────┘ │ │ │
-                    │  │  └─────────────────────────────────────────┘ │ │
-                    │  └─────────────────────────────────────────────┘ │
-                    └─────────────────────────────────────────────────┘
-                                          ↑↑↑
-                             All arrows point INWARD only
-                               (Dependency Rule enforced)
+                    │  [List concrete framework files]                 │
+                    │                                                  │
+                    │ ┌──────────────────────────────────────────────┐ │
+                    │ │  INTERFACE ADAPTERS  (<m>/infrastructure/)   │ │
+                    │ │  Controllers: [list]                         │ │
+                    │ │  Presenters:  [list]                         │ │
+                    │ │  Gateways:    [list]                         │ │
+                    │ │                                              │ │
+                    │ │ ┌──────────────────────────────────────────┐ │ │
+                    │ │ │  APPLICATION RULES (<m>/application/)    │ │ │
+                    │ │ │  Use Cases:     [list]                   │ │ │
+                    │ │ │  Input Ports:   [list]                   │ │ │
+                    │ │ │  Output Ports:  [list]                   │ │ │
+                    │ │ │                                          │ │ │
+                    │ │ │ ┌──────────────────────────────────────┐ │ │ │
+                    │ │ │ │  ENTERPRISE RULES (<module>/domain/) │ │ │ │
+                    │ │ │ │  Entities:  [list]                   │ │ │ │
+                    │ │ │ │  Value Obj: [list]                   │ │ │ │
+                    │ │ │ └──────────────────────────────────────┘ │ │ │
+                    │ │ └──────────────────────────────────────────┘ │ │
+                    │ └──────────────────────────────────────────────┘ │
+                    └──────────────────────────────────────────────────┘
+                                            ↑↑↑
+                               All arrows point INWARD only
+                                (Dependency Rule enforced)
 
 Draw one circle per module, or one circle with a per-module breakdown inside each ring.
 ```
@@ -71,16 +71,16 @@ Show every module as a box, its public surface (input ports), and the links betw
 MODULE MAP
 ==========
 
-┌─ modules/orders ──────────────────────┐        ┌─ modules/customers ───────────────┐
-│ app/ports/input:  place-order         │        │ app/ports/input:  get-customer    │
-│ app/ports/output: order-repository    │        │ app/ports/output: customer-repo   │
-│                   customer-lookup ◄───┼─ owned │                                   │
-│ infra/gateways:   customer-lookup-    │  by    │                                   │
-│                   gateway ────────────┼────────┼──► get-customer (input port)      │
-└───────────────────────────────────────┘        └───────────────────────────────────┘
+┌─ modules/orders ──────────────────────────────┐        ┌─ modules/customers ───────────────────────┐
+│ application/ports/input:  place-order         │        │ application/ports/input:  get-customer    │
+│ application/ports/output: order-repository    │        │ application/ports/output: customer-repo   │
+│                           customer-lookup ◄───┼─ owned │                                           │
+│ infrastructure/gateways:  customer-lookup-    │  by    │                                           │
+│                           gateway ────────────┼────────┼──► get-customer (input port)              │
+└───────────────────────────────────────────────┘        └───────────────────────────────────────────┘
 
 shared/   ← used by both (Money, Id, errors)        platform/ ← web, db, external        main/ ← wires everything
-Legend: ──► legal cross-module link (adapters → app/ports/input)    ══► VIOLATION (direct import)
+Legend: ──► legal cross-module link (infrastructure → application/ports/input)    ══► VIOLATION (direct import)
 ```
 
 ---
@@ -98,39 +98,39 @@ USE CASE: PlaceOrder
 HTTP Request
     │
     ▼
-PlaceOrderController        [orders/infra/adapters/controllers/]
+PlaceOrderController        [orders/infrastructure/controllers/]
 (translates HTTP → RequestModel)
     │
     ▼
-IPlaceOrderUseCase          [orders/app/ports/input/]     ← interface
+IPlaceOrderUseCase          [orders/application/ports/input/]     ← interface
     │ execute(PlaceOrderRequestModel)
     ▼
-PlaceOrderInteractor        [orders/app/interactors/]
+PlaceOrderInteractor        [orders/application/interactors/]
     │
-    ├──reads──▶ IOrderRepository     [orders/app/ports/output/]  ← interface
+    ├──reads──▶ IOrderRepository     [orders/application/ports/output/]  ← interface
     │               │
     │               ▼
-    │           OrderRepositoryImpl  [orders/infra/adapters/gateways/]
+    │           OrderRepositoryImpl  [orders/infrastructure/gateways/]
     │               │
     │               ▼
     │           PostgreSQL DB         [platform/db/]
     │
-    ├──asks───▶ ICustomerLookup      [orders/app/ports/output/]  ← interface (owned by orders)
+    ├──asks───▶ ICustomerLookup      [orders/application/ports/output/]  ← interface (owned by orders)
     │               │
     │               ▼
-    │           CustomerLookupGateway [orders/infra/adapters/gateways/]
+    │           CustomerLookupGateway [orders/infrastructure/gateways/]
     │               │ calls
     │               ▼
-    │           IGetCustomerUseCase   [customers/app/ports/input/]  ← cross-module boundary
+    │           IGetCustomerUseCase   [customers/application/ports/input/]  ← cross-module boundary
     │
     ├──creates─▶ Order Entity         [orders/domain/]
     │               │
     │               └── enforces business rules
     │
-    └──calls──▶ IPlaceOrderOutputPort [orders/app/ports/output/]  ← interface
+    └──calls──▶ IPlaceOrderOutputPort [orders/application/ports/output/]  ← interface
                     │
                     ▼
-                PlaceOrderPresenter   [orders/infra/adapters/presenters/]
+                PlaceOrderPresenter   [orders/infrastructure/presenters/]
                 (translates ResponseModel → ViewModel)
                     │
                     ▼
@@ -187,23 +187,23 @@ Generate Mermaid code for the following diagrams:
 graph TD
     main["main/\n(Composition Root)"]
     platform["platform/\n(Web, DB, External)"]
-    infra["infra/adapters\n(Controllers, Presenters, Gateways)"]
-    app["app\n(Interactors, Ports)"]
+    infrastructure["infrastructure\n(Controllers, Presenters, Gateways)"]
+    application["application\n(Interactors, Ports)"]
     domain["domain\n(Business Rules)"]
     shared["shared/\n(Shared kernel)"]
 
     main --> platform
-    main --> infra
-    main --> app
+    main --> infrastructure
+    main --> application
     main --> domain
-    platform --> infra
-    infra --> app
-    app --> domain
+    platform --> infrastructure
+    infrastructure --> application
+    application --> domain
     domain --> shared
 
     style domain fill:#2d6a4f,color:#fff
-    style app fill:#40916c,color:#fff
-    style infra fill:#74c69d,color:#000
+    style application fill:#40916c,color:#fff
+    style infrastructure fill:#74c69d,color:#000
     style platform fill:#b7e4c7,color:#000
     style main fill:#d8f3dc,color:#000
     style shared fill:#1b4332,color:#fff
@@ -289,9 +289,9 @@ Interactor ════════════════╗
 OrderRepositoryImpl ═══════╝   Crossed via: IOrderRepository
                                Data type: Order (domain entity)
 
-orders/infra/adapters ═════╗
+orders/infrastructure ═════╗
                            ║ Boundary 4: Module ↔ Module (orders ↔ customers)
-customers/app/ports/input ═╝   Crossed via: IGetCustomerUseCase (called by CustomerLookupGateway)
+customers/application/ports/input ═╝   Crossed via: IGetCustomerUseCase (called by CustomerLookupGateway)
                                Port owned by: orders (ICustomerLookup)
                                Data type: plain data / ids only
 ```
@@ -341,7 +341,7 @@ package "orders" {
   package "domain" #2d6a4f {
     class Order
   }
-  package "app" #40916c {
+  package "application" #40916c {
     interface IPlaceOrderUseCase
     class PlaceOrderInteractor
   }
@@ -350,7 +350,7 @@ package "customers" {
   package "domain " #2d6a4f {
     class Customer
   }
-  package "app " #40916c {
+  package "application " #40916c {
     interface IGetCustomerUseCase
   }
 }

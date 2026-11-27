@@ -80,9 +80,9 @@ Read the files in the target path. For each class/module, check:
 
 #### DIP Violations to look for:
 - `new ConcreteClass()` inside use case or entity code.
-- Imports of framework/ORM classes inside the `domain/` or `app/` directories of any module.
-- Use cases (`app/`) that import from `infra/` or `platform/`.
-- A module that imports another module's `domain/` or `infra/` instead of depending on a port it owns.
+- Imports of framework/ORM classes inside the `domain/` or `application/` directories of any module.
+- Use cases (`application/`) that import from `infrastructure/` or `platform/`.
+- A module that imports another module's `domain/` or `infrastructure/` instead of depending on a port it owns.
 - Static method calls to infrastructure services from business logic.
 - Global variables or singletons used inside business rules.
 

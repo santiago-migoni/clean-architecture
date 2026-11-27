@@ -32,7 +32,7 @@ if (modulesDir) {
     hookSpecificOutput: {
       hookEventName: 'SessionStart',
       additionalContext:
-        'This project uses the Clean Architecture plugin layout (src/modules/<module>/{domain,app,infra}, ' +
+        'This project uses the Clean Architecture plugin layout (src/modules/<module>/{domain,application,infrastructure}, ' +
         'src/shared, src/platform, src/main). Before writing, editing or reviewing code here, load the ' +
         '`clean-architecture:rules` skill: it holds the Dependency Rule, the Module Rule and the layout ' +
         'conventions. /clean-architecture:check scans the project for violations.',

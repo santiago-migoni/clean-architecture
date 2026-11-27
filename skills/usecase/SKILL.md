@@ -1,11 +1,11 @@
 ---
 name: usecase
-description: "This skill should be used when the user asks to \"create a use case\", \"add an interactor\", \"add a repository port\", \"add an input port or output port\", \"call another module from a use case\", or to review application business rules in src/modules/<module>/app/ (Clean Architecture Chapters 20 and 22)."
+description: "This skill should be used when the user asks to \"create a use case\", \"add an interactor\", \"add a repository port\", \"add an input port or output port\", \"call another module from a use case\", or to review application business rules in src/modules/<module>/application/ (Clean Architecture Chapters 20 and 22)."
 argument-hint: "<module>/<UseCaseName>"
 ---
 You are a Clean Architecture expert following Robert C. Martin's book *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
 
-The user wants to create or review a **Use Case** — the Application Business Rules layer (the `app/` layer of a module).
+The user wants to create or review a **Use Case** — the Application Business Rules layer (the `application/` layer of a module).
 
 The argument after the command is `<module>/<UseCaseName>` (e.g., `orders/PlaceOrder`, `customers/RegisterCustomer`, `billing/ProcessPayment`). The module selects the folder under `src/modules/`. If the project has a single module the prefix may be omitted.
 
@@ -25,21 +25,21 @@ A use case has ONE required file — the interactor — plus the repository inte
 
 | Piece | Required? | Create it when |
 |---|---|---|
-| Interactor (`app/interactors/<use-case>`) | Always | — |
+| Interactor (`application/interactors/<use-case>`) | Always | — |
 | Request / Response models | Always (in the interactor file) | — |
-| Repository / outbound port (`app/ports/output/<x>`) | When the use case touches data or the outside | — |
-| **Input Port** (`app/ports/input/<use-case>`) | Optional | Another module calls this use case, or there is a second entry point (HTTP + CLI/queue), or you want to swap the interactor behind the controller |
+| Repository / outbound port (`application/ports/output/<x>`) | When the use case touches data or the outside | — |
+| **Input Port** (`application/ports/input/<use-case>`) | Optional | Another module calls this use case, or there is a second entry point (HTTP + CLI/queue), or you want to swap the interactor behind the controller |
 | **Output Port + Presenter** | Optional | Formatting the output is non-trivial (currency, dates, labels), or several delivery mechanisms need different views |
-| Cross-module port (`app/ports/output/<other>-lookup`) | Only for cross-module needs | The use case needs something owned by another module |
+| Cross-module port (`application/ports/output/<other>-lookup`) | Only for cross-module needs | The use case needs something owned by another module |
 
-The Dependency Rule is not weakened by skipping the Input Port: a controller in the same module that depends on the interactor still points inward (infra → app). The inversion that is NOT optional is the one for outbound dependencies (repository, payment, clock…): the interactor depends on an interface, never on the implementation.
+The Dependency Rule is not weakened by skipping the Input Port: a controller in the same module that depends on the interactor still points inward (infrastructure → application). The inversion that is NOT optional is the one for outbound dependencies (repository, payment, clock…): the interactor depends on an interface, never on the implementation.
 
 All paths below are inside `src/modules/<module>/`.
 
 ## Default flow (no Input Port, no Presenter)
 
 ```
-Controller ──▶ Interactor ──▶ Repository interface (app/ports/output/) ◀── Gateway (infra/adapters/gateways/)
+Controller ──▶ Interactor ──▶ Repository interface (application/ports/output/) ◀── Gateway (infrastructure/gateways/)
                   │
                   ▼
               Entities (domain/)
@@ -59,13 +59,13 @@ Controller → [Input Port] → Interactor → [Output Port] → Presenter → V
 ## Your Task
 
 ### Step 1: Create the Interactor (required)
-File: `src/modules/<module>/app/interactors/<use-case-name>.<ext>`
+File: `src/modules/<module>/application/interactors/<use-case-name>.<ext>`
 
 ```typescript
 // TypeScript
-// Layer: app (Application Business Rules)
-// May import from: this module's domain/, this module's app/ports/, src/shared/
-// May NOT import from: infra/, platform/, main/, or any other module
+// Layer: application (Application Business Rules)
+// May import from: this module's domain/, this module's application/ports/, src/shared/
+// May NOT import from: infrastructure/, platform/, main/, or any other module
 // Dependencies injected via constructor (DIP)
 
 import { I<Domain>Repository } from '../ports/output/<domain>-repository';
@@ -94,8 +94,8 @@ export class <UseCaseName>Interactor {
 ```
 
 ```python
-# Python — src/modules/<module>/app/interactors/<use_case_name>.py
-# Layer: app (Application Business Rules)
+# Python — src/modules/<module>/application/interactors/<use_case_name>.py
+# Layer: application (Application Business Rules)
 from dataclasses import dataclass
 from ..ports.output.<domain>_repository import I<Domain>Repository
 
@@ -119,13 +119,13 @@ class <UseCaseName>Interactor:
 ### Errors: typed, in the layer that owns the rule
 Failures are thrown as **typed errors** so the outer layers can map them without parsing messages:
 - **Enterprise rule** broken by an entity → `domain/errors/invalid-<entity>-error.<ext>` (thrown by the entity itself).
-- **Application failure** of the use case (a needed record is missing, a conflict) → `app/errors/<name>-error.<ext>` (for example `CustomerNotFoundError`, `EmailAlreadyRegisteredError`). Create the folder when the first one exists.
+- **Application failure** of the use case (a needed record is missing, a conflict) → `application/errors/<name>-error.<ext>` (for example `CustomerNotFoundError`, `EmailAlreadyRegisteredError`). Create the folder when the first one exists.
 Plain `Error` for a rule the caller must react to is a smell: the controller/presenter would have to match on text.
 
 ### Step 2: Define the Repository Interface (if data access is needed)
-File: `src/modules/<module>/app/ports/output/<domain>-repository.<ext>`
+File: `src/modules/<module>/application/ports/output/<domain>-repository.<ext>`
 
-**Important**: This interface is defined in the `app` layer, not in `infra`. This is the Dependency Inversion Principle in action — the use case defines what it needs; the gateway (infra) implements it. Only declare the methods this module's use cases actually call.
+**Important**: This interface is defined in the `application` layer, not in `infrastructure`. This is the Dependency Inversion Principle in action — the use case defines what it needs; the gateway (infrastructure) implements it. Only declare the methods this module's use cases actually call.
 
 ```typescript
 // TypeScript
@@ -141,19 +141,19 @@ export interface I<Domain>Repository {
 ### Step 3 (optional): Input Port
 Create it only if its trigger is true (another module calls it, a second entry point exists, or you need to swap the interactor).
 
-File: `src/modules/<module>/app/ports/input/<use-case-name>.<ext>` — move `<UseCaseName>Request`/`Response` here and make the interactor `implements I<UseCaseName>UseCase`:
+File: `src/modules/<module>/application/ports/input/<use-case-name>.<ext>` — move `<UseCaseName>Request`/`Response` here and make the interactor `implements I<UseCaseName>UseCase`:
 
 ```typescript
 export interface I<UseCaseName>UseCase {
   execute(request: <UseCaseName>Request): Promise<<UseCaseName>Response>;
 }
 ```
-This file is the module's **public surface**: it is the only thing another module's infra may import. Keep it free of domain objects.
+This file is the module's **public surface**: it is the only thing another module's infrastructure may import. Keep it free of domain objects.
 
 ### Step 4 (optional): Output Port + Presenter
 Create them only if output formatting is non-trivial. The interactor then returns `Promise<void>` and calls the Output Port (`present` on success, `presentError` in a `catch`). Define the **response model in the Output Port file** (the interactor imports it) — defining it in the interactor file would make the port and the interactor import each other:
 
-File: `src/modules/<module>/app/ports/output/<use-case-name>-output.<ext>`
+File: `src/modules/<module>/application/ports/output/<use-case-name>-output.<ext>`
 ```typescript
 export interface I<UseCaseName>OutputPort {
   present(response: <UseCaseName>Response): void;
@@ -163,23 +163,23 @@ export interface I<UseCaseName>OutputPort {
 Then run `/clean-architecture:presenter <module>/<UseCaseName>`.
 
 ### Step 5: Need data or behaviour from another module?
-Never import the other module's `domain/` or `infra/`. Use the cross-module recipe:
+Never import the other module's `domain/` or `infrastructure/`. Use the cross-module recipe:
 
 1. **Declare a port owned by this module**, expressed in this module's own vocabulary:
-   `app/ports/output/<other>-lookup.<ext>`
+   `application/ports/output/<other>-lookup.<ext>`
    ```typescript
    export interface ICustomerLookup {
      exists(customerId: string): Promise<boolean>;
    }
    ```
-2. **Implement it in this module's `infra`** by calling the other module's *input port* (which therefore must exist — create it in the other module, Step 3):
-   `infra/adapters/gateways/<other>-lookup-gateway.<ext>`
-   (see the `gateway` skill — this is the only place allowed to import `src/modules/<other>/app/ports/input/`).
+2. **Implement it in this module's `infrastructure`** by calling the other module's *input port* (which therefore must exist — create it in the other module, Step 3):
+   `infrastructure/gateways/<other>-lookup-gateway.<ext>`
+   (see the `gateway` skill — this is the only place allowed to import `src/modules/<other>/application/ports/input/`).
 3. **Reference the other module's entities by id** in this module's domain (`customerId: string`).
 4. Wire both sides in `src/main/`.
 
 ### Step 6: Create Use Case Tests
-File: `tests/<module>/unit/app/<use-case-name>.test.<ext>`
+File: `tests/<module>/unit/application/<use-case-name>.test.<ext>`
 
 **Test strategy**: Use stubs or an in-memory repository — never touch the real DB or HTTP. (Create the in-memory repository with the `gateway` skill the first time a test needs one.)
 
@@ -207,9 +207,9 @@ With an Output Port, replace the response/throw assertions with `expect(outputPo
 
 ## Validation Checklist
 
-- [ ] The interactor imports ONLY from its own module's `domain/` and `app/ports/`, plus `src/shared/` — never from `infra/`, `platform/`, `main/`, or another module.
-- [ ] The Repository interface is defined in `app/ports/output/` (NOT in `infra/`).
-- [ ] An Input Port exists only if one of its triggers is true; if another module calls the use case, it exists in `app/ports/input/`.
+- [ ] The interactor imports ONLY from its own module's `domain/` and `application/ports/`, plus `src/shared/` — never from `infrastructure/`, `platform/`, `main/`, or another module.
+- [ ] The Repository interface is defined in `application/ports/output/` (NOT in `infrastructure/`).
+- [ ] An Input Port exists only if one of its triggers is true; if another module calls the use case, it exists in `application/ports/input/`.
 - [ ] An Output Port / Presenter exists only if output formatting justifies it.
 - [ ] Anything needed from another module goes through a port owned by this module (Step 5), never a direct import.
 - [ ] The interactor receives all dependencies via constructor injection (DIP).

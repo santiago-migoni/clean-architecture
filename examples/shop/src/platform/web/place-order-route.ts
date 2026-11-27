@@ -3,8 +3,8 @@
 // platform/ never instantiates interactors or gateways: main/ builds the presenter + controller
 // pair (one per request — presenters are stateful) and injects the factory.
 import type { Request, Response } from 'express';
-import type { PlaceOrderController } from '../../modules/orders/infra/adapters/controllers/place-order-controller';
-import type { PlaceOrderPresenter } from '../../modules/orders/infra/adapters/presenters/place-order-presenter';
+import type { PlaceOrderController } from '../../modules/orders/infrastructure/controllers/place-order-controller';
+import type { PlaceOrderPresenter } from '../../modules/orders/infrastructure/presenters/place-order-presenter';
 
 export interface PlaceOrderPair { presenter: PlaceOrderPresenter; controller: PlaceOrderController }
 

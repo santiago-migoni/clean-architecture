@@ -2,17 +2,17 @@
 import { readFileSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
 import type { Migration } from '../../platform/db/migrate';
-import type { IGetCustomerUseCase } from '../../modules/customers/app/ports/input/get-customer';
-import { SqlOrderRepository } from '../../modules/orders/infra/adapters/gateways/sql-order-repository';
-import { CustomerLookupGateway } from '../../modules/orders/infra/adapters/gateways/customer-lookup-gateway';
-import { PlaceOrderInteractor } from '../../modules/orders/app/interactors/place-order';
-import { PlaceOrderPresenter } from '../../modules/orders/infra/adapters/presenters/place-order-presenter';
-import { PlaceOrderController } from '../../modules/orders/infra/adapters/controllers/place-order-controller';
+import type { IGetCustomerUseCase } from '../../modules/customers/application/ports/input/get-customer';
+import { SqlOrderRepository } from '../../modules/orders/infrastructure/gateways/sql-order-repository';
+import { CustomerLookupGateway } from '../../modules/orders/infrastructure/gateways/customer-lookup-gateway';
+import { PlaceOrderInteractor } from '../../modules/orders/application/interactors/place-order';
+import { PlaceOrderPresenter } from '../../modules/orders/infrastructure/presenters/place-order-presenter';
+import { PlaceOrderController } from '../../modules/orders/infrastructure/controllers/place-order-controller';
 
 const sql = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8');
 
 export const ordersMigrations: Migration[] = [
-  { name: 'orders/001-create-orders', sql: sql('../../modules/orders/infra/adapters/gateways/migrations/001-create-orders.sql') },
+  { name: 'orders/001-create-orders', sql: sql('../../modules/orders/infrastructure/gateways/migrations/001-create-orders.sql') },
 ];
 
 export interface OrdersDeps {

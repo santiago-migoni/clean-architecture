@@ -1,6 +1,6 @@
 // src/modules/orders/domain/order.ts
 // Layer: domain (Enterprise Business Rules)
-// Dependencies: at most src/shared/ — never app/, infra/, platform/, main/ or another module.
+// Dependencies: at most src/shared/ — never application/, infrastructure/, platform/, main/ or another module.
 // The customer is referenced by id only: the `customers` module is never imported.
 
 import { InvalidOrderError } from './errors/invalid-order-error';

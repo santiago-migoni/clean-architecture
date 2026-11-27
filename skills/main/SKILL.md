@@ -29,12 +29,12 @@ Main composes one module at a time, then connects them:
            ├── platform: createDbConnection()          (src/platform/db)
            │
            ├── composeCustomers({ db })                (src/main/compose/customers)
-           │     ├── creates SqlCustomerRepository     (customers/infra/adapters/gateways)
-           │     ├── creates GetCustomerInteractor     (customers/app/interactors)
+           │     ├── creates SqlCustomerRepository     (customers/infrastructure/gateways)
+           │     ├── creates GetCustomerInteractor     (customers/application/interactors)
            │     └── exposes input port IGetCustomerUseCase  ← the only thing others may use
            │
            ├── composeOrders({ db, getCustomer })      (src/main/compose/orders)
-           │     ├── creates SqlOrderRepository        (orders/infra/adapters/gateways)
+           │     ├── creates SqlOrderRepository        (orders/infrastructure/gateways)
            │     ├── creates CustomerLookupGateway(getCustomer)   ← cross-module link
            │     └── PlaceOrderInteractor + PlaceOrderController
            │         (+ a PlaceOrderPresenter per request ONLY if the use case has an Output Port)
@@ -74,12 +74,12 @@ src/main/
 
 import type { Request, Response } from 'express';
 import type { DbConnection } from '../../platform/db/connection';
-import type { IGetCustomerUseCase } from '../../modules/customers/app/ports/input/get-customer';
+import type { IGetCustomerUseCase } from '../../modules/customers/application/ports/input/get-customer';
 
-import { SqlOrderRepository } from '../../modules/orders/infra/adapters/gateways/sql-order-repository';
-import { CustomerLookupGateway } from '../../modules/orders/infra/adapters/gateways/customer-lookup-gateway';
-import { PlaceOrderInteractor } from '../../modules/orders/app/interactors/place-order';
-import { PlaceOrderController } from '../../modules/orders/infra/adapters/controllers/place-order-controller';
+import { SqlOrderRepository } from '../../modules/orders/infrastructure/gateways/sql-order-repository';
+import { CustomerLookupGateway } from '../../modules/orders/infrastructure/gateways/customer-lookup-gateway';
+import { PlaceOrderInteractor } from '../../modules/orders/application/interactors/place-order';
+import { PlaceOrderController } from '../../modules/orders/infrastructure/controllers/place-order-controller';
 
 export interface OrdersDeps {
   db: DbConnection;
@@ -156,7 +156,7 @@ export function createApp(options: { dbPath?: string } = {}) {
 import { createApp } from './index';
 
 const port = Number(process.env.PORT ?? 3000);
-createApp().app.listen(port, () => console.log(`Server running on port ${port}`));
+createApp().application.listen(port, () => console.log(`Server running on port ${port}`));
 ```
 Each `compose<Module>` returns `{ ports, routes }`: `ports` are the input ports other modules may use, `routes` are ready-to-register handlers (controllers wrapped with `(req, res) => controller.handle(req, res)`). `platform/web/app.ts` owns `express()`, `express.json()`, route registration and the last-resort error handler (malformed JSON → 400, anything else → 500 with no internals).
 
@@ -165,10 +165,10 @@ Each `compose<Module>` returns `{ ports, routes }`: `ports` are the input ports 
 #### Python (FastAPI, manual DI)
 ```python
 # src/main/compose/orders.py
-from ...modules.orders.infra.adapters.gateways.sql_order_repository import SqlOrderRepository
-from ...modules.orders.infra.adapters.gateways.customer_lookup_gateway import CustomerLookupGateway
-from ...modules.orders.app.interactors.place_order import PlaceOrderInteractor
-from ...modules.orders.infra.adapters.controllers.place_order_controller import PlaceOrderController
+from ...modules.orders.infrastructure.gateways.sql_order_repository import SqlOrderRepository
+from ...modules.orders.infrastructure.gateways.customer_lookup_gateway import CustomerLookupGateway
+from ...modules.orders.application.interactors.place_order import PlaceOrderInteractor
+from ...modules.orders.infrastructure.controllers.place_order_controller import PlaceOrderController
 
 def compose_orders(db_session, new_id, get_customer):
     order_repo = SqlOrderRepository(db_session)
@@ -213,7 +213,7 @@ container.register<IPlaceOrderUseCase>('IPlaceOrderUseCase', { useClass: PlaceOr
 
 // The container IS the Main component — wiring lives here, not scattered throughout the app.
 // Decorators (@injectable) in modules/ are a framework dependency: prefer registering by token here
-// so domain/ and app/ stay free of the DI library.
+// so domain/ and application/ stay free of the DI library.
 ```
 
 ### Step 3: Environment-Specific Main Files
@@ -254,7 +254,7 @@ Main changes when:
 - A new module or use case is added (new wiring needed).
 - An implementation is swapped (e.g., switch DB engine).
 - A new environment is added.
-It does NOT change because of business rule changes — those are in domain/app.
+It does NOT change because of business rule changes — those are in domain/application.
 
 ## Output
 After creating/updating Main:

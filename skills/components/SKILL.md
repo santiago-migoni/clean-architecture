@@ -79,12 +79,12 @@ These three principles govern **relationships between components**:
 ## Your Task
 
 ### Step 1: Identify Components
-Map the project's components. In the feature-first layout every folder under `src/modules/` is a component (its `domain/`, `app/` and `infra/` layers are sub-components), alongside `shared/`, `platform/` and `main/`:
+Map the project's components. In the feature-first layout every folder under `src/modules/` is a component (its `domain/`, `application/` and `infrastructure/` layers are sub-components), alongside `shared/`, `platform/` and `main/`:
 
 ```
 Component Map:
-- modules/orders/        (domain, app, infra)
-- modules/customers/     (domain, app, infra)
+- modules/orders/        (domain, application, infrastructure)
+- modules/customers/     (domain, application, infrastructure)
 - shared/
 - platform/
 - main/

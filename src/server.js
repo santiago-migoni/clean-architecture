@@ -20,6 +20,7 @@ import {
   importToSrcRelative,
   srcDirForFile,
   toPosix,
+  usesLegacyLayerName,
 } from './lib/architecture.js';
 
 const rl = createInterface({ input: process.stdin, terminal: false });
@@ -86,8 +87,8 @@ const TOOLS = [
     name: 'ca_scaffold',
     description:
       'Create the lean Clean Architecture scaffold (feature-first) for a new project: ' +
-      'src/modules/<module>/{domain,app,infra} for each module, src/main/, docs/architecture/ARCHITECTURE.md ' +
-      'and .gitkeep stubs. Everything else (shared/, platform/, ports/, interactors/, in-memory/, test trees) ' +
+      'src/modules/<module>/{domain,application,infrastructure} for each module, src/main/, docs/architecture/ARCHITECTURE.md ' +
+      'and .gitkeep stubs. Everything else (shared/, platform/, ports/, interactors/, controllers/, gateways/, test trees) ' +
       'is created on demand by the skills that need it.',
     inputSchema: {
       type: 'object',
@@ -111,7 +112,8 @@ const TOOLS = [
           description:
             'Module names to create under src/modules/ (e.g. ["orders", "customers"]). ' +
             'Defaults to one module named after the domain, or "core". ' +
-            'Reserved: shared, platform, main, app, domain, infra, modules, adapters, bootstrap, composition.',
+            'Reserved: shared, platform, main, domain, application, infrastructure, modules, bootstrap, composition, ' +
+            'and app, infra, adapters (names of earlier layouts).',
         },
       },
       required: ['rootPath'],
@@ -214,12 +216,14 @@ function toolScan(args) {
   const files = walkSrc(srcDir);
 
   const violations = [];
-  let unclassified = 0; // outside any known layer and NOT in an old layer folder
-  let legacy = 0;       // in an old layer-first folder (classified or not)
+  let unclassified = 0;  // outside any known layer and NOT in an old layer folder
+  let legacy = 0;        // in an old layer-first folder (classified or not)
+  let legacyNames = 0;   // in modules/<m>/app/ or modules/<m>/infra/ (classified, but renamed in 2.0)
   for (const file of files) {
     const rel = toPosix(relative(srcDir, file));
     if (LEGACY_TOP.test(rel)) legacy++;
     else if (!detectLayer(rel)) unclassified++;
+    if (usesLegacyLayerName(rel)) legacyNames++;
     let content;
     try { content = readFileSync(file, 'utf8'); } catch { continue; }
     for (const v of findViolations(file, srcDir, content)) {
@@ -238,13 +242,20 @@ function toolScan(args) {
     warnings.push(
       `${legacy} file(s) are in the previous layer-first layout (src/entities, src/usecases, src/adapters, ` +
       'src/frameworks). They are NOT covered by the layer/module rules, so the health score is not reliable. ' +
-      'Run /clean-architecture:migrate to move them into src/modules/<module>/{domain,app,infra}.'
+      'Run /clean-architecture:migrate to move them into src/modules/<module>/{domain,application,infrastructure}.'
+    );
+  }
+  if (legacyNames > 0) {
+    warnings.push(
+      `${legacyNames} file(s) use the layer folder names of plugin versions before 2.0 (modules/<m>/app/, ` +
+      'modules/<m>/infra/adapters/). The rules still apply to them; run /clean-architecture:migrate to rename ' +
+      'app/ to application/ and infra/adapters/<x>/ to infrastructure/<x>/.'
     );
   }
   if (unclassified > 0) {
     warnings.push(
       `${unclassified} file(s) are outside any known layer ` +
-      '(expected: src/modules/<module>/{domain,app,infra/adapters}, src/shared, src/platform, src/main).'
+      '(expected: src/modules/<module>/{domain,application,infrastructure}, src/shared, src/platform, src/main).'
     );
   }
 
@@ -386,7 +397,7 @@ function toolScaffold(args) {
   const dirs = ['src/main', 'docs/architecture'];
   for (const m of modules) {
     const base = `src/modules/${m}`;
-    dirs.push(`${base}/domain`, `${base}/app`, `${base}/infra`);
+    dirs.push(`${base}/domain`, `${base}/application`, `${base}/infrastructure`);
   }
 
   const created = [];
@@ -409,23 +420,23 @@ function toolScaffold(args) {
       content:
         `# ${domain} — Architecture\n\n` +
         `## Layout\n\n` +
-        `\`\`\`\nsrc/\n├── modules/<module>/{domain, app, infra}   # business code, one folder per module\n├── shared/                                 # shared kernel — create only when needed\n├── platform/                               # web, db, external — create only when needed\n└── main/                                   # composition root (main/<app>/ if several entry points)\ntests/\n├── <module>/{unit, integration}/\n└── e2e/\ndocs/architecture/                          # this file, diagrams, ADRs\n\`\`\`\n\n` +
-        `Subfolders (\`app/ports/{input,output}\`, \`app/interactors\`, \`infra/adapters/{controllers,presenters,gateways}\`, ` +
+        `\`\`\`\nsrc/\n├── modules/<module>/{domain, application, infrastructure}  # business code, one folder per module\n├── shared/                                                 # shared kernel — create only when needed\n├── platform/                                               # web, db, external — create only when needed\n└── main/                                                   # composition root (main/<app>/ if several entry points)\ntests/\n├── <module>/{unit, integration}/\n└── e2e/\ndocs/architecture/                                          # this file, diagrams, ADRs\n\`\`\`\n\n` +
+        `Subfolders (\`application/ports/{input,output}\`, \`application/interactors\`, \`infrastructure/{controllers,presenters,gateways}\`, ` +
         `\`domain/{events,errors,services}\`) are created by the first file that needs them.\n\n` +
         `## Layers (inside each module)\n\n` +
         `| Layer | Path | May import |\n|---|---|---|\n` +
         `| domain | \`modules/<m>/domain/\` | shared |\n` +
-        `| app | \`modules/<m>/app/\` | domain, shared |\n` +
-        `| infra | \`modules/<m>/infra/adapters/\` | app, domain, shared |\n` +
+        `| application | \`modules/<m>/application/\` | domain, shared |\n` +
+        `| infrastructure | \`modules/<m>/infrastructure/\` | application, domain, shared |\n` +
         `| platform | \`platform/\` | everything inward |\n` +
         `| main | \`main/\` | everything — imported by no one |\n\n` +
-        `## Dependency Rule\n\nSource code dependencies point **inward only**: infra → app → domain.\n\n` +
-        `## Module Rule\n\nA module never imports another module's \`domain/\` or \`infra/\`.\n` +
-        `The only legal crossing is \`A/infra/adapters\` → \`B/app/ports/input\`, through a port owned by A.\n\n` +
+        `## Dependency Rule\n\nSource code dependencies point **inward only**: infrastructure → application → domain.\n\n` +
+        `## Module Rule\n\nA module never imports another module's \`domain/\` or \`infrastructure/\`.\n` +
+        `The only legal crossing is \`A/infrastructure\` → \`B/application/ports/input\`, through a port owned by A.\n\n` +
         `## Optional pieces\n\n` +
         `- **Input Port** — required when another module (or a second entry point) calls the use case; otherwise the controller may depend on the interactor directly.\n` +
         `- **Output Port + Presenter** — use when output formatting is non-trivial or several delivery mechanisms exist; otherwise the interactor returns a response model.\n` +
-        `- **Migrations** live with their module (\`infra/adapters/gateways/migrations/\`); the connection and runner live in \`platform/db/\`.\n`,
+        `- **Migrations** live with their module (\`infrastructure/gateways/migrations/\`); the connection and runner live in \`platform/db/\`.\n`,
     },
   ];
   for (const m of modules) {
@@ -435,12 +446,12 @@ function toolScaffold(args) {
         content: `# Module "${m}" — domain: enterprise business rules.\n# May import only from src/shared/.\n`,
       },
       {
-        path: `src/modules/${m}/app/.gitkeep`,
-        content: `# Module "${m}" — app: use cases (interactors) and the ports they need.\n# May import domain and src/shared only.\n`,
+        path: `src/modules/${m}/application/.gitkeep`,
+        content: `# Module "${m}" — application: use cases (interactors) and the ports they need.\n# May import domain and src/shared only.\n`,
       },
       {
-        path: `src/modules/${m}/infra/.gitkeep`,
-        content: `# Module "${m}" — infra: adapters (infra/adapters/{controllers,presenters,gateways}).\n# Never imports platform/; framework clients are injected from main/.\n`,
+        path: `src/modules/${m}/infrastructure/.gitkeep`,
+        content: `# Module "${m}" — infrastructure: interface adapters (controllers/, presenters/, gateways/).\n# Never imports platform/; framework clients are injected from main/.\n`,
       },
     );
   }
@@ -481,7 +492,7 @@ function toolLayerOf(args) {
       layer: 'unknown',
       message: `Could not determine layer for: ${safeFile}`,
       suggestion:
-        'Move the file into one of: src/modules/<module>/{domain,app,infra/adapters}/, ' +
+        'Move the file into one of: src/modules/<module>/{domain,application,infrastructure}/, ' +
         'src/shared/, src/platform/, or src/main/',
     };
   }
@@ -509,7 +520,7 @@ function toolLayerOf(args) {
     dependencyRuleCompliant: violations.length === 0,
     importViolations: violations,
     allowedDependencies: allowedLayers.length ? allowedLayers : ['none — this is the innermost layer'],
-    crossModuleRule: 'Only adapters may reach another module, and only via its app/ports/input.',
+    crossModuleRule: 'Only infrastructure may reach another module, and only via its application/ports/input.',
   };
 }
 

@@ -55,10 +55,10 @@ All commands are namespaced under `/clean-architecture:`. Every skill has a `des
 | Command | What it does |
 |---|---|
 | `/clean-architecture:rules` | The rules every other skill assumes: layout, Dependency Rule, Module Rule, layer responsibilities, SOLID, Test Boundary. Loaded before writing or reviewing code in a project that uses the layout |
-| `/clean-architecture:init` | Scaffold a full feature-first Clean Architecture project (modules with domain / app / infra) |
+| `/clean-architecture:init` | Scaffold a full feature-first Clean Architecture project (modules with domain / application / infrastructure) |
 | `/clean-architecture:entity` | Create an Enterprise Business Rule entity in a module's `domain/` |
-| `/clean-architecture:usecase` | Create a Use Case interactor with Input/Output Ports in a module's `app/` |
-| `/clean-architecture:controller` | Create an Interface Adapter controller in a module's `infra/` |
+| `/clean-architecture:usecase` | Create a Use Case interactor with Input/Output Ports in a module's `application/` |
+| `/clean-architecture:controller` | Create an Interface Adapter controller in a module's `infrastructure/` |
 | `/clean-architecture:presenter` | Create a Presenter (Humble Object Pattern) |
 | `/clean-architecture:gateway` | Create a Gateway/Repository with data mapper (and cross-module gateways) |
 | `/clean-architecture:boundary` | Define and enforce architectural boundaries |
@@ -79,25 +79,25 @@ The plugin ships an MCP server (`src/server.js`) that gives Claude real file-sys
 |---|---|
 | `ca_scan` | Scans every source file for Dependency Rule and Module Rule violations — returns severity, rule, file, import, and fix |
 | `ca_metrics` | Calculates Fan-in, Fan-out, Instability (I), Abstractness (A), and Distance from Main Sequence (D) per component (each module, `shared`, `platform`, `main`) |
-| `ca_scaffold` | Creates the lean scaffold: `domain/app/infra` per module (with `.gitkeep` stubs), `src/main/index` and `docs/architecture/ARCHITECTURE.md`. `shared/`, `platform/`, `ports/`, `adapters/` and `tests/` are created on demand by the skills, never empty. Never overwrites existing files |
+| `ca_scaffold` | Creates the lean scaffold: `domain/application/infrastructure` per module (with `.gitkeep` stubs), `src/main/index` and `docs/architecture/ARCHITECTURE.md`. `shared/`, `platform/`, `ports/`, `controllers/`, `gateways/` and `tests/` are created on demand by the skills, never empty. Never overwrites existing files |
 | `ca_layer_of` | Identifies which layer and module a file belongs to and checks its imports for compliance |
 | `ca_cycles` | Detects cyclic dependencies between components — modules, `shared`, `platform`, `main` (ADP check) |
 
 ## Hooks
 
-**SessionStart.** A plugin's `CLAUDE.md` is never loaded into the projects that install it, so the rules ship as the `rules` skill. When a session starts in a project that has a `modules/` folder (under `src/`, `app/` or the root), this hook tells Claude to load `clean-architecture:rules` before writing or reviewing code. Any other project gets no Clean Architecture context at all.
+**SessionStart.** A plugin's `CLAUDE.md` is never loaded into the projects that install it, so the rules ship as the `rules` skill. When a session starts in a project that has a `modules/` folder (under `src/`, `application/` or the root), this hook tells Claude to load `clean-architecture:rules` before writing or reviewing code. Any other project gets no Clean Architecture context at all.
 
 **PostToolUse (real time).** The plugin registers a **PostToolUse hook** that fires after every file edit. If the file you just wrote violates the Dependency Rule or the Module Rule, you'll see a warning inline in Claude Code immediately:
 
 ```
 ⚠️  CLEAN ARCHITECTURE — ARCHITECTURE RULE VIOLATION
-   File:  src/modules/orders/app/interactors/place-order.ts
-   Layer: APP (module: orders) (may only depend on: domain, shared)
+   File:  src/modules/orders/application/interactors/place-order.ts
+   Layer: APPLICATION (module: orders) (may only depend on: domain, shared)
 
-   ✗ imports "../../infra/adapters/gateways/sql-order-repository" — app must not depend on adapters
-     Fix: Define an interface (port) in this module's app/ports/ and inject the concrete implementation from main/.
+   ✗ imports "../../infrastructure/gateways/sql-order-repository" — application must not depend on infrastructure
+     Fix: Define an interface (port) in this module's application/ports/ and inject the concrete implementation from main/.
    ✗ imports "../../../customers/domain/customer" — module "orders" must not import module "customers" directly
-     Fix: Declare a port owned by "orders" (app/ports/output), implement it in "orders/infra/adapters" by calling "customers/app/ports/input", and reference "customers" entities from the domain by id only.
+     Fix: Declare a port owned by "orders" (application/ports/output), implement it in "orders/infrastructure/gateways" by calling "customers/application/ports/input", and reference "customers" entities from the domain by id only.
 ```
 
 The hook and the MCP server share one rule set (`src/lib/architecture.js`), so they always agree.
@@ -129,16 +129,16 @@ cd examples/shop && npm ci && npm test && npm start
 
 | Job | What it guards |
 |---|---|
-| **Plugin engine** | Syntax of the MCP server, hook and rules; the JSON manifests; and `npm run verify:example`, which checks the scanner **in both directions**: `examples/shop` must be clean, and planted violations (outward import, cross-module import, `infra` → `platform`, a file directly under `infra/`, a folder named `modules/` that is not business code, a legacy layout) must be found. A scanner that reports nothing may simply be broken, so a clean result alone proves nothing. |
+| **Plugin engine** | Syntax of the MCP server, hook and rules; the JSON manifests; and `npm run verify:example`, which checks the scanner **in both directions**: `examples/shop` must be clean, and planted violations (outward import, cross-module import, `infrastructure` → `platform`, a file directly under `infrastructure/`, a folder named `modules/` that is not business code, a legacy layout) must be found. A scanner that reports nothing may simply be broken, so a clean result alone proves nothing. |
 | **Example** (Node 22.13.0, 22, 24) | `npm ci` from the lockfile, `tsc`, ESLint with the architecture rules, and the 52 tests. |
 
 Run the engine check locally with `npm run verify:example`.
 
 ## Clean Architecture Concepts Covered
 
-**Layers (inside every module):** `domain` (Entities) → `app` (Use Cases) → `infra/adapters` (Interface Adapters) → `platform` (Frameworks & Drivers), plus `shared` (shared kernel) and `main` (composition root)
+**Layers (inside every module):** `domain` (Entities) → `application` (Use Cases) → `infrastructure` (Interface Adapters) → `platform` (Frameworks & Drivers), plus `shared` (shared kernel) and `main` (composition root)
 
-**Modules:** each folder under `src/modules/` is a cohesive component; modules talk only through ports (`A/infra/adapters` → `B/app/ports/input`)
+**Modules:** each folder under `src/modules/` is a cohesive component; modules talk only through ports (`A/infrastructure` → `B/application/ports/input`)
 
 **Principles:**
 - The Dependency Rule (Chapter 22)
@@ -162,12 +162,12 @@ Run the engine check locally with `npm run verify:example`.
 <project-root>/
 ├── src/
 │   ├── modules/
-│   │   └── <module>/        # one folder per business capability
-│   │       ├── domain/      # Enterprise Business Rules (imports only shared/)
-│   │       ├── app/         # Application Business Rules
-│   │       └── infra/       # Adapters (the detail)
-│   └── main/                # Composition Root — wires every module
-└── docs/architecture/       # ARCHITECTURE.md, diagrams, ADRs
+│   │   └── <module>/             # one folder per business capability
+│   │       ├── domain/           # Enterprise Business Rules (imports only shared/)
+│   │       ├── application/      # Application Business Rules
+│   │       └── infrastructure/   # Interface Adapters (the detail)
+│   └── main/                     # Composition Root — wires every module
+└── docs/architecture/            # ARCHITECTURE.md, diagrams, ADRs
 ```
 
 Everything else is **created on demand** by the first file that needs it, never as empty folders:
@@ -175,12 +175,12 @@ Everything else is **created on demand** by the first file that needs it, never 
 ```
 src/modules/<m>/
 ├── domain/{events,errors,services}/          # when the first event / domain error / domain service exists
-├── app/
+├── application/
 │   ├── interactors/                          # use cases
 │   └── ports/
 │       ├── input/                            # optional — when another module or a 2nd entry point calls the use case
 │       └── output/                           # repository interfaces and other outbound ports
-└── infra/adapters/
+└── infrastructure/
     ├── controllers/
     ├── presenters/                           # optional — only for use cases with an Output Port
     └── gateways/{in-memory,migrations}/
@@ -188,7 +188,8 @@ src/shared/                                   # shared kernel — only when two 
 src/platform/{web,db,external}/               # frameworks & drivers
 src/main/<app>/                               # instead of main/index when there are several entry points
 tests/
-├── <module>/{unit,integration}/              # mirrors src/modules/<module>/
+├── <module>/unit/                            # mirrors src/modules/<module>/
+├── <module>/integration/                     # flat: gateway tests against a real DB
 └── e2e/
 ```
 
@@ -197,21 +198,25 @@ tests/
 - **Tests by module** (`tests/<module>/...`): removing or extracting a module means deleting `src/modules/<m>` and `tests/<m>`.
 - **Docs only in `docs/architecture/`**, never inside `src/`.
 - **One entry point** → `src/main/index`; several (api, worker, cli) → `src/main/<app>/index`. A monorepo (`apps/`, `packages/`) only for separately deployed artifacts.
-- **Migrations live with their module** (`infra/adapters/gateways/migrations/`); the connection and runner live in `platform/db/`.
+- **Migrations live with their module** (`infrastructure/gateways/migrations/`); the connection and runner live in `platform/db/`.
 - **Optional pieces:** an Input Port exists when another module or a second entry point calls the use case; an Output Port + Presenter exists when output formatting is non-trivial. Otherwise the interactor returns a response model and the controller maps it to HTTP.
 
 ### The two rules
 
 | Axis | Rule |
 |---|---|
-| **Layers** | Dependencies point inward: `infra → app → domain`. `infra/adapters` never imports `platform/` (the framework client is injected from `main/`). |
-| **Modules** | A module never imports another module's `domain/` or `infra/`. The only legal crossing is `A/infra/adapters → B/app/ports/input`, through a port owned by A. |
+| **Layers** | Dependencies point inward: `infrastructure → application → domain`. `infrastructure` never imports `platform/` (the framework client is injected from `main/`). |
+| **Modules** | A module never imports another module's `domain/` or `infrastructure/`. The only legal crossing is `A/infrastructure → B/application/ports/input`, through a port owned by A. |
 
-Reserved names that cannot be module names: `shared`, `platform`, `main`, `app`, `domain`, `infra`, `modules`, `adapters`, `bootstrap`, `composition` (the last two are aliases of `main`).
+Reserved names that cannot be module names: `shared`, `platform`, `main`, `domain`, `application`, `infrastructure`, `modules`, `bootstrap` and `composition` (aliases of `main`), plus `app`, `infra` and `adapters` (layer folders of versions before 2.0).
 
 ### Migrating from the previous layout
 
-Earlier versions generated `src/{entities,usecases,adapters,frameworks,main}/`. Run `/clean-architecture:migrate src/` to move to modules. Mapping: `entities → modules/<m>/domain`, `usecases → modules/<m>/app`, `adapters → modules/<m>/infra/adapters`, `frameworks → platform`. File names are now kebab-case (`create-order`, `sql-order-repository`) instead of `ICreateOrderUseCase` / `OrderRepositoryImpl`; the class and interface names inside are unchanged.
+Earlier versions generated `src/{entities,usecases,adapters,frameworks,main}/`. Run `/clean-architecture:migrate src/` to move to modules. Mapping: `entities → modules/<m>/domain`, `usecases → modules/<m>/application`, `adapters → modules/<m>/infrastructure`, `frameworks → platform`. File names are now kebab-case (`create-order`, `sql-order-repository`) instead of `ICreateOrderUseCase` / `OrderRepositoryImpl`; the class and interface names inside are unchanged.
+
+### Migrating from 1.x folder names
+
+Versions before 2.0 used `modules/<m>/app/` and `modules/<m>/infra/adapters/{controllers,presenters,gateways}/`. The rules still apply to those folders, and `ca_scan` warns about them. To rename: `app/` → `application/`, `infra/adapters/<x>/` → `infrastructure/<x>/` (one level less), the same in `tests/<m>/`, then fix the imports and the lint config (`/clean-architecture:migrate` does it).
 
 ## License
 

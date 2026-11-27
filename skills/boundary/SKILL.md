@@ -56,7 +56,7 @@ For each boundary crossing, create interface files in the **inner** layer:
 
 ```
 src/modules/<module>/
-└── app/
+└── application/
     └── ports/
         ├── input/          ← Boundary interfaces the outer layer calls IN
         └── output/         ← Boundary interfaces the outer layer must implement
@@ -67,7 +67,7 @@ src/modules/<module>/
 **Input Side** (outer layer calls inner layer):
 ```typescript
 // Inner layer defines the interface
-// src/modules/<module>/app/ports/input/<boundary-name>.ts
+// src/modules/<module>/application/ports/input/<boundary-name>.ts
 export interface I<BoundaryName>InputPort {
   execute(request: <BoundaryName>Request): Promise<void>;
 }
@@ -76,17 +76,17 @@ export interface I<BoundaryName>InputPort {
 **Output Side** (inner layer calls outer layer — DIP required):
 ```typescript
 // Inner layer defines what it needs
-// src/modules/<module>/app/ports/output/<boundary-name>.ts
+// src/modules/<module>/application/ports/output/<boundary-name>.ts
 export interface I<BoundaryName>OutputPort {
   send(data: <BoundaryName>Response): void;
 }
 ```
 
-The outer layer (`infra/adapters`) implements these interfaces:
+The outer layer (`infrastructure`) implements these interfaces:
 ```typescript
 // Outer layer satisfies the contract
-// src/modules/<module>/infra/adapters/<type>/<boundary-name>-adapter.ts
-import { I<BoundaryName>OutputPort } from '../../../app/ports/output/<boundary-name>';
+// src/modules/<module>/infrastructure/<type>/<boundary-name>-adapter.ts
+import { I<BoundaryName>OutputPort } from '../../../application/ports/output/<boundary-name>';
 
 export class <BoundaryName>Adapter implements I<BoundaryName>OutputPort {
   send(data: <BoundaryName>Response): void {
@@ -103,24 +103,23 @@ In this layout every module under `src/modules/` is a component, and the line be
 src/modules/
 ├── billing/
 │   ├── domain/
-│   ├── app/
+│   ├── application/
 │   │   └── ports/
 │   │       └── output/
 │   │           └── inventory-query.ts          ← billing defines what it needs (port owned by billing)
-│   └── infra/
-│       └── adapters/
-│           └── gateways/
-│               └── inventory-query-gateway.ts  ← implements it, calling inventory's INPUT port
+│   └── infrastructure/
+│       └── gateways/
+│           └── inventory-query-gateway.ts      ← implements it, calling inventory's INPUT port
 └── inventory/
     ├── domain/
-    ├── app/
+    ├── application/
     │   └── ports/
     │       └── input/
-    │           └── check-stock.ts              ← the only inventory file billing's infra may import
-    └── infra/
+    │           └── check-stock.ts              ← the only inventory file billing's infrastructure may import
+    └── infrastructure/
 ```
 
-The `billing` module does NOT import `inventory`'s `domain/` or `infra/`. The port is owned by the **caller** (`billing`), its implementation lives in the caller's `infra/adapters`, and that gateway calls only `inventory/app/ports/input/`. `src/main/` injects inventory's interactor into the gateway. Data crossing the boundary is plain data, and `billing`'s domain refers to inventory items by id only.
+The `billing` module does NOT import `inventory`'s `domain/` or `infrastructure/`. The port is owned by the **caller** (`billing`), its implementation lives in the caller's `infrastructure`, and that gateway calls only `inventory/application/ports/input/`. `src/main/` injects inventory's interactor into the gateway. Data crossing the boundary is plain data, and `billing`'s domain refers to inventory items by id only.
 
 ### Step 5: Partial Boundary (Strategy)
 
@@ -130,7 +129,7 @@ When a full boundary is overkill but you want to preserve the option:
 // Keep the interface in place but co-locate impl in the same package
 // Mark it clearly so future teams can split it
 
-// src/modules/<module>/app/ports/output/<name>-service.ts
+// src/modules/<module>/application/ports/output/<name>-service.ts
 /** @partial-boundary — may be extracted to a separate deployable in future */
 export interface I<Name>Service {
   process(data: <Name>Data): Promise<<Name>Result>;
@@ -148,8 +147,8 @@ Create or update `docs/architecture/ARCHITECTURE.md`:
 **Type**: Full | Partial (Strategy) | Partial (Façade)
 
 **Interfaces defined in inner layer**:
-- `modules/<module>/app/ports/input/<name>` — called by outer → inner
-- `modules/<module>/app/ports/output/<name>` — implemented by outer, called by inner
+- `modules/<module>/application/ports/input/<name>` — called by outer → inner
+- `modules/<module>/application/ports/output/<name>` — implemented by outer, called by inner
 
 **Reason for this boundary**:
 - <Outer> changes frequently (e.g., DB schema, HTTP API, third-party)
@@ -162,7 +161,7 @@ Create or update `docs/architecture/ARCHITECTURE.md`:
 ### Step 7: Verify Boundary Integrity
 
 Check that:
-1. No import crosses the boundary in the wrong direction (layers: `infra → app → domain`; modules: only `A/infra/adapters → B/app/ports/input`).
+1. No import crosses the boundary in the wrong direction (layers: `infrastructure → application → domain`; modules: only `A/infrastructure → B/application/ports/input`).
 2. All cross-boundary data is passed as **simple data structures** (no domain objects leaking out, no framework objects leaking in).
 3. The boundary interface lives in the **inner** layer.
 4. The implementation lives in the **outer** layer.

@@ -7,33 +7,33 @@ the [README](../../README.md) covers how to run it and what each part demonstrat
 
 ```
 src/
-├── modules/<module>/{domain, app, infra/adapters}   business code, one folder per capability
-├── platform/{db, web}                               frameworks & drivers: SQLite connection, Express
-└── main/                                            composition root (createApp) + server.ts (listen)
-tests/<module>/{unit,integration}/  ·  tests/e2e/
+├── modules/<module>/{domain,application,infrastructure}   business code, one folder per capability
+├── platform/{db, web}                                     frameworks & drivers: SQLite connection, Express
+└── main/                                                  composition root (createApp) + server.ts (listen)
+tests/<module>/unit/ (mirrors the module)  ·  tests/<module>/integration/ (flat, gateways)  ·  tests/e2e/
 ```
 
 ## The two rules
 
-**Layers** — dependencies point inward inside a module: `infra → app → domain`.
-`infra/adapters` never imports `platform/`: the SQLite connection is created in `platform/db`
+**Layers** — dependencies point inward inside a module: `infrastructure → application → domain`.
+`infrastructure` never imports `platform/`: the SQLite connection is created in `platform/db`
 and injected through the constructors by `main/`.
 
-| From ↓ / To → | domain | app | infra | platform | main |
+| From ↓ / To → | domain | application | infrastructure | platform | main |
 |---|---|---|---|---|---|
 | **domain** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **app** | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **infra** | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **application** | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **infrastructure** | ✅ | ✅ | ✅ | ❌ | ❌ |
 | **platform** | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **main** | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-**Modules** — a module never imports another module's `domain/` or `infra/`.
+**Modules** — a module never imports another module's `domain/` or `infrastructure/`.
 
 ```
 orders                                                customers
-  app/ports/output/customer-lookup.ts   (owned by orders, orders' vocabulary)
+  application/ports/output/customer-lookup.ts   (owned by orders, orders' vocabulary)
         ▲ implemented by
-  infra/adapters/gateways/customer-lookup-gateway.ts ──calls──▶ app/ports/input/get-customer.ts
+  infrastructure/gateways/customer-lookup-gateway.ts ──calls──▶ application/ports/input/get-customer.ts
 ```
 
 `orders` stores only a `customerId`; there is no foreign key between the two modules' tables.
@@ -50,7 +50,7 @@ orders                                                customers
 ## Decisions worth knowing
 
 - **Typed errors, mapped by `instanceof`.** Entity rules throw `domain/errors/*`; use case failures throw
-  `app/errors/*`. Controllers and the presenter map them to HTTP statuses/codes; unexpected errors are rethrown
+  `application/errors/*`. Controllers and the presenter map them to HTTP statuses/codes; unexpected errors are rethrown
   (or shown as `Unexpected error`) and never leak driver messages.
 - **Persistence is an upsert by id, never `INSERT OR REPLACE`.** `REPLACE` deletes any row that conflicts on
   *any* unique constraint, which destroyed an existing customer when a second one reused its email. A unique
@@ -59,7 +59,7 @@ orders                                                customers
   deterministic test on the factory (`tests/e2e/presenter-isolation.test.ts`); a concurrency test over this
   synchronous stack cannot detect sharing.
 - **Randomness is injected** (`newId`) into the interactors; business rules never generate ids.
-- **Migrations live with their module** (`infra/adapters/gateways/migrations/`); `platform/db/migrate.ts` is a
+- **Migrations live with their module** (`infrastructure/gateways/migrations/`); `platform/db/migrate.ts` is a
   generic runner and `main/` hands it every module's migrations.
 - **`main/compose/`, not `main/modules/`**: `src/modules/` is the business code and the same name twice confuses people.
 - **`index.ts` exports a factory and `server.ts` listens**, so tests import the app without opening a port.
@@ -75,9 +75,9 @@ orders                                                customers
 
 ## Adding things
 
-- **A use case** → an interactor in `app/interactors/`, a port in `app/ports/output/` for what it needs, a typed error
+- **A use case** → an interactor in `application/interactors/`, a port in `application/ports/output/` for what it needs, a typed error
   if it can fail in a way the caller must react to. Add an Input Port only if another module or a second entry point
   will call it; add an Output Port + Presenter only if the output needs real formatting.
-- **A module** → `src/modules/<name>/{domain,app,infra}`, a `main/compose/<name>.ts`, its migrations, and its tests
+- **A module** → `src/modules/<name>/{domain,application,infrastructure}`, a `main/compose/<name>.ts`, its migrations, and its tests
   under `tests/<name>/`. Talk to other modules only through their input ports.
 - **Another entry point** (worker, CLI) → `src/main/<app>/index.ts` sharing the same `compose/` functions.

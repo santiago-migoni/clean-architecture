@@ -22,15 +22,15 @@ export default [
     settings: {
       'import/resolver': { typescript: { project: './tsconfig.json' } },
       'boundaries/include': ['src/**/*'],
-      // Order matters: the first matching descriptor wins, so `input-port` precedes `app`.
+      // Order matters: the first matching descriptor wins, so `input-port` precedes `application`.
       'boundaries/elements': [
-        { type: 'shared',     pattern: 'src/shared',                      partialMatch: false },
-        { type: 'domain',     pattern: 'src/modules/*/domain',            partialMatch: false, capture: ['module'] },
-        { type: 'input-port', pattern: 'src/modules/*/app/ports/input',   partialMatch: false, capture: ['module'] },
-        { type: 'app',        pattern: 'src/modules/*/app',               partialMatch: false, capture: ['module'] },
-        { type: 'infra',      pattern: 'src/modules/*/infra',             partialMatch: false, capture: ['module'] },
-        { type: 'platform',   pattern: 'src/platform',                    partialMatch: false },
-        { type: 'main',       pattern: 'src/main',                        partialMatch: false },
+        { type: 'shared',         pattern: 'src/shared',                            partialMatch: false },
+        { type: 'domain',         pattern: 'src/modules/*/domain',                  partialMatch: false, capture: ['module'] },
+        { type: 'input-port',     pattern: 'src/modules/*/application/ports/input', partialMatch: false, capture: ['module'] },
+        { type: 'application',    pattern: 'src/modules/*/application',             partialMatch: false, capture: ['module'] },
+        { type: 'infrastructure', pattern: 'src/modules/*/infrastructure',          partialMatch: false, capture: ['module'] },
+        { type: 'platform',       pattern: 'src/platform',                          partialMatch: false },
+        { type: 'main',           pattern: 'src/main',                              partialMatch: false },
       ],
     },
     rules: {
@@ -38,14 +38,17 @@ export default [
         default: 'disallow',
         policies: [
           // Layers — inward only, and only inside the SAME module
-          ...rule('domain', { element: { type: 'shared' } }, same('domain')),
-          ...rule('app',    { element: { type: 'shared' } }, same('domain'), same('app'), same('input-port')),
-          ...rule('input-port', { element: { type: 'shared' } }, same('domain'), same('app'), same('input-port')),
-          ...rule('infra',  { element: { type: 'shared' } }, same('domain'), same('app'), same('input-port'), same('infra'),
-                            // The ONE legal cross-module edge: infra → another module's app/ports/input
+          ...rule('domain',      { element: { type: 'shared' } }, same('domain')),
+          ...rule('application', { element: { type: 'shared' } }, same('domain'), same('application'), same('input-port')),
+          ...rule('input-port',  { element: { type: 'shared' } }, same('domain'), same('application'), same('input-port')),
+          ...rule('infrastructure', { element: { type: 'shared' } }, same('domain'), same('application'), same('input-port'),
+                            same('infrastructure'),
+                            // The ONE legal cross-module edge: infrastructure → another module's application/ports/input
                             any('input-port')),
-          ...rule('platform', any('shared'), any('domain'), any('app'), any('input-port'), any('infra'), any('platform')),
-          ...rule('main', any('shared'), any('domain'), any('app'), any('input-port'), any('infra'), any('platform'), any('main')),
+          ...rule('platform', any('shared'), any('domain'), any('application'), any('input-port'), any('infrastructure'),
+                  any('platform')),
+          ...rule('main', any('shared'), any('domain'), any('application'), any('input-port'), any('infrastructure'),
+                  any('platform'), any('main')),
         ],
       }],
     },

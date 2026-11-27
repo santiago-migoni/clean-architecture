@@ -1,6 +1,6 @@
 ---
 name: controller
-description: "This skill should be used when the user asks to \"create a controller\", \"add an HTTP endpoint\", \"map a request to a use case\", \"map typed errors to HTTP status codes\", or to review an interface adapter in src/modules/<module>/infra/adapters/controllers/ (The Web is a Detail)."
+description: "This skill should be used when the user asks to \"create a controller\", \"add an HTTP endpoint\", \"map a request to a use case\", \"map typed errors to HTTP status codes\", or to review an interface adapter in src/modules/<module>/infrastructure/controllers/ (The Web is a Detail)."
 argument-hint: "<module>/<Name>"
 ---
 You are a Clean Architecture expert following Robert C. Martin's book *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
@@ -15,7 +15,7 @@ From the book (Chapter 22 — The Clean Architecture):
 > "The software in the interface adapters layer is a set of adapters that convert data from the format most convenient for the use cases and entities, to the format most convenient for some external agency such as the Database or the Web."
 
 A Controller:
-- Lives in the **Interface Adapters** layer (`src/modules/<module>/infra/adapters/controllers/`).
+- Lives in the **Interface Adapters** layer (`src/modules/<module>/infrastructure/controllers/`).
 - Converts **framework input** (HTTP request, CLI args, message queue payload, gRPC call) → **Use Case Input Model** (a plain data object).
 - Calls the use case: through the **Input Port** if the module defines one, otherwise directly on the module's **interactor** (same module, dependency still points inward).
 - Does NOT process business logic.
@@ -26,9 +26,9 @@ A Controller:
 
 Default (no Output Port):
 ```
-[Framework Request] → Controller (infra/adapters/controllers/)
+[Framework Request] → Controller (infrastructure/controllers/)
       ↓ builds RequestModel (plain object)
-  Interactor (app/interactors/)   — or its Input Port (app/ports/input/) when one exists
+  Interactor (application/interactors/)   — or its Input Port (application/ports/input/) when one exists
       ↓ returns ResponseModel
   Controller maps ResponseModel → HTTP response
 ```
@@ -37,7 +37,7 @@ With an Output Port:
 ```
 [Framework Request] → Controller → [Input Port] → Interactor
       ↓ calls Output Port
-  Presenter (infra/adapters/presenters/)
+  Presenter (infrastructure/presenters/)
       ↓
   View Model / HTTP Response
 ```
@@ -45,29 +45,29 @@ With an Output Port:
 ## Your Task
 
 ### Step 1: Identify what the controller calls
-- If `src/modules/<module>/app/ports/input/<name>.<ext>` exists, depend on that interface (required when another module or a second entry point also calls the use case).
-- Otherwise depend on the interactor at `src/modules/<module>/app/interactors/<name>.<ext>`. Do not create an Input Port just for the controller.
+- If `src/modules/<module>/application/ports/input/<name>.<ext>` exists, depend on that interface (required when another module or a second entry point also calls the use case).
+- Otherwise depend on the interactor at `src/modules/<module>/application/interactors/<name>.<ext>`. Do not create an Input Port just for the controller.
 
 ### Step 2: Check for a Presenter
 Only if the use case has an Output Port, pair the controller with its Presenter (see the `presenter` skill). Otherwise the controller maps the returned response model itself.
 
 ### Step 3: Create the Controller
 
-File: `src/modules/<module>/infra/adapters/controllers/<name>-controller.<ext>`
+File: `src/modules/<module>/infrastructure/controllers/<name>-controller.<ext>`
 
 #### TypeScript (Express example):
 ```typescript
-// src/modules/<module>/infra/adapters/controllers/<name>-controller.ts
-// Layer: infra (Interface Adapters)
-// May import from: this module's app/ (interactor or input port), this module's domain/ (type references only), src/shared/
-// May NOT import from: platform/, main/, or another module's domain/ or infra/
+// src/modules/<module>/infrastructure/controllers/<name>-controller.ts
+// Layer: infrastructure (Interface Adapters)
+// May import from: this module's application/ (interactor or input port), this module's domain/ (type references only), src/shared/
+// May NOT import from: platform/, main/, or another module's domain/ or infrastructure/
 
 import { Request, Response } from 'express'; // Framework knowledge is OK here
-import { <Name>Interactor, <Name>Request } from '../../../app/interactors/<name>';
-// With an Input Port: import { I<Name>UseCase, <Name>Request } from '../../../app/ports/input/<name>';
+import { <Name>Interactor, <Name>Request } from '../../../application/interactors/<name>';
+// With an Input Port: import { I<Name>UseCase, <Name>Request } from '../../../application/ports/input/<name>';
 // The typed errors this use case can throw (create them with the usecase skill, "Errors"):
 import { Invalid<Entity>Error } from '../../../domain/errors/invalid-<entity>-error';
-import { <Entity>NotFoundError } from '../../../app/errors/<entity>-not-found-error';
+import { <Entity>NotFoundError } from '../../../application/errors/<entity>-not-found-error';
 
 export class <Name>Controller {
   constructor(private readonly useCase: <Name>Interactor /* or I<Name>UseCase */) {}
@@ -105,12 +105,12 @@ export class <Name>Controller {
 
 #### Python (FastAPI example):
 ```python
-# src/modules/<module>/infra/adapters/controllers/<name>_controller.py
-# Layer: infra (Interface Adapters)
+# src/modules/<module>/infrastructure/controllers/<name>_controller.py
+# Layer: infrastructure (Interface Adapters)
 
 from fastapi import Request
-from ....app.interactors.<name> import <Name>Interactor, <Name>Request
-# With an Input Port: from ....app.ports.input.<name> import I<Name>UseCase
+from ....application.interactors.<name> import <Name>Interactor, <Name>Request
+# With an Input Port: from ....application.ports.input.<name> import I<Name>UseCase
 
 class <Name>Controller:
     def __init__(self, use_case: <Name>Interactor):  # or I<Name>UseCase
@@ -127,13 +127,13 @@ class <Name>Controller:
 
 #### Java (Spring example):
 ```java
-// src/modules/<module>/infra/adapters/controllers/<Name>Controller.java
-// Layer: infra (Interface Adapters)
+// src/modules/<module>/infrastructure/controllers/<Name>Controller.java
+// Layer: infrastructure (Interface Adapters)
 
 import org.springframework.web.bind.annotation.*;
-import com.example.modules.<module>.app.interactors.<Name>Interactor;   // or app.ports.input.I<Name>UseCase
-import com.example.modules.<module>.app.interactors.<Name>Request;
-import com.example.modules.<module>.app.interactors.<Name>Response;
+import com.example.modules.<module>.application.interactors.<Name>Interactor;   // or application.ports.input.I<Name>UseCase
+import com.example.modules.<module>.application.interactors.<Name>Request;
+import com.example.modules.<module>.application.interactors.<Name>Response;
 
 @RestController
 @RequestMapping("/api/<resource>")
@@ -158,7 +158,7 @@ public class <Name>Controller {
 Keep the HTTP request schema separate from the Use Case Request Model:
 
 ```typescript
-// src/modules/<module>/infra/adapters/controllers/dtos/<name>-http-request.ts
+// src/modules/<module>/infrastructure/controllers/<name>-http-request.ts
 // HTTP-specific DTO — knows about HTTP, not about the use case
 export interface <Name>HttpRequest {
   // Fields exactly as they arrive in the HTTP body
@@ -169,7 +169,7 @@ export interface <Name>HttpRequest {
 The controller should NOT instantiate its own use case. That happens in `src/main/`. Just note what dependencies are needed. Route registration for the module lives in `src/platform/web/` (it may import the module's controllers; the controller never imports `platform/`).
 
 ### Step 6: Error mapping and HTTP details (verified on a running example)
-- **Map known, typed failures; never match on message text.** The use case throws typed errors (`InvalidXxxError` from `domain/errors/`, `XxxNotFoundError`/`XxxAlreadyRegisteredError` from `app/errors/`); the controller turns each into a status with `instanceof` (400 invalid, 404 not found, 409 conflict).
+- **Map known, typed failures; never match on message text.** The use case throws typed errors (`InvalidXxxError` from `domain/errors/`, `XxxNotFoundError`/`XxxAlreadyRegisteredError` from `application/errors/`); the controller turns each into a status with `instanceof` (400 invalid, 404 not found, 409 conflict).
 - **Never swallow the rest.** An error you do not recognise is rethrown. Express 5 forwards a rejected promise from an async handler to the error handler, which answers 500 without leaking internals (the handler lives in `platform/web/app.ts`).
 - **Coerce, do not validate business rules.** `String(body.name ?? '')`, `Number(...)`, `Array.isArray(...)` keep a malformed body from crashing the controller; the entity then rejects `NaN` or empty values with its own typed error.
 - **Translate vocabulary** when the API and the use case differ (HTTP `items` → request `lines`) in a separate HTTP DTO, so the API can change without touching the use case.
@@ -177,7 +177,7 @@ The controller should NOT instantiate its own use case. That happens in `src/mai
 
 ## Validation Checklist
 
-- [ ] Controller lives in `src/modules/<module>/infra/adapters/controllers/`.
+- [ ] Controller lives in `src/modules/<module>/infrastructure/controllers/`.
 - [ ] Controller does not import `platform/`, `main/`, or another module.
 - [ ] Controller depends on the Input Port if the module defines one, otherwise on its own module's interactor — never on another module's classes.
 - [ ] No business logic in the controller — only data translation (request in, response model → HTTP out, errors → status codes).
