@@ -14,7 +14,7 @@ The plugin uses a **feature-first** layout: business capabilities are **modules*
 1. **Detect the language and framework** from the project context (check package.json, go.mod, pom.xml, Pipfile, etc.). If none exists, infer from the user's description.
 2. **Identify the modules** from the description. Each module is a business capability (`orders`, `customers`, `billing`), named as the language's conventions say (kebab-case in TypeScript, snake_case in Python, one lowercase word in Go — see "Language conventions" in the `rules` skill). The architecture must scream the domain, not the framework (Screaming Architecture principle). If the user names only one capability, create one module; if the description is vague, ask for the module names rather than inventing a generic one.
 3. **Create the lean directory structure** below: `domain/`, `application/` and `infrastructure/` per module, plus `main/` and `docs/architecture/`. Do NOT create empty folders for things that do not exist yet.
-   When the `ca_scaffold` MCP tool is available, use it for this step: call it with `rootPath` (absolute project root), `language`, `domain` and `modules`. It creates exactly this structure (with the `.gitkeep` stubs, `src/main/index.<ext>` and a generic `ARCHITECTURE.md`), rejects reserved module names and never overwrites existing files. Create the folders by hand only when the tool is unavailable, following the same structure.
+   When the `ca_scaffold` MCP tool is available, use it for this step: call it with `rootPath` (absolute project root), `language` (`typescript`, `javascript`, `python` or `go`), `domain` and `modules`. It creates this structure in the language's own layout (below: TypeScript/JavaScript, then Python and Go), with names adapted to the language, the composition root stub and a generic `ARCHITECTURE.md`; it rejects reserved or invalid module names and any other language, and never overwrites existing files. Follow its `nextSteps`. Create the folders by hand only when the tool is unavailable, following the same structure.
 4. **Generate a minimal base set of files** for the first module: an entity, a repository interface and an interactor stub.
 5. **Create the architecture doc** at `docs/architecture/ARCHITECTURE.md` (never inside `src/`).
 6. **Enforce both rules from the start** (Dependency Rule and Module Rule) by setting up linting rules or module boundary checks appropriate to the language.
@@ -78,6 +78,25 @@ Go has no `src/`, keeps its tests beside the code and splits the composition roo
 ```
 
 On demand, as in the other languages: `internal/shared/`, `internal/platform/<driver>/`, `application/ports/{input,output}/`, `application/interactors/`, `infrastructure/gateways/{inmemory,migrations}/`. Tests are `<file>_test.go` in the same package; gateway tests against a real database carry `//go:build integration` and run with `go test -tags integration ./...`. Imports of same-named packages from several modules are aliased `<module><package>` (`ordersinteractors`).
+
+### Python
+
+Python uses the `src/` layout with the code inside one package, so that `modules`, `shared` or `platform` never become top-level packages (`import platform` must stay the standard library). `ca_scaffold` with `language: "python"` creates:
+
+```
+<project-root>/
+├── pyproject.toml                              # add it if missing: [tool.setuptools.packages.find] where = ["src"]
+├── src/<package>/                              # named after pyproject.toml's project name, else the domain
+│   ├── __init__.py
+│   ├── main/__main__.py                        # composition root and entry point: python -m <package>.main
+│   └── modules/<module>/                       # snake_case: orders, order_history
+│       ├── domain/__init__.py
+│       ├── application/__init__.py
+│       └── infrastructure/__init__.py
+└── docs/architecture/ARCHITECTURE.md
+```
+
+Every folder is a package: its `__init__.py` takes the place of the `.gitkeep` and stays. On demand: `src/<package>/shared/`, `src/<package>/platform/<driver>/`, `application/ports/{input,output}/`, `application/interactors/`, `infrastructure/gateways/{in_memory,migrations}/`, and `tests/<module>/{unit,integration}/` with pytest. Imports between modules are absolute (`from <package>.modules.customers.application.ports.input.get_customer import GetCustomer`); inside a module, relative imports are fine.
 
 ## Files to Generate (for the first module `<module>`)
 

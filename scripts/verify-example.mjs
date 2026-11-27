@@ -197,6 +197,50 @@ try {
   if (goBuild.error) console.log('  skip  scaffold (go): go is not installed, the generated code was not compiled');
   else check('scaffold (go): the generated code passes go vet', goBuild.status === 0, goBuild.stderr);
 
+  // Python: src/<package>/ (src layout), snake_case names, every folder a package, main/__main__.py.
+  const pyScaf = tmpProject('scaffold-py'); temps.push(pyScaf);
+  const pyOut = callTool(pyScaf, 'ca_scaffold', { rootPath: pyScaf, language: 'python', domain: 'OrderManagement', modules: ['orders', 'order-history'] });
+  const pyDirs = pyOut.created.filter((c) => c.endsWith('/')).sort();
+  const P = 'src/order_management';
+  check('scaffold (python): src/<package>/modules/<m>/ with snake_case names and main/ in the package',
+    same(pyDirs, [`${P}/main/`, 'docs/architecture/',
+      ...['orders', 'order_history'].flatMap((m) => ['domain', 'application', 'infrastructure'].map((l) => `${P}/modules/${m}/${l}/`))]),
+    pyDirs.join(', '));
+  check('scaffold (python): every folder is a package (__init__.py instead of .gitkeep)',
+    ['', '/modules', '/modules/orders', '/modules/orders/domain', '/modules/order_history/infrastructure', '/main']
+      .every((d) => existsSync(join(pyScaf, `${P}${d}/__init__.py`))) && !pyOut.created.some((c) => c.endsWith('.gitkeep')),
+    pyOut.created.join(', '));
+  check('scaffold (python): without pyproject.toml, the next steps say how to make the package importable',
+    pyOut.nextSteps.some((n) => /pyproject\.toml/.test(n)), JSON.stringify(pyOut.nextSteps));
+  const pyScan = callTool(pyScaf, 'ca_scan');
+  check('scaffold (python): the result scans clean and every file is classified',
+    pyScan.violations.length === 0 && pyScan.warnings.length === 0 && pyScan.summary.unclassifiedFiles === 0, JSON.stringify(pyScan.summary));
+  const pyRun = spawnSync('python3', ['-m', 'order_management.main'], { cwd: pyScaf, env: { ...process.env, PYTHONPATH: 'src' }, encoding: 'utf8' });
+  if (pyRun.error) console.log('  skip  scaffold (python): python3 is not installed, the entry point was not run');
+  else check('scaffold (python): python -m <package>.main runs', pyRun.status === 0, pyRun.stderr);
+  const pyNamed = tmpProject('scaffold-py-named'); temps.push(pyNamed);
+  writeFileSync(join(pyNamed, 'pyproject.toml'), '[project]\nname = "acme-shop"\nversion = "0.1.0"\n');
+  const pyNamedOut = callTool(pyNamed, 'ca_scaffold', { rootPath: pyNamed, language: 'python', modules: ['orders'] });
+  check('scaffold (python): the package is named after pyproject.toml when there is one',
+    existsSync(join(pyNamed, 'src/acme_shop/main/__main__.py')) && !pyNamedOut.nextSteps.some((n) => /pyproject/.test(n)), pyNamedOut.created.join(', '));
+
+  // TypeScript and JavaScript: the scaffold itself is clean, and JavaScript gets .js stubs.
+  const tsScan = callTool(scaf, 'ca_scan');
+  check('scaffold (typescript): the result scans clean and every file is classified',
+    tsScan.violations.length === 0 && tsScan.warnings.length === 0 && tsScan.summary.unclassifiedFiles === 0, JSON.stringify(tsScan.summary));
+  const jsScaf = tmpProject('scaffold-js'); temps.push(jsScaf);
+  callTool(jsScaf, 'ca_scaffold', { rootPath: jsScaf, language: 'javascript', modules: ['orders'] });
+  const jsMain = join(jsScaf, 'src/main/index.js');
+  check('scaffold (javascript): src/main/index.js is valid JavaScript',
+    existsSync(jsMain) && spawnSync(process.execPath, ['--check', jsMain]).status === 0);
+
+  // Languages without a scaffold, and names that are not valid packages, are refused instead of guessed.
+  const javaOut = callTool(scaf, 'ca_scaffold', { rootPath: scaf, language: 'java', modules: ['orders'] });
+  check('scaffold rejects a language it has no layout for (no silent TypeScript fallback)',
+    typeof javaOut === 'string' && /has no scaffold/.test(javaOut) && /python/.test(javaOut), String(javaOut));
+  const digit = callTool(scaf, 'ca_scaffold', { rootPath: scaf, language: 'go', modules: ['3d-print'] });
+  check('scaffold rejects a Go/Python module name that is not a valid package name', typeof digit === 'string' && /digit/.test(digit), String(digit));
+
   // ── 5. classification is positional and resolves every import form ─────────────────────
   console.log('\n[5] layers are classified by position, and barrel / package imports are resolved');
   const pos = tmpProject('positional'); temps.push(pos);

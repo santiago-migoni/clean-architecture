@@ -79,7 +79,7 @@ The plugin ships an MCP server (`src/server.js`) that gives Claude real file-sys
 |---|---|
 | `ca_scan` | Scans every source file for Dependency Rule and Module Rule violations — returns severity, rule, file, import, and fix |
 | `ca_metrics` | Calculates Fan-in, Fan-out, Instability (I), Abstractness (A), and Distance from Main Sequence (D) per component (each module, `shared`, `platform`, `main`) |
-| `ca_scaffold` | Creates the lean scaffold: `domain/application/infrastructure` per module (with `.gitkeep` stubs), `src/main/index` and `docs/architecture/ARCHITECTURE.md`. `shared/`, `platform/`, `ports/`, `controllers/`, `gateways/` and `tests/` are created on demand by the skills, never empty. Never overwrites existing files |
+| `ca_scaffold` | Creates the lean scaffold in the language's own layout — TypeScript/JavaScript: `src/modules/<m>/…` + `src/main/index`; Python: `src/<package>/modules/<m>/…` (snake_case, `__init__.py` packages) + `main/__main__.py`; Go: `internal/modules/<m>/…` + `internal/bootstrap/` + `cmd/<app>/main.go` — plus `docs/architecture/ARCHITECTURE.md`. `shared/`, `platform/`, `ports/`, `controllers/`, `gateways/` and `tests/` are created on demand by the skills, never empty. Every generated file is valid code in its language (checked by `verify:example`: Python runs, Go passes `go vet`). Rejects other languages and reserved or invalid module names; never overwrites existing files |
 | `ca_layer_of` | Identifies which layer and module a file belongs to and checks its imports for compliance |
 | `ca_cycles` | Detects cyclic dependencies between components — modules, `shared`, `platform`, `main` (ADP check) |
 

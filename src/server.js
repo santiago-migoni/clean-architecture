@@ -23,6 +23,7 @@ import {
 } from './lib/architecture.js';
 import { PROFILES, profileFor, unsupportedLanguageOf } from './lib/languages/index.js';
 import { tableOwnership, walkSource } from './lib/project.js';
+import { SCAFFOLD_LANGUAGES, planScaffold } from './lib/scaffold.js';
 
 const SUPPORTED_NAMES = PROFILES.map((p) => p.name).join(', ');
 
@@ -95,8 +96,9 @@ const TOOLS = [
       'Create the lean Clean Architecture scaffold (feature-first) for a new project: ' +
       'src/modules/<module>/{domain,application,infrastructure} for each module, src/main/, docs/architecture/ARCHITECTURE.md ' +
       'and .gitkeep stubs. Everything else (shared/, platform/, ports/, interactors/, controllers/, gateways/, test trees) ' +
-      'is created on demand by the skills that need it. For Go the layout follows the language: ' +
-      'internal/modules/<module>/..., internal/bootstrap/ (composition root) and cmd/<app>/main.go, with no src/.',
+      'is created on demand by the skills that need it. The layout follows the language: Python uses ' +
+      'src/<package>/modules/<module>/... with snake_case names, __init__.py packages and src/<package>/main/__main__.py; ' +
+      'Go uses internal/modules/<module>/..., internal/bootstrap/ (composition root) and cmd/<app>/main.go, with no src/.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -106,18 +108,21 @@ const TOOLS = [
         },
         language: {
           type: 'string',
-          enum: ['typescript', 'javascript', 'python', 'java', 'go', 'csharp'],
-          description: 'Target programming language (determines file extensions and stubs).',
+          enum: SCAFFOLD_LANGUAGES,
+          description: 'Target programming language (determines the layout, names and stubs). Defaults to typescript.',
         },
         domain: {
           type: 'string',
-          description: 'Business domain name (e.g. "OrderManagement") — used in stub comments and as the default module name.',
+          description:
+            'Business domain name (e.g. "OrderManagement") — used in stub comments and as the default module name; ' +
+            'in Python it is also the package under src/ (unless pyproject.toml names it), in Go the cmd/<app> folder.',
         },
         modules: {
           type: 'array',
           items: { type: 'string' },
           description:
-            'Module names to create under src/modules/ (e.g. ["orders", "customers"]). ' +
+            'Module names to create under modules/ (e.g. ["orders", "customers"]), adapted to the language: ' +
+            'kebab-case (TypeScript/JavaScript), snake_case (Python), one lowercase word (Go). ' +
             'Defaults to one module named after the domain, or "core". ' +
             'Reserved: shared, platform, main, domain, application, infrastructure, modules, bootstrap, composition, ' +
             'and app, infra, adapters (names of earlier layouts).',
@@ -378,163 +383,41 @@ function toolMetrics(args) {
 }
 
 // ── Tool: ca_scaffold ─────────────────────────────────────────────────────
-
-const EXT_MAP = {
-  typescript: 'ts', javascript: 'js', python: 'py',
-  java: 'java', go: 'go', csharp: 'cs',
-};
-
-const VALID_LANGUAGES = new Set(['typescript', 'javascript', 'python', 'java', 'go', 'csharp']);
-
-/** "OrderManagement" → "order-management". Output is [a-z0-9-] only (path-safe). */
-function toKebab(s) {
-  return String(s)
-    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
-    .replace(/[^a-zA-Z0-9]+/g, '-')
-    .toLowerCase()
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 64);
-}
+// The plan (folders, files, names per language) lives in ./lib/scaffold.js; this only writes it.
 
 function toolScaffold(args) {
   const safeRoot = safePath(args.rootPath);
-  const lang = VALID_LANGUAGES.has(args.language) ? args.language : 'typescript';
-  const domain = (args.domain || 'Domain').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64) || 'Domain';
-  const ext = EXT_MAP[lang] || 'ts';
-
-  // Modules: explicit list, else one module named after the domain, else "core".
-  const requested = Array.isArray(args.modules) && args.modules.length
-    ? args.modules
-    : [args.domain ? domain : 'core'];
-  // Go package folders are one lowercase word (no "-" or "_"): "order-history" → "orderhistory".
-  const isGo = lang === 'go';
-  const moduleName = isGo ? (s) => toKebab(s).replace(/-/g, '') : toKebab;
-  const modules = [...new Set(requested.map(moduleName).filter(Boolean))].slice(0, 20);
-  if (modules.length === 0) modules.push('core');
-  for (const m of modules) {
-    if (RESERVED_MODULE_NAMES.has(m)) {
-      throw new Error(`Module name "${m}" is reserved (it would be ambiguous with a layer folder).`);
-    }
-  }
-
-  // Lean scaffold: only what every project needs. Everything else (shared/, platform/,
-  // ports/, interactors/, in-memory/, test trees, ...) is created on demand by the
-  // skill that first needs it — empty folders are noise.
-  // Go has no src/: modules under internal/modules/, wiring in internal/bootstrap/, entry point in cmd/<app>/.
-  const modulesRoot = isGo ? 'internal/modules' : 'src/modules';
-  const sharedPath = isGo ? 'internal/shared/' : 'src/shared/';
-  const goApp = toKebab(domain).replace(/-/g, '') || 'app';
-  const dirs = isGo ? [`cmd/${goApp}`, 'internal/bootstrap', 'docs/architecture'] : ['src/main', 'docs/architecture'];
-  for (const m of modules) {
-    const base = `${modulesRoot}/${m}`;
-    dirs.push(`${base}/domain`, `${base}/application`, `${base}/infrastructure`);
-  }
+  const readFile = (rel) => {
+    const full = join(safeRoot, rel);
+    return existsSync(full) ? readFileSync(full, 'utf8') : null;
+  };
+  const plan = planScaffold(args, readFile);
 
   const created = [];
-  for (const dir of dirs) {
+  for (const dir of plan.dirs) {
     const full = join(safeRoot, dir);
     if (!existsSync(full)) {
       mkdirSync(full, { recursive: true });
       created.push(dir + '/');
     }
   }
-
-  // Stub files (.gitkeep keeps otherwise-empty folders in git)
-  const goModule = isGo && existsSync(join(safeRoot, 'go.mod'))
-    ? /^module[ \t]+(\S+)/m.exec(readFileSync(join(safeRoot, 'go.mod'), 'utf8'))?.[1] ?? null
-    : null;
-  const mainStubs = isGo
-    ? [
-        {
-          path: 'internal/bootstrap/bootstrap.go',
-          content:
-            `// Package bootstrap is the composition root: the ONLY package allowed to import concrete\n` +
-            `// implementations from all modules and layers. Wire all dependencies here; only cmd/ imports it.\n` +
-            `package bootstrap\n\n` +
-            `// App holds the wired use cases that the entry points in cmd/ run.\n` +
-            `type App struct{}\n\n` +
-            `// New wires every module and returns the app.\n` +
-            `func New() App { return App{} }\n`,
-        },
-        {
-          path: `cmd/${goApp}/main.go`,
-          content: goModule
-            ? `// Entry point: builds the app through internal/bootstrap and runs it. No wiring here.\n` +
-              `package main\n\nimport "${goModule}/internal/bootstrap"\n\nfunc main() {\n\t_ = bootstrap.New()\n}\n`
-            : `// Entry point: builds the app through internal/bootstrap and runs it. No wiring here.\n` +
-              `// After \`go mod init <module-path>\`, import "<module-path>/internal/bootstrap" and call bootstrap.New().\n` +
-              `package main\n\nfunc main() {}\n`,
-        },
-      ]
-    : [
-        {
-          path: `src/main/index.${ext}`,
-          content: `// MAIN COMPONENT — Composition Root\n// This is the ONLY file allowed to import concrete implementations from all modules and layers.\n// Wire all dependencies here. Nothing imports from main/.\n// With several entry points (api, worker, cli) use src/main/<app>/index.${ext} and share the modules.\n`,
-        },
-      ];
-  const layoutDoc = isGo
-    ? `\`\`\`\ncmd/<app>/main.go                                          # entry points: call bootstrap, run\ninternal/\n├── modules/<module>/{domain, application, infrastructure}  # business code, one folder per module\n├── shared/                                                 # shared kernel — create only when needed\n├── platform/                                               # drivers (db, web, clock) — create only when needed\n└── bootstrap/                                              # composition root\ndocs/architecture/                                          # this file, diagrams, ADRs\n\`\`\`\n\n` +
-      `Tests are \`_test.go\` files beside the code; gateway tests against a real database carry \`//go:build integration\`.\n\n`
-    : `\`\`\`\nsrc/\n├── modules/<module>/{domain, application, infrastructure}  # business code, one folder per module\n├── shared/                                                 # shared kernel — create only when needed\n├── platform/                                               # web, db, external — create only when needed\n└── main/                                                   # composition root (main/<app>/ if several entry points)\ntests/\n├── <module>/{unit, integration}/\n└── e2e/\ndocs/architecture/                                          # this file, diagrams, ADRs\n\`\`\`\n\n`;
-  const mainPath = isGo ? '`internal/bootstrap/`, `cmd/`' : '`main/`';
-  const stubs = [
-    ...mainStubs,
-    {
-      path: `docs/architecture/ARCHITECTURE.md`,
-      content:
-        `# ${domain} — Architecture\n\n` +
-        `## Layout\n\n` +
-        layoutDoc +
-        `Subfolders (\`application/ports/{input,output}\`, \`application/interactors\`, \`infrastructure/{controllers,presenters,gateways}\`, ` +
-        `\`domain/{events,errors,services}\`) are created by the first file that needs them.\n\n` +
-        `## Layers (inside each module)\n\n` +
-        `| Layer | Path | May import |\n|---|---|---|\n` +
-        `| domain | \`modules/<m>/domain/\` | shared |\n` +
-        `| application | \`modules/<m>/application/\` | domain, shared |\n` +
-        `| infrastructure | \`modules/<m>/infrastructure/\` | application, domain, shared |\n` +
-        `| platform | \`platform/\` | everything inward |\n` +
-        `| main | ${mainPath} | everything — imported by no one |\n\n` +
-        `## Dependency Rule\n\nSource code dependencies point **inward only**: infrastructure → application → domain.\n\n` +
-        `## Module Rule\n\nA module never imports another module's \`domain/\` or \`infrastructure/\`.\n` +
-        `The only legal crossing is \`A/infrastructure\` → \`B/application/ports/input\`, through a port owned by A.\n\n` +
-        `## Optional pieces\n\n` +
-        `- **Input Port** — required when another module (or a second entry point) calls the use case; otherwise the controller may depend on the interactor directly.\n` +
-        `- **Output Port + Presenter** — use when output formatting is non-trivial or several delivery mechanisms exist; otherwise the interactor returns a response model.\n` +
-        `- **Migrations** live with their module (\`infrastructure/gateways/migrations/\`); the connection and runner live in \`platform/db/\`.\n`,
-    },
-  ];
-  for (const m of modules) {
-    stubs.push(
-      {
-        path: `${modulesRoot}/${m}/domain/.gitkeep`,
-        content: `# Module "${m}" — domain: enterprise business rules.\n# May import only from ${sharedPath}.\n`,
-      },
-      {
-        path: `${modulesRoot}/${m}/application/.gitkeep`,
-        content: `# Module "${m}" — application: use cases (interactors) and the ports they need.\n# May import domain and ${sharedPath} only.\n`,
-      },
-      {
-        path: `${modulesRoot}/${m}/infrastructure/.gitkeep`,
-        content: `# Module "${m}" — infrastructure: interface adapters (controllers/, presenters/, gateways/).\n# Never imports platform/; framework clients are injected from main/.\n`,
-      },
-    );
-  }
-
-  for (const stub of stubs) {
+  for (const stub of plan.stubs) {
     const full = join(safeRoot, stub.path);
     if (!existsSync(full)) {
+      mkdirSync(dirname(full), { recursive: true });
       writeFileSync(full, stub.content);
       created.push(stub.path);
     }
   }
 
-  const first = modules[0];
-  const entity = args.domain && !(Array.isArray(args.modules) && args.modules.length) ? domain : '<Entity>';
+  const first = plan.modules[0];
+  const entity = args.domain && !(Array.isArray(args.modules) && args.modules.length) ? plan.domain : '<Entity>';
   return {
-    message: `Scaffold created for domain "${domain}" (${lang}) with module(s): ${modules.join(', ')}`,
-    modules,
+    message: `Scaffold created for domain "${plan.domain}" (${plan.lang}) with module(s): ${plan.modules.join(', ')}`,
+    modules: plan.modules,
     created,
     nextSteps: [
+      ...plan.nextSteps,
       `Run /clean-architecture:entity ${first}/${entity} to create your first entity`,
       `Run /clean-architecture:usecase ${first}/Create${entity === '<Entity>' ? '<Entity>' : entity} to create your first use case`,
       `Run /clean-architecture:check to verify the dependency and module rules`,
@@ -672,7 +555,7 @@ function handleMessage(msg) {
     ok(id, {
       protocolVersion: '2024-11-05',
       capabilities: { tools: {} },
-      serverInfo: { name: 'clean-architecture', version: '2.3.0' },
+      serverInfo: { name: 'clean-architecture', version: '2.4.0' },
     });
     return;
   }

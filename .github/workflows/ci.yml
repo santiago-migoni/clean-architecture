@@ -28,9 +28,7 @@ jobs:
       - name: Syntax check
         run: |
           node --check src/server.js
-          node --check src/lib/architecture.js
-          node --check src/lib/paths.js
-          for f in src/lib/languages/*.js; do node --check "$f"; done
+          for f in src/lib/*.js src/lib/languages/*.js; do node --check "$f"; done
           node --check src/hooks/dependency-check.js
           node --check src/hooks/session-start.js
           node --check scripts/verify-example.mjs
