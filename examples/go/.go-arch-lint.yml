@@ -1,0 +1,65 @@
+# go-arch-lint (v1.19, config v3): both axes, declared per module.
+# Layers point inward inside a module; the two edges between modules go from infrastructure into another
+# module's public surface: orders/infrastructure -> customers/application/ports/input (a call) and
+# loyalty/infrastructure -> orders/application/ports/published (a subscription to its event).
+# shared depends on nothing, so it has no entry under deps. A module's ports/input component
+# exists only once the folder does (go-arch-lint rejects a glob that matches nothing).
+version: 3
+workdir: internal
+
+allow:
+  # deepScan reports the composition root injecting an implementation into a use case
+  # (infrastructure passed to application) as a violation: that injection IS the Dependency
+  # Inversion this architecture relies on. Imports are what the rules constrain.
+  deepScan: false
+  depOnAnyVendor: true
+
+components:
+  shared:                   { in: shared/** }
+  platform:                 { in: platform/** }
+  bootstrap:                { in: bootstrap/** }
+
+  customers-domain:         { in: modules/customers/domain/** }
+  customers-input:          { in: modules/customers/application/ports/input/** }
+  customers-application:    { in: modules/customers/application/** }
+  customers-infrastructure: { in: modules/customers/infrastructure/** }
+
+  orders-domain:            { in: modules/orders/domain/** }
+  orders-published:         { in: modules/orders/application/ports/published/** }
+  orders-application:       { in: modules/orders/application/** }
+  orders-infrastructure:    { in: modules/orders/infrastructure/** }
+
+  loyalty-domain:           { in: modules/loyalty/domain/** }
+  loyalty-application:      { in: modules/loyalty/application/** }
+  loyalty-infrastructure:   { in: modules/loyalty/infrastructure/** }
+
+deps:
+  platform:
+    mayDependOn: [platform, shared, orders-infrastructure]  # web uses i18n; the web view reads the orders presenter
+  bootstrap:
+    anyProjectDeps: true
+
+  customers-domain:
+    mayDependOn: [shared]
+  customers-input:
+    mayDependOn: [customers-domain, shared]
+  customers-application:
+    mayDependOn: [customers-application, customers-input, customers-domain, shared]
+  customers-infrastructure:
+    mayDependOn: [customers-infrastructure, customers-application, customers-input, customers-domain, shared]
+
+  orders-domain:
+    mayDependOn: [orders-domain, shared]
+  orders-published:
+    mayDependOn: [shared]  # a published contract is plain data: never its module's domain
+  orders-application:
+    mayDependOn: [orders-application, orders-published, orders-domain, shared]
+  orders-infrastructure:
+    mayDependOn: [orders-infrastructure, orders-application, orders-published, orders-domain, shared, customers-input]
+
+  loyalty-domain:
+    mayDependOn: [loyalty-domain, shared]
+  loyalty-application:
+    mayDependOn: [loyalty-application, loyalty-domain, shared]
+  loyalty-infrastructure:
+    mayDependOn: [loyalty-infrastructure, loyalty-application, loyalty-domain, shared, orders-published]

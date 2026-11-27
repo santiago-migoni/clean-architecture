@@ -1,6 +1,6 @@
 ---
 name: migrate
-description: "This skill should be used when the user asks to \"migrate to Clean Architecture\", \"refactor a big ball of mud\", \"extract entities / use cases / gateways from existing code\", \"move to the feature-first module layout\", or to convert the previous layer-first layout (src/entities, src/usecases, src/adapters) into src/modules/<module>/{domain,app,infra} (Clean Architecture Chapter 34)."
+description: "This skill should be used when the user asks to \"migrate to Clean Architecture\", \"refactor a big ball of mud\", \"extract entities / use cases / gateways from existing code\", \"move to the feature-first module layout\", or to convert the previous layer-first layout (src/entities, src/usecases, src/adapters) into src/modules/<module>/{domain,application,infrastructure} (Clean Architecture Chapter 34)."
 argument-hint: "[path]"
 ---
 You are a Clean Architecture expert following Robert C. Martin's book *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
@@ -14,7 +14,7 @@ The argument after the command is the path to the code to migrate (e.g., `src/`,
 From the book (Chapter 34 — The Missing Chapter):
 > "The devil is in the implementation details."
 
-The target layout is feature-first: `src/modules/<module>/{domain, app, infra/adapters}` plus `src/shared/`, `src/platform/` and `src/main/`.
+The target layout is feature-first: `modules/<module>/{domain,application,infrastructure}` plus `shared/`, `platform/` and the composition root, under the language's code root (`src/` in TypeScript, `src/<package>/` in Python, `internal/` + `cmd/` in Go — see "Language conventions" in the `rules` skill).
 
 Migration should be:
 - **Incremental** — never a big-bang rewrite. Migrate one module at a time, and within it one layer at a time.
@@ -71,9 +71,18 @@ class OrderService {
 // src/entities/, src/usecases/, src/adapters/, src/frameworks/, src/main/
 // Layers are right, but every business capability is mixed inside each layer folder
 ```
-Mapping (per module): `entities/<x>` → `modules/<m>/domain/`, `usecases/ports|interactors` → `modules/<m>/app/`, `adapters/*` → `modules/<m>/infra/adapters/`, `frameworks/*` → `platform/`. File names become kebab-case. Start with Phase 0 (identify the modules), then move the files of one module at a time and fix imports; `ca_scan` reports files still in the old folders.
+Mapping (per module): `entities/<x>` → `modules/<m>/domain/`, `usecases/ports|interactors` → `modules/<m>/application/`, `adapters/*` → `modules/<m>/infrastructure/`, `frameworks/*` → `platform/`. File names become kebab-case. Start with Phase 0 (identify the modules), then move the files of one module at a time and fix imports; `ca_scan` reports files still in the old folders.
+
+### 6. Folder names of plugin versions before 2.0
+```
+// src/modules/<m>/app/...                                  → src/modules/<m>/application/...
+// src/modules/<m>/infra/adapters/{controllers,presenters,gateways}/ → src/modules/<m>/infrastructure/{controllers,presenters,gateways}/
+```
+Only a rename: the layers and the rules are the same, so skip the roadmap below. Per module: `git mv` the folders (also `tests/<m>/unit/app` and `tests/<m>/unit/infra/adapters/*`; the files of `tests/<m>/integration/infra/adapters/gateways/` move up to `tests/<m>/integration/`), then fix every import that points into them (relative imports out of `infrastructure/` lose one `../`), the paths in `main/`, and the lint config (`app` → `application`, `infra` → `infrastructure` in element patterns). Done when `ca_scan` shows no "before 2.0" warning and the typecheck, lint and tests pass.
 
 ## Migration Roadmap
+
+Every phase keeps the application working: the old code first delegates to the new piece and is deleted only when nothing calls it any more. **For before/after code of each phase in the project's language, read** [TypeScript / JavaScript](references/typescript.md), [Python](references/python.md) or [Go](references/go.md). Paths below are inside the module's folder under the language's code root (see "Language conventions" in the `rules` skill).
 
 ### Phase 0: Identify the Modules (Planning Only — No Code Moves)
 
@@ -81,9 +90,9 @@ Mapping (per module): `entities/<x>` → `modules/<m>/domain/`, `usecases/ports|
 
 Steps:
 1. List the business capabilities in the code (`orders`, `customers`, `billing`…). Group by *reason to change* (CCP), not by technical type: a module is what changes together.
-2. Name each module in kebab-case. Avoid the reserved names `shared`, `platform`, `main`, `app`, `domain`, `infra`, `modules`, `adapters`, `bootstrap`, `composition` (the last two are aliases of `main`).
-3. Map every existing class/file to a module. Anything used by several modules and free of business policy (Money, Id, base errors) is a candidate for `src/shared/`.
-4. Find the places where one capability calls another. Each becomes a **cross-module port** (owned by the caller, implemented in the caller's `infra`, calling the other module's input port) — decide them now.
+2. Name each module in kebab-case. Avoid the reserved names `shared`, `platform`, `main`, `domain`, `application`, `infrastructure`, `modules`, `bootstrap` and `composition` (aliases of `main`), plus `app`, `infra` and `adapters` (layer folders of versions before 2.0).
+3. Map every existing class/file to a module. Anything used by several modules and free of business policy (Money, Id, base errors) is a candidate for `shared/`.
+4. Find the places where one capability calls another. Each becomes a **cross-module port** (owned by the caller, implemented in the caller's `infrastructure`, calling the other module's input port) — decide them now.
 5. Order the migration: start with the module that is depended on the least.
 
 Phases 1–5 below are applied **per module**.
@@ -94,7 +103,7 @@ Phases 1–5 below are applied **per module**.
 
 Steps:
 1. Identify classes/functions that contain enterprise business rules.
-2. Create `src/modules/<module>/domain/` directory.
+2. Create the module's `domain/` folder.
 3. Create entity classes that:
    - Are framework-independent.
    - Contain only business methods and validation.
@@ -102,30 +111,6 @@ Steps:
 4. Have the existing service/model DELEGATE to the entity.
 5. Write entity unit tests.
 
-```typescript
-// BEFORE (business rule inside the service/ORM model):
-class OrderService {
-  canCancel(order: OrderDto): boolean {
-    return order.status === 'PENDING' && order.items.length > 0;
-  }
-}
-
-// AFTER — Phase 1: Extract to Entity
-// src/modules/orders/domain/order.ts
-export class Order {
-  canBeCancelled(): boolean {
-    return this.status === 'PENDING' && this.items.length > 0;
-  }
-}
-
-// src/services/OrderService.ts (unchanged interface, delegates to entity)
-class OrderService {
-  canCancel(orderData: OrderDto): boolean {
-    const order = Order.reconstitute(orderData);
-    return order.canBeCancelled(); // delegates to entity
-  }
-}
-```
 
 ### Phase 2: Define Use Case Ports (Non-Breaking Interface Extraction)
 
@@ -134,35 +119,17 @@ class OrderService {
 Steps:
 1. For each "service" method that another module (or a second entry point) will call, define an Input Port interface. For use cases only called by one controller in the same module an Input Port is optional — skip it.
 2. For each database access pattern used by a service, define a Repository interface.
-3. Place all interfaces in `src/modules/<module>/app/ports/` (`input/` and `output/`).
+3. Place all interfaces in the module's `application/ports/` (`input/` and `output/`).
 4. Have existing services implement the Input Port interfaces.
 5. Have existing repository/ORM classes implement the Repository interfaces.
 
-```typescript
-// Step 2a: Define the input port
-// src/modules/orders/app/ports/input/place-order.ts
-export interface IPlaceOrderUseCase {
-  execute(request: PlaceOrderRequestModel): Promise<void>;
-}
-
-// Step 2b: Define the repository interface
-// src/modules/orders/app/ports/output/order-repository.ts
-export interface IOrderRepository {
-  findById(id: string): Promise<Order | null>;
-  save(order: Order): Promise<void>;
-}
-
-// Step 2c: Existing service now declares it implements the port
-// (behavior unchanged — just adding the interface declaration)
-export class OrderService implements IPlaceOrderUseCase { /* ... */ }
-```
 
 ### Phase 3: Extract Interactors (Decouple Business Logic from Infrastructure)
 
 **Goal**: Move application business logic into framework-independent interactors.
 
 Steps:
-1. Create `src/modules/<module>/app/interactors/` directory.
+1. Create the module's `application/interactors/` folder.
 2. Create an Interactor class that:
    - Implements the Input Port (if one was defined).
    - Accepts Repository interface via constructor injection.
@@ -170,62 +137,25 @@ Steps:
 3. Move the actual business logic from the service into the interactor.
 4. Update the existing service to delegate to the interactor.
 
-```typescript
-// src/modules/orders/app/interactors/place-order.ts
-// Pure business logic, no framework dependencies
-export class PlaceOrderInteractor implements IPlaceOrderUseCase {
-  constructor(
-    private readonly outputPort: IPlaceOrderOutputPort,
-    private readonly repository: IOrderRepository,
-    private readonly customerLookup: ICustomerLookup, // port owned by `orders`, implemented against `customers`' input port
-  ) {}
-
-  async execute(request: PlaceOrderRequestModel): Promise<void> {
-    // Business logic extracted from service/controller
-    if (!(await this.customerLookup.exists(request.customerId))) {
-      this.outputPort.presentError(new CustomerNotFoundError(request.customerId)); // typed app error
-      return;
-    }
-    const order = Order.create({ ... });
-    await this.repository.save(order);
-    this.outputPort.present({ orderId: order.id });
-  }
-}
-```
 
 ### Phase 4: Extract Gateways (Decouple Infrastructure from Business Logic)
 
 **Goal**: Move all database/external code into adapter implementations.
 
 Steps:
-1. Create `src/modules/<module>/infra/adapters/gateways/` directory.
+1. Create the module's `infrastructure/gateways/` folder.
 2. Create Gateway/Repository implementation classes that implement the interfaces from Phase 2.
 3. These classes contain all ORM/SQL code.
 4. Create a data mapper to translate between domain entities and ORM models.
 5. Add an in-memory implementation for testing.
 
-```typescript
-// src/modules/orders/infra/adapters/gateways/order-repository-impl.ts
-export class OrderRepositoryImpl implements IOrderRepository {
-  constructor(private readonly ormRepo: TypeOrmOrderRepository) {}
-
-  async findById(id: string): Promise<Order | null> {
-    const row = await this.ormRepo.findOne({ where: { id } });
-    return row ? toDomain(row) : null;
-  }
-
-  async save(order: Order): Promise<void> {
-    await this.ormRepo.save(toPersistence(order));
-  }
-}
-```
 
 ### Phase 5: Extract Controllers and Presenters (Adapter Layer Cleanup)
 
 **Goal**: Thin out controllers and introduce the Humble Object pattern.
 
 Steps:
-1. Create `src/modules/<module>/infra/adapters/controllers/` (and `presenters/`) directories.
+1. Create the module's `infrastructure/controllers/` (and `presenters/`) folders.
 2. Extract HTTP request parsing from fat controllers into thin adapter controllers.
 3. Create Presenter classes that implement Output Ports.
 4. Make HTTP route handlers (Humble Objects) delegate to controllers and read from presenters.
@@ -235,9 +165,9 @@ Steps:
 **Goal**: Centralize all wiring in Main.
 
 Steps:
-1. Create `src/main/` directory.
-2. Move all `new ConcreteClass()` calls to main.
-3. Wire: Gateway → Presenter → Interactor → Controller → Router, one `compose<Module>` function per module in `src/main/compose/`; connect modules there through input ports only.
+1. Create the composition root (`src/main/`, `src/<package>/main/`, or `internal/bootstrap/` + `cmd/<app>/` in Go).
+2. Move every construction of a concrete class across layers there.
+3. Wire: Gateway → Presenter → Interactor → Controller → Router, one function per module; connect modules there through input ports only.
 4. Test that the application still starts and works end-to-end.
 
 ### Phase 7: Enforce the Dependency Rule
@@ -246,47 +176,7 @@ Steps:
 
 Add lint rules or architecture tests for BOTH axes — layers and modules:
 
-#### TypeScript — eslint-plugin-boundaries (v7):
-Use the `eslint.config.js` from `/clean-architecture:init` (section "Rule enforcement"). It defines the element types `shared`, `domain`, `input-port`, `app`, `infra`, `platform`, `main` and one policy per allowed edge, with the `{{ from.element.captured.module }}` template so a module may only depend on itself, plus the single legal cross-module edge `infra → input-port`. It uses `boundaries/dependencies` with `policies`; older plugin versions (`boundaries/element-types`) have a different syntax.
-
-During migration, set the rule to `1` (warn) so the existing violations are visible without blocking the build, then raise it to `2` (error) once the module is migrated.
-
-#### Java — ArchUnit test:
-```java
-@Test
-void domainShouldNotDependOnApp() {
-    noClasses().that().resideInAPackage("..modules..domain..")
-        .should().dependOnClassesThat().resideInAPackage("..modules..app..")
-        .check(importedClasses);
-}
-
-@Test
-void modulesShouldNotDependOnEachOther() {
-    slices().matching("..modules.(*)..").should().notDependOnEachOther()
-        .ignoreDependency(resideInAPackage("..infra.adapters.."), resideInAPackage("..app.ports.input.."))
-        .check(importedClasses);
-}
-```
-
-#### Python — import-linter:
-```ini
-[importlinter:contract:layers]
-name = Layers inside each module
-type = layers
-layers =
-    myapp.modules.orders.infra
-    myapp.modules.orders.app
-    myapp.modules.orders.domain
-
-[importlinter:contract:modules]
-name = Modules do not import each other
-type = independence
-modules =
-    myapp.modules.orders
-    myapp.modules.customers
-ignore_imports =
-    myapp.modules.orders.infra.adapters.** -> myapp.modules.customers.app.ports.input.**
-```
+Use the enforcement the `init` skill sets up for the language (its references), and run `ca-scan` in CI (the job is in the `init` references): it checks both axes, SQL table ownership, configuration and i18n placement, and cycles in every supported language. During migration, keep a linter's rule at warning level so existing violations are visible without blocking the build, and raise it to error once a module is migrated.
 
 ## Migration Execution Plan
 
@@ -301,30 +191,30 @@ Estimated Effort: [S/M/L/XL]
 
 PHASE 0 — Module Identification (0 risk — planning only)
   [ ] List modules and map each existing file to one
-  [ ] Decide src/shared/ contents and the cross-module ports
+  [ ] Decide shared/ contents and the cross-module ports
 
 (Phases 1–5 repeat for each module, least-depended-on first)
 
 PHASE 1 — Entity Extraction (0 risk — pure extraction)
-  [ ] Create src/modules/<module>/domain/<name>.ts
+  [ ] Create modules/<module>/domain/<name>
   [ ] Move business methods from <source file>
   [ ] Add entity unit tests
   [ ] Have source file delegate to entity
   [ ] Verify all existing tests still pass
 
 PHASE 2 — Port Definition (0 risk — adding interfaces)
-  [ ] Create src/modules/<module>/app/ports/input/<name>.ts (only where another module / entry point needs it)
-  [ ] Create src/modules/<module>/app/ports/output/<name>-repository.ts
-  [ ] Create cross-module ports (e.g. <other>-lookup.ts) where a capability calls another module
+  [ ] Create modules/<module>/application/ports/input/<name> (only where another module / entry point needs it)
+  [ ] Create modules/<module>/application/ports/output/<name>-repository
+  [ ] Create cross-module ports (e.g. <other>-lookup) where a capability calls another module
   [ ] Have existing classes implement the interfaces
 
 PHASE 3 — Interactor Extraction (low risk — new class, old delegates)
-  [ ] Create src/modules/<module>/app/interactors/<name>.ts
+  [ ] Create modules/<module>/application/interactors/<name>
   [ ] Write interactor unit tests (with mocks)
   [ ] Have old service delegate to interactor
 
 PHASE 4 — Gateway Extraction (medium risk — DB layer refactor)
-  [ ] Create src/modules/<module>/infra/adapters/gateways/<name>-repository-impl.ts
+  [ ] Create modules/<module>/infrastructure/gateways/<name>-repository-impl
   [ ] Create in-memory implementation for tests
   [ ] Write integration tests
   [ ] Update Main wiring

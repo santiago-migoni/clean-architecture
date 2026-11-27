@@ -1,6 +1,6 @@
 ---
 name: main
-description: "This skill should be used when the user asks to \"create the composition root\", \"wire the dependencies\", \"update main\", \"connect two modules\", \"add a new entry point (api, worker, cli)\", or to move object creation out of inner layers into src/main/ (Clean Architecture Chapter 26)."
+description: "This skill should be used when the user asks to \"create the composition root\", \"wire the dependencies\", \"update main\", \"connect two modules\", \"add a new entry point (api, worker, cli)\", or to move object creation out of inner layers into the composition root (Clean Architecture Chapter 26)."
 ---
 You are a Clean Architecture expert following Robert C. Martin's book *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
 
@@ -26,225 +26,77 @@ Main composes one module at a time, then connects them:
 ```
          Main (dirty, knows everything)
            │
-           ├── platform: createDbConnection()          (src/platform/db)
+           ├── platform: open the DB connection         (platform/db)
            │
-           ├── composeCustomers({ db })                (src/main/compose/customers)
-           │     ├── creates SqlCustomerRepository     (customers/infra/adapters/gateways)
-           │     ├── creates GetCustomerInteractor     (customers/app/interactors)
-           │     └── exposes input port IGetCustomerUseCase  ← the only thing others may use
+           ├── compose customers (db)                   (one function per module)
+           │     ├── creates SqlCustomerRepository     (customers/infrastructure/gateways)
+           │     ├── creates GetCustomerInteractor     (customers/application/interactors)
+           │     └── exposes its input port GetCustomer  ← the only thing others may use
            │
-           ├── composeOrders({ db, getCustomer })      (src/main/compose/orders)
-           │     ├── creates SqlOrderRepository        (orders/infra/adapters/gateways)
+           ├── compose orders (db, getCustomer)        (one function per module)
+           │     ├── creates SqlOrderRepository        (orders/infrastructure/gateways)
            │     ├── creates CustomerLookupGateway(getCustomer)   ← cross-module link
            │     └── PlaceOrderInteractor + PlaceOrderController
            │         (+ a PlaceOrderPresenter per request ONLY if the use case has an Output Port)
            │
-           └── registerRoutes(app, routes)             (src/platform/web)
+           └── register the routes                     (platform/web)
 ```
 
 ## Your Task
 
 ### Step 1: Audit the Current State
-- Scan the codebase for any `new ConcreteClass()` calls outside of `src/main/` or `tests/`.
+- Scan the codebase for any construction of a concrete class across layers (`new SqlOrderRepository(...)`, `SqlOrderRepository(...)`, `NewSQLOrderRepository(...)`) outside the composition root and the tests.
 - Identify all dependencies that need wiring, module by module.
 - List all use cases, their interactors, presenters, and gateways per module.
 - List the cross-module ports (`<other>-lookup`, …) and which input port implements each.
 
 ### Step 2: Create the Main Files
 
-One entry point → `src/main/index.<ext>`. Several (api, worker, cli) → one folder per entry point, all sharing the `compose/<m>.<ext>` functions: `src/main/api/index.<ext>`, `src/main/worker/index.<ext>`.
+Where the composition root lives depends on the language (see "Language conventions" in the `rules` skill):
 
-```
-src/main/
-├── index.<ext>               ← entry point: platform → modules → server
-├── compose/                  ← NOT named "modules/": src/modules/ is the business code
-│   ├── customers.<ext>       ← compose<Module>(deps) per module
-│   └── orders.<ext>
-├── index.test.<ext>          ← test composition root (in-memory implementations)
-└── config/
-    └── environment.<ext>     ← environment variable parsing (a detail)
-```
+| | One entry point | Several entry points (api, worker, cli) |
+|---|---|---|
+| TypeScript / JavaScript | `src/main/index` (factory) + `src/main/server` (listens), `src/main/compose/<module>` | `src/main/<app>/index`, sharing `compose/` |
+| Python | `src/<package>/main/app.py` (factory) + `main/__main__.py`, `main/compose/<module>.py` | `main/<app>/__main__.py`, sharing `compose/` |
+| Go | `internal/bootstrap/` (one file per module + `bootstrap.go`) + `cmd/<app>/main.go` | one `cmd/<app>/main.go` per entry point, all calling bootstrap |
 
-#### TypeScript (Express, manual DI)
+The folder of per-module functions is never called `modules/`: that name is the business code.
 
-`src/main/compose/orders.ts` — wires ONE module:
-```typescript
-// src/main/compose/orders.ts
-// Composition of the `orders` module. Only src/main/ may import concrete classes.
+**Before writing code, read the reference for the project's language.** Each one wires the `customers` and `orders` modules: one function per module that exposes its input ports, the composition root as a factory, the tiny entry point, and the test composition root:
 
-import type { Request, Response } from 'express';
-import type { DbConnection } from '../../platform/db/connection';
-import type { IGetCustomerUseCase } from '../../modules/customers/app/ports/input/get-customer';
+- [TypeScript / JavaScript](references/typescript.md) — also: wiring with a DI container
+- [Python](references/python.md)
+- [Go](references/go.md)
 
-import { SqlOrderRepository } from '../../modules/orders/infra/adapters/gateways/sql-order-repository';
-import { CustomerLookupGateway } from '../../modules/orders/infra/adapters/gateways/customer-lookup-gateway';
-import { PlaceOrderInteractor } from '../../modules/orders/app/interactors/place-order';
-import { PlaceOrderController } from '../../modules/orders/infra/adapters/controllers/place-order-controller';
+What every composition root does, in this order:
+1. **Drivers** (`platform/`): open the database connection, run every module's migrations, create clients, with the values of the configuration. The configuration is loaded by a config module in `main/` (`config` in TypeScript and Python, `bootstrap/settings.go` in Go): a pure function of the environment it is given, which validates every value and fails at startup. The entry point is the only code that touches the environment itself; it passes it to that function.
+   It also creates the **event bus** (`platform/events/`): it gives `publish` to each publishing adapter and subscribes each module's subscribers (see the `event` skill). A failing subscriber is reported, never fails the publisher.
+   It also decides the **locales** the app speaks (the first is the default) and builds one translator per module catalog with `platform/i18n/`; `platform/web/` gets the locales to negotiate each request's.
+2. **Modules in dependency order**: each module function builds its gateways, interactors and controllers and returns the **input ports** other modules may use plus its **routes**. The cross-module tie is always an input port passed to the other module's function (A needs B's port ⇒ B is composed first, and B never needs A).
+3. **Delivery**: hand the routes to `platform/web/`, which owns the framework, route registration and the last-resort error handler.
 
-export interface OrdersDeps {
-  db: DbConnection;
-  newId: () => string;              // randomness is injected, never generated inside a use case
-  getCustomer: IGetCustomerUseCase; // customers' INPUT port — the only legal cross-module link
-}
+Presenters are stateful (they hold the view model): when a use case has an Output Port, its module function returns a **factory** that builds a NEW presenter, interactor and controller per request. Controllers without a presenter are stateless and built once.
 
-export function composeOrders({ db, newId, getCustomer }: OrdersDeps) {
-  // Gateways (stateless, shared)
-  const orderRepository = new SqlOrderRepository(db);
-  const customerLookup = new CustomerLookupGateway(getCustomer);
-
-  // Default: the interactor returns a response model — nothing is stateful, build once.
-  const placeOrderController = new PlaceOrderController(
-    new PlaceOrderInteractor(orderRepository, customerLookup, newId),
-  );
-
-  return { routes: { placeOrder: (req: Request, res: Response) => placeOrderController.handle(req, res) } };
-}
-```
-
-Variant — the use case has an Output Port + Presenter. Presenters are stateful (they hold the view model), so build the presenter, interactor and controller **per request** with a factory and never share a presenter between requests:
-```typescript
-const makePlaceOrder = () => {
-  const presenter = new PlaceOrderPresenter();
-  const interactor = new PlaceOrderInteractor(presenter, orderRepository, customerLookup, newId);
-  return { presenter, controller: new PlaceOrderController(interactor) };
-};
-return { routes: { makePlaceOrder } }; // platform/web wraps the factory in the humble route handler
-```
-
-`src/main/compose/customers.ts` — same shape; it also **exposes its input ports** for other modules:
-```typescript
-export function composeCustomers({ db, newId }: { db: DbConnection; newId: () => string }) {
-  const customerRepository = new SqlCustomerRepository(db);
-  const getCustomer: IGetCustomerUseCase = new GetCustomerInteractor(customerRepository);
-  // ... routes ...
-  return { ports: { getCustomer }, routes: { /* ... */ } };
-}
-```
-
-`src/main/index.ts` — the composition root, as a **factory** (so tests can import the app without opening a port):
-```typescript
-// src/main/index.ts
-// THE MAIN COMPONENT — The Composition Root
-//
-// This is the ONLY place that knows about ALL modules and layers. That is by design.
-// Nothing imports from main/ except the OS entry point (server.ts) and the tests.
-
-import { randomUUID } from 'node:crypto';
-import { createDbConnection } from '../platform/db/connection';
-import { runMigrations } from '../platform/db/migrate';
-import { buildHttpApp } from '../platform/web/app';
-import { composeCustomers, customersMigrations } from './compose/customers';
-import { composeOrders, ordersMigrations } from './compose/orders';
-
-export function createApp(options: { dbPath?: string } = {}) {
-  // 1. Infrastructure (platform) — environment variables are read here and in server.ts only
-  const db = createDbConnection(options.dbPath ?? process.env.DB_PATH ?? ':memory:');
-  runMigrations(db, [...customersMigrations, ...ordersMigrations]); // each module hands over its own migrations
-  const newId = () => randomUUID(); // randomness is injected into use cases, never generated inside them
-
-  // 2. Compose modules in dependency order; cross-module ties are INPUT PORTS
-  const customers = composeCustomers({ db, newId });
-  const orders = composeOrders({ db, newId, getCustomer: customers.ports.getCustomer });
-
-  // 3. HTTP: platform/web builds the Express app from the handlers each module exposes
-  const app = buildHttpApp({ ...customers.routes, ...orders.routes });
-  return { app, db };
-}
-```
-`src/main/server.ts` — the actual entry point, as small as possible:
-```typescript
-import { createApp } from './index';
-
-const port = Number(process.env.PORT ?? 3000);
-createApp().app.listen(port, () => console.log(`Server running on port ${port}`));
-```
-Each `compose<Module>` returns `{ ports, routes }`: `ports` are the input ports other modules may use, `routes` are ready-to-register handlers (controllers wrapped with `(req, res) => controller.handle(req, res)`). `platform/web/app.ts` owns `express()`, `express.json()`, route registration and the last-resort error handler (malformed JSON → 400, anything else → 500 with no internals).
-
-> Using a synchronous driver such as `node:sqlite`? It must be created once in `platform/db` and injected; the gateways take the connection type as a constructor argument and never import `platform/`.
-
-#### Python (FastAPI, manual DI)
-```python
-# src/main/compose/orders.py
-from ...modules.orders.infra.adapters.gateways.sql_order_repository import SqlOrderRepository
-from ...modules.orders.infra.adapters.gateways.customer_lookup_gateway import CustomerLookupGateway
-from ...modules.orders.app.interactors.place_order import PlaceOrderInteractor
-from ...modules.orders.infra.adapters.controllers.place_order_controller import PlaceOrderController
-
-def compose_orders(db_session, new_id, get_customer):
-    order_repo = SqlOrderRepository(db_session)
-    customer_lookup = CustomerLookupGateway(get_customer)
-
-    place_order = PlaceOrderController(PlaceOrderInteractor(order_repo, customer_lookup, new_id))
-
-    # With an Output Port + Presenter, build presenter + interactor + controller per request
-    # (a factory returning (presenter, controller)); presenters are stateful.
-    return {"routes": {"place_order": place_order}}
-
-# src/main/app.py
-from uuid import uuid4
-from fastapi import FastAPI
-from ..platform.db.connection import create_db_session
-from ..platform.web.routes import register_routes
-from .compose.customers import compose_customers
-from .compose.orders import compose_orders
-
-def create_app() -> FastAPI:
-    app = FastAPI()
-    db = create_db_session()
-    new_id = lambda: str(uuid4())  # randomness is injected into use cases
-    customers = compose_customers(db, new_id)
-    orders = compose_orders(db, new_id, customers["ports"]["get_customer"])
-    register_routes(app, {**customers["routes"], **orders["routes"]})
-    return app
-
-app = create_app()
-```
-
-#### With a DI Framework (TypeScript + tsyringe / NestJS / InversifyJS)
-```typescript
-// src/main/container.ts
-import 'reflect-metadata';
-import { container } from 'tsyringe';
-
-// Register interfaces → concrete implementations, per module
-container.register<IOrderRepository>('IOrderRepository', { useClass: SqlOrderRepository });
-container.register<ICustomerLookup>('ICustomerLookup', { useClass: CustomerLookupGateway });
-container.register<IPlaceOrderUseCase>('IPlaceOrderUseCase', { useClass: PlaceOrderInteractor });
-
-// The container IS the Main component — wiring lives here, not scattered throughout the app.
-// Decorators (@injectable) in modules/ are a framework dependency: prefer registering by token here
-// so domain/ and app/ stay free of the DI library.
-```
+The composition root is a **factory** that returns the app without starting it, so tests can build it without opening a port; a separate, tiny entry point starts the server. A synchronous driver (an embedded database) is still created once in `platform/db/` and injected: gateways take the connection as a constructor argument and never import `platform/`.
 
 ### Step 3: Environment-Specific Main Files
 
-Different environments can have different main files. The test composition root swaps infrastructure for in-memory implementations **of the same ports**:
-
-```typescript
-// src/main/index.test.ts — used by integration/e2e tests
-export function bootstrapTestApp() {  // returns { app, ...repositories }: the SAME handlers on in-memory ports
-  const orderRepository = new OrderInMemoryRepository();
-  const customerLookup: ICustomerLookup = { exists: async () => true }; // fake port, no customers module needed
-  let n = 0;
-  const newId = () => `id-${++n}`; // deterministic ids in tests
-  const placeOrder = new PlaceOrderController(
-    new PlaceOrderInteractor(orderRepository, customerLookup, newId));
-  // ... return wired app
-}
-```
+Different environments can have different composition roots. The **test composition root** wires the same use cases, controllers and presenters on **in-memory implementations of the same ports**, with deterministic ids, so the same HTTP scenarios run against both roots (see the `test` skill).
 
 ## Validation Checklist
 
-- [ ] `src/main/` is the ONLY location with `new ConcreteGateway()` or `new ConcreteInteractor()`.
-- [ ] `src/platform/` registers routes and creates connections, but never instantiates interactors or gateways.
+- [ ] The composition root is the ONLY place that constructs gateways and interactors.
+- [ ] `platform/` registers routes and creates connections, but never constructs interactors or gateways.
 - [ ] Presenters (if any) are built per request; they are never shared between requests — guarded by a deterministic test on the factory (see the `test` skill), not by a concurrency test.
-- [ ] `index.ts` exports a factory and does not listen; a tiny `server.ts` is the only entry point that starts the server.
+- [ ] The composition root is a factory that does not listen; a tiny entry point is the only code that starts the server.
 - [ ] The same HTTP scenarios run against the production composition root and the test composition root.
-- [ ] No other production code file (outside `main/`) uses `new` on a cross-layer dependency.
-- [ ] No module and no layer inside `src/` imports from `main/`.
-- [ ] Modules are connected only here, and only through input ports (`compose<Module>` returns the ports others may use).
+- [ ] No other production code constructs a cross-layer dependency.
+- [ ] No module and no layer imports the composition root.
+- [ ] Modules are connected only here, and only through input ports (each module function returns the ports others may use) or subscriptions to published events, registered on the bus here.
 - [ ] Module composition order has no cycles (A needs B's port ⇒ B is composed first, B does not need A).
-- [ ] Environment variables are read ONLY in main (or in a config module loaded by main).
+- [ ] Environment variables are read ONLY in main, once, by the entry point; the config module validates them and fails at startup (`ca_scan` reports `config-placement` anywhere else).
+- [ ] Each piece receives only the configuration values it uses, never the whole configuration object.
+- [ ] The locales the app speaks are declared here once; each module's controllers or presenters get a translator built from that module's catalog, and a test proves every catalog provides every locale.
 - [ ] The DI wiring is in one place — not scattered across the app.
 - [ ] A test composition root exists that swaps infrastructure for in-memory alternatives.
 - [ ] Main is not tested by unit tests — its correctness is validated by integration/e2e tests.
@@ -254,7 +106,7 @@ Main changes when:
 - A new module or use case is added (new wiring needed).
 - An implementation is swapped (e.g., switch DB engine).
 - A new environment is added.
-It does NOT change because of business rule changes — those are in domain/app.
+It does NOT change because of business rule changes — those are in domain/application.
 
 ## Output
 After creating/updating Main:

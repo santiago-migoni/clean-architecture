@@ -20,9 +20,9 @@ From Chapter 21:
 > "The architecture of a software system is the shape given to that system by those who build it. The purpose of that shape is to facilitate the development, deployment, operation, and maintenance of the software system contained within it."
 
 Check:
-- Does `src/modules/` reveal the **business domain** (e.g., `orders/`, `billing/`, `inventory/`) or does the top level reveal the **framework** (e.g., `controllers/`, `models/`, `routes/`)?
-- Does every module have clear `domain/`, `app/` and `infra/` layers, with `shared/`, `platform/` and `main/` alongside?
-- Are module names domain terms (and none of the reserved names `shared`, `platform`, `main`, `app`, `domain`, `infra`, `modules`, `adapters`, `bootstrap`, `composition`)?
+- Does `modules/` reveal the **business domain** (e.g., `orders/`, `billing/`, `inventory/`) or does the top level reveal the **framework** (e.g., `controllers/`, `models/`, `routes/`)?
+- Does every module have clear `domain/`, `application/` and `infrastructure/` layers, with `shared/`, `platform/` and `main/` alongside?
+- Are module names domain terms (and none of the reserved names `shared`, `platform`, `main`, `domain`, `application`, `infrastructure`, `modules`, `bootstrap`, `composition`, `app`, `infra`, `adapters`)?
 - Is there legacy structure left (`entities/`, `usecases/`, `adapters/`, `frameworks/` at the top of `src/`)?
 - Is documentation in `docs/architecture/` (not inside `src/`), and are there empty or unused folders that add noise (YAGNI)?
 - Is the `main/` or composition root clearly identifiable and separate?
@@ -35,9 +35,9 @@ Score: 0-10 points
 
 Perform a full dependency scan (same as `/clean-architecture:check`):
 - Domain importing from outer layers.
-- Use cases (`app`) importing from `infra` or `platform`.
+- Use cases (`application`) importing from `infrastructure` or `platform`.
 - Adapters importing `platform` (the framework client should be injected from `main/`).
-- Modules importing each other in any way other than `infra/adapters → app/ports/input`; cycles between modules.
+- Modules importing each other in any way other than `infrastructure → application/ports/input` (a call) or `infrastructure/subscribers → application/ports/published` (a subscription); a published contract that imports its module's domain; cycles between modules, subscriptions included.
 - Concrete class references in inner layers.
 - Framework-specific types (annotations, decorators) in domain/use cases.
 
@@ -47,7 +47,7 @@ Score: 0-25 points (most critical section)
 
 ## Section 3: Entity Quality
 
-For each entity in `src/modules/*/domain/`:
+For each entity in `modules/*/domain/`:
 - Does it contain **only** enterprise business rules?
 - Is it **framework-independent**?
 - Does it enforce its own invariants (validation in constructor/factory)?
@@ -63,10 +63,10 @@ Score: 0-10 points
 ## Section 4: Use Case Design
 
 For each use case:
-- Where an **Input Port** exists, is it in the module's `app/ports/input/`? Does one exist wherever another module or a second entry point calls the use case? (An Input Port elsewhere is optional — do not penalise its absence.)
-- Where an **Output Port** exists, is it in the module's `app/ports/output/`? (Optional — do not penalise a use case that returns a response model.)
-- Is the **Repository interface** defined in `app/ports/output/` (not in `infra/`)?
-- Are needs from other modules expressed as **ports owned by the calling module**, implemented in its `infra/adapters` against the other module's input port?
+- Where an **Input Port** exists, is it in the module's `application/ports/input/`? Does one exist wherever another module or a second entry point calls the use case? (An Input Port elsewhere is optional — do not penalise its absence.)
+- Where an **Output Port** exists, is it in the module's `application/ports/output/`? (Optional — do not penalise a use case that returns a response model.)
+- Is the **Repository interface** defined in `application/ports/output/` (not in `infrastructure/`)?
+- Are needs from other modules expressed as **ports owned by the calling module**, implemented in its `infrastructure` against the other module's input port?
 - Where an Input Port exists, does the interactor implement it?
 - Does the interactor either return a response model or call its Output Port — never HTTP objects?
 - Is the interactor **fully testable with mocks** (no DB, no HTTP)?
@@ -88,6 +88,7 @@ For each presenter:
 - Does it apply the **Humble Object Pattern** (logic in presenter, rendering in view)?
 - Is the **View Model** a plain data structure?
 - Is the presenter **testable without an HTTP stack**?
+- Does every text for users come from the module's **catalog**, in the request's locale (the use case returns codes, `i18n-placement` is clean)?
 
 For each gateway:
 - Does it implement a repository interface **defined in the use case layer**?
@@ -113,7 +114,7 @@ Score: 0-10 points
 
 ## Section 7: Component Principles
 
-Perform component analysis (same as `/clean-architecture:components`). The components are each module under `src/modules/`, plus `shared`, `platform` and `main`:
+Perform component analysis (same as `/clean-architecture:components`). The components are each module under `modules/`, plus `shared`, `platform` and `main`:
 - ADP: Cycles in the component dependency graph.
 - SDP: Stable components depending on volatile ones.
 - SAP: Stable concrete components (Zone of Pain) or useless abstractions.
@@ -142,13 +143,14 @@ Score: 0-5 points
 
 ## Section 9: Main Component / Composition Root
 
-Check `src/main/`:
+Check the composition root (`main/`, or `bootstrap/` + `cmd/` in Go):
 - Is this the **only** place where concrete classes are instantiated?
 - Is this the **only** place where dependencies are wired (DI without a framework, or DI framework wiring only here)?
 - Does it follow the **plugin pattern** (main wires plugins into the stable core)?
 - Is `main/` the most **volatile** component (changes when adding new features, but doesn't break tests of inner layers)?
 - Is each module composed by its own `compose<Module>` function, with modules connected **only through input ports**?
 - Does `platform/` avoid instantiating interactors and gateways (it only registers routes and creates connections)?
+- Is the configuration read only here, once, validated at startup, and passed to each piece as the values it uses (`config-placement`)?
 
 Score: 0-5 points
 
@@ -161,7 +163,8 @@ For each identified architectural boundary:
 - Is data crossing the boundary as **plain data structures** (no entity objects, no framework objects leaking across)?
 - Is the boundary documented?
 - Is the boundary type appropriate (full vs. partial) given the context?
-- For each pair of modules that talk to each other: is the port owned by the caller, is the gateway in the caller's `infra`, and does it call only the other module's `app/ports/input/`?
+- For each pair of modules that talk to each other: is the port owned by the caller, is the gateway in the caller's `infrastructure`, and does it call only the other module's `application/ports/input/`?
+- For each event between modules: is the contract plain and versioned in the publisher's `application/ports/published/`, does the subscriber call a use case of its own module, and is the handling idempotent? Is a call used where the caller needs an answer, and an event where it only announces a fact?
 
 Score: 0-5 points
 
@@ -231,7 +234,7 @@ List 3-5 changes that can be made immediately for maximum architectural improvem
 If significant restructuring is needed, provide a phased migration plan:
 - Phase 1: Add interfaces at violation points (non-breaking)
 - Phase 2: Move concrete implementations to outer layers
-- Phase 3: Reorganize the folder structure into `src/modules/<module>/{domain,app,infra}` (see `/clean-architecture:migrate`)
+- Phase 3: Reorganize the folder structure into `modules/<module>/{domain,application,infrastructure}` under the language's code root (see `/clean-architecture:migrate`)
 - Phase 4: Add linting rules to prevent regressions
 
 ## Output

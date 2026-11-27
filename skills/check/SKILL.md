@@ -21,12 +21,12 @@ INNER (most stable, highest level)
   │  domain         (modules/<m>/domain/)        │
   │                                              │
   │   ┌────────────────────────────────────┐     │
-  │   │  app        (modules/<m>/app/)     │     │
-  │   │                                    │     │
+  │   │  application  (modules/<m>/        │     │
+  │   │                application/)       │     │
   │   │   ┌────────────────────────────┐   │     │
-  │   │   │  infra   (modules/<m>/     │   │     │
-  │   │   │          infra/)           │   │     │
-  │   │   │                            │   │     │
+  │   │   │  infrastructure            │   │     │
+  │   │   │  (modules/<m>/             │   │     │
+  │   │   │   infrastructure/)         │   │     │
   │   │   │   ┌────────────────────┐   │   │     │
   │   │   │   │  platform          │   │   │     │
   │   │   │   │  (src/platform/)   │   │   │     │
@@ -43,29 +43,31 @@ main   (src/main/)   is outside the circles: it may import everything, nobody im
 **Allowed imports (layers):**
 - `shared/` → (nothing — pure)
 - `domain/` → `shared/`
-- `app/` → `domain/`, `shared/`
-- `infra/adapters/` → `app/`, `domain/`, `shared/`
-- `platform/` → `infra/adapters/`, `app/`, `domain/`, `shared/`
+- `application/` → `domain/`, `shared/`
+- `infrastructure/` → `application/`, `domain/`, `shared/`
+- `platform/` → `infrastructure/`, `application/`, `domain/`, `shared/`
 - `main/` → all (wiring only)
 
 **Forbidden imports (violations):**
-- `domain/` importing from `app/`, `infra/`, `platform/`, `main/`
-- `app/` importing from `infra/`, `platform/`, `main/`
-- `infra/adapters/` importing from `platform/`, `main/` (the framework client is injected from `main/`)
+- `domain/` importing from `application/`, `infrastructure/`, `platform/`, `main/`
+- `application/` importing from `infrastructure/`, `platform/`, `main/`
+- `infrastructure/` importing from `platform/`, `main/` (the framework client is injected from `main/`)
 - Any inner layer importing a CONCRETE class from an outer layer
 
 ## The Module Rule (axis 2 — modules)
 
-Each folder under `src/modules/` is a component. The only legal way for module A to reach module B is:
+Each folder under `src/modules/` is a component. There are two legal ways for one module to reach another, both from its `infrastructure/` into the other's public surface:
 
 ```
-A/infra/adapters/...  →  B/app/ports/input/...
+A/infrastructure/gateways/...     →  B/application/ports/input/...      (a call: A asks B)
+B/infrastructure/subscribers/...  →  A/application/ports/published/...  (a subscription: B reacts to A's event)
 ```
-through a port owned by A (declared in `A/app/ports/output/`, implemented in `A/infra/adapters/gateways/`).
+A call goes through a port owned by A (declared in `A/application/ports/output/`, implemented in `A/infrastructure/gateways/`). A subscription imports A's **published contract**, which is plain data (see the `event` skill).
 
 **Forbidden (violations):**
-- Module A importing `B/domain/`, `B/app/` (other than `ports/input/`), or `B/infra/`.
-- `A/domain`, `A/app` importing anything from module B.
+- Module A importing `B/domain/`, `B/application/` (other than `ports/input/` and `ports/published/`), or `B/infrastructure/`.
+- A published contract importing anything but `shared/` and other contracts (`published-contract`): every subscriber would depend on its module's domain.
+- `A/domain`, `A/application` importing anything from module B.
 - Cycles between modules (A → B → A).
 - Business policy hidden in `shared/` that belongs to one module.
 
@@ -73,48 +75,34 @@ through a port owned by A (declared in `A/app/ports/output/`, implemented in `A/
 
 ### Step 1: Read the Project Structure
 
-Resolve every path **relative to `src/`** (never match on the absolute path — a project living under `/app/` must not be misclassified), then identify the layer and module **by position**: the top-level folder under `src/` (or, inside `modules/<name>/`, the folder right after the module name) decides the layer. A folder with a layer-like name deeper in the path does not: `src/main/app/` is Main, and `src/modules/orders/domain/shared/` is still `orders`' domain.
+Resolve every path **relative to the code root** — `src/` in TypeScript, `src/<package>/` in Python, the module root in Go (`internal/`, `cmd/`) — never on the absolute path (a project living under `/application/` must not be misclassified). Then identify the layer and module **by position**: the top-level folder under the code root (or, inside `modules/<name>/`, the folder right after the module name) decides the layer. A folder with a layer-like name deeper in the path does not: `main/application/` is Main, and `modules/orders/domain/shared/` is still `orders`' domain.
 
 - `modules/<name>/domain/` → layer `domain`, module `<name>`
-- `modules/<name>/app/` → layer `app`, module `<name>`
-- `modules/<name>/infra/` → layer `infra`, module `<name>` — the **whole** `infra/` folder, not only `infra/adapters/`: a file placed directly under `infra/` must not escape the rules
+- `modules/<name>/application/` → layer `application`, module `<name>`
+- `modules/<name>/infrastructure/` → layer `infrastructure`, module `<name>` — the **whole** `infrastructure/` folder, not only `infrastructure/`: a file placed directly under `infrastructure/` must not escape the rules
 - `shared/` → shared kernel
 - `platform/` → layer `platform`
-- `main/` (or `bootstrap/`, `composition/`) → Main (Composition Root)
-- Any other top-level folder under `src/` that is not one of the above is a **structure finding**: it is either a legacy layer (`entities/`, `usecases/`, `adapters/`, `frameworks/`) awaiting `/clean-architecture:migrate`, or code that does not belong to any module.
+- `main/` (or `bootstrap/`, `composition/`, and Go's `cmd/`) → Main (Composition Root)
+- Any other top-level folder under the code root that is not one of the above is a **structure finding**: it is either a legacy layer (`entities/`, `usecases/`, `adapters/`, `frameworks/`) awaiting `/clean-architecture:migrate`, or code that does not belong to any module.
 
 ### Step 2: Extract All Import Statements
 
 For each file, extract all import/require statements and determine:
 - Which layer and module is the importing file in?
-- Which layer and module is the imported file in? (resolve relative imports against the importing file; treat `@/…` aliases as `src/…`)
+- Which layer and module is the imported file in? (resolve relative imports against the importing file; treat `@/…` aliases as `src/…`; a Python absolute import or a Go import is project code only when it starts with the project's own package or `go.mod` module path)
 - Is the import direction inward (allowed) or outward (violation)?
-- Does it cross a module boundary, and if so is it `infra/adapters → app/ports/input`?
+- Does it cross a module boundary, and if so is it `infrastructure → application/ports/input` or `infrastructure → application/ports/published`?
 
-#### TypeScript/JavaScript patterns to scan:
-```
-import { ... } from '...'
-import * as ... from '...'
-const ... = require('...')
-export { ... } from '...'
-```
+Import forms per language (the same ones `ca_scan` reads):
 
-#### Python patterns to scan:
-```
-from ... import ...
-import ...
-```
-(resolve relative dots against the file's package)
+| Language | Forms |
+|---|---|
+| TypeScript / JavaScript | `import … from '…'`, `import type`, `export … from '…'`, side-effect `import '…'`, `import('…')`, `require('…')` — in `.ts .tsx .mts .cts .js .jsx .mjs .cjs` |
+| Python | `from … import …` (relative dots resolved against the file's package), `import a, b as c`, also indented inside `try:` or a function |
+| Go | `import "…"` and grouped `import ( … )`, with or without an alias |
+| SQL | no imports: its dependencies are **tables** (Step 4b) |
 
-#### Java patterns to scan:
-```
-import com.example.modules.<module>.<layer>...;
-```
-
-#### Go patterns to scan:
-```
-import "<module>/<package>"
-```
+Files in other languages cannot be checked: report them as not verified rather than as clean.
 
 ### Step 3: Classify Each Import
 
@@ -122,30 +110,46 @@ For each import, classify as:
 - **ALLOWED**: Importing inward or same-layer in the same module; or the one legal cross-module edge.
 - **VIOLATION**: Importing outward, or crossing a module boundary illegally.
 - **WARNING**: Importing a concrete class from an outer layer (even if inward).
-- **DANGER**: Importing a framework class inside `domain/` or `app/`.
+- **DANGER**: Importing a framework class inside `domain/` or `application/`.
 
 ### Step 4: Check for Additional Anti-Patterns
 
 Beyond import direction, check for:
 
 1. **Concrete class instantiation in inner layers** (`new SqlOrderRepository()` in an interactor).
-2. **Framework-specific types in inner layers** (Express `Request`, Spring `@Autowired` on entities, SQLAlchemy `Column` in `domain/`).
-3. **ORMs in the domain** (Hibernate `@Entity`, TypeORM `@Entity()` on domain entities).
+2. **Framework-specific types in inner layers** (Express `Request`, FastAPI `Request`, `*http.Request` in a use case, SQLAlchemy `Column` in `domain/`).
+3. **ORMs in the domain** (TypeORM `@Entity()`, a SQLAlchemy declarative base, GORM tags on domain structs).
 4. **HTTP status codes in use cases** (`res.status(404)` inside an interactor).
-5. **Environment variables accessed in inner layers** (`process.env.DB_URL` in `domain/` or `app/`).
+5. **Configuration read outside `main/`**: see Step 4c.
 6. **Logging framework calls in the domain** (`console.log`, `logger.info` with external loggers).
-7. **Date.now() or random number generation in business rules** (should be injected as a port).
-8. **Port interfaces defined in the wrong layer** (repository interface in `infra/` instead of `app/ports/output/`), or in the wrong module.
+7. **The clock or randomness in business rules** (`Date.now()`, `datetime.now()`, `time.Now()`, `uuid4()`): inject them as a port or a function.
+8. **Port interfaces defined in the wrong layer** (repository interface in `infrastructure/` instead of `application/ports/output/`), or in the wrong module.
 9. **Entities of another module held by reference** (an `Order` holding a `Customer` instead of `customerId`).
-10. **Instantiation outside `main/`** — `platform/` or adapters calling `new` on interactors or gateways.
+10. **Construction outside the composition root** — `platform/` or adapters constructing interactors or gateways.
 11. **Module cycles** — use `ca_cycles` when available.
+
+### Step 4b: SQL
+
+SQL is found in `.sql` files and in string literals of code that start like a statement.
+- **`sql-placement`** — SQL anywhere but `infrastructure/` and `platform/db/` (a query string in an interactor, a `.sql` file in `domain/`). Severity of the layer it is in.
+- **`table-ownership`** — a table belongs to the module whose migrations create it. A module that queries, alters or adds a foreign key to another module's table, or two modules creating the same table, is HIGH: it couples the modules through the database exactly as an import would.
+
+### Step 4c: Configuration
+
+- **`config-placement`** — code outside `main/` that reads the environment (`process.env`, `import.meta.env`, `os.environ`, `os.getenv`, `from os import environ`, `os.Getenv`, `os.LookupEnv`) or imports a configuration loader (`dotenv`, `config`, `envalid`, `pydantic-settings`, `environs`, `viper`, `godotenv`, `envconfig`). Only code counts, never a comment or a string. A Go `_test.go` file is a composition root of its own and is not reported. Severity of the layer it is in: CRITICAL in `domain/`, HIGH in `application/`, MEDIUM in `infrastructure/` and `platform/`.
+- The fix is always the same: `main/` loads and validates the configuration once and passes each value through a constructor.
+
+### Step 4d: Translations
+
+- **`i18n-placement`** — `domain/`, `application/` or `shared/` importing an i18n library (`i18next`, `react-intl`, `@formatjs/intl`, `vue-i18n`, `@lingui/core`, `gettext`, `babel`, `fluent`, `go-i18n`, `golang.org/x/text/message`). A Go `_test.go` file is not reported. Severity of the layer it is in.
+- Beyond the scan, read the inner layers for **text meant for users**: an error message shown to the client as it is, a label built in a use case. Business code returns codes (a reason, a status); the presenter or controller turns them into text for the request's locale.
 
 ### Step 5: Report All Violations
 
 For each violation:
 ```
 ARCHITECTURE RULE VIOLATION
-  Rule: dependency-rule | cross-module
+  Rule: dependency-rule | cross-module | published-contract | sql-placement | table-ownership | config-placement | i18n-placement
   Severity: CRITICAL | HIGH | MEDIUM
   File: <path>:<line>
   Module: <module>
@@ -155,26 +159,26 @@ ARCHITECTURE RULE VIOLATION
   Fix: <concrete action>
 
   Before (layer):
-    import { SqlOrderRepository } from '../../infra/adapters/gateways/sql-order-repository';
+    import { SqlOrderRepository } from '../../infrastructure/gateways/sql-order-repository';
 
   After:
-    // Depend on the port declared in app/, inject the implementation from main/
+    // Depend on the port declared in application/, inject the implementation from main/
     // import { IOrderRepository } from '../ports/output/order-repository';
 
   Before (module):
     import { Customer } from '../../../customers/domain/customer';
 
   After:
-    // orders/app/ports/output/customer-lookup.ts  declares ICustomerLookup
-    // orders/infra/adapters/gateways/customer-lookup-gateway.ts  calls customers/app/ports/input/get-customer
+    // orders/application/ports/output/customer-lookup.ts  declares ICustomerLookup
+    // orders/infrastructure/gateways/customer-lookup-gateway.ts  calls customers/application/ports/input/get-customer
     // orders/domain keeps only `customerId: string`
 ```
 
 ### Step 6: Severity Classification
 
 - **CRITICAL**: `domain/` or `shared/` imports from any other layer. Framework code in the domain.
-- **HIGH**: `app/` imports from `infra/` or `platform/`. Concrete class instantiated in a use case. A module imports another module's `domain/`, `app/` (other than input ports) or `infra/`.
-- **MEDIUM**: `infra/adapters` imports from `platform/` (inject the client instead).
+- **HIGH**: `application/` imports from `infrastructure/` or `platform/`. Concrete class instantiated in a use case. A module imports another module's `domain/`, `application/` (other than input ports) or `infrastructure/`.
+- **MEDIUM**: `infrastructure` imports from `platform/` (inject the client instead).
 - **LOW**: Port interface defined in the wrong layer or module. Missing interface for a cross-layer dependency.
 
 ### Step 7: Generate Summary Report
@@ -189,19 +193,19 @@ Date: <date>
 
 RESULTS:
   ✓ Allowed imports: <N>
-  ✗ Violations: <N>   (layers: <N>, cross-module: <N>)
+  ✗ Violations: <N>   (layers: <N>, cross-module: <N>, SQL: <N>, config: <N>, i18n: <N>)
   ⚠ Warnings: <N>
 
 VIOLATIONS BY SEVERITY:
   CRITICAL: <N>  [domain/shared importing outer layers]
-  HIGH:     <N>  [app importing outer layers; illegal cross-module imports]
-  MEDIUM:   <N>  [adapters importing platform directly]
+  HIGH:     <N>  [application importing outer layers; illegal cross-module imports]
+  MEDIUM:   <N>  [infrastructure importing platform directly]
   LOW:      <N>  [wrong placement of interfaces]
 
 VIOLATIONS BY MODULE / LAYER:
   <module>/domain:  <N> violations
-  <module>/app:     <N> violations
-  <module>/infra:   <N> violations
+  <module>/application:     <N> violations
+  <module>/infrastructure:   <N> violations
   platform:         <N> violations
 
 MODULE GRAPH:

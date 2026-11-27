@@ -7,7 +7,7 @@ You are a Clean Architecture expert following Robert C. Martin's book *Clean Arc
 
 The user wants to **analyze and fix SOLID principle violations** in the codebase.
 
-The argument after the command is an optional file or directory path to focus on. If no argument is given, analyze the entire `src/` directory.
+The argument after the command is an optional file or directory path to focus on. If no argument is given, analyze the whole code root (`src/`, or `internal/` and `cmd/` in Go).
 
 ## The SOLID Principles (Part III of Clean Architecture)
 
@@ -80,9 +80,9 @@ Read the files in the target path. For each class/module, check:
 
 #### DIP Violations to look for:
 - `new ConcreteClass()` inside use case or entity code.
-- Imports of framework/ORM classes inside the `domain/` or `app/` directories of any module.
-- Use cases (`app/`) that import from `infra/` or `platform/`.
-- A module that imports another module's `domain/` or `infra/` instead of depending on a port it owns.
+- Imports of framework/ORM classes inside the `domain/` or `application/` directories of any module.
+- Use cases (`application/`) that import from `infrastructure/` or `platform/`.
+- A module that imports another module's `domain/` or `infrastructure/` instead of depending on a port it owns.
 - Static method calls to infrastructure services from business logic.
 - Global variables or singletons used inside business rules.
 
@@ -151,52 +151,18 @@ FIXES RECOMMENDED (not applied): <list with descriptions>
 Ask: "Who would request this change?" If more than one type of person/team would change this class for different reasons → SRP violation.
 
 ### OCP — Use the "Strategy" or "Plugin" pattern
-```typescript
-// Violation:
-if (payment.type === 'CREDIT') { /* ... */ }
-else if (payment.type === 'PAYPAL') { /* ... */ }
-
-// Fix:
-interface PaymentStrategy { process(payment: Payment): void; }
-class CreditCardStrategy implements PaymentStrategy { ... }
-class PayPalStrategy implements PaymentStrategy { ... }
-// Register in Main; select via factory
-```
+A type switch that grows with every new variant (`if type == 'CREDIT' … else if type == 'PAYPAL'`) is the violation. The fix is one strategy per variant behind an interface, registered in the composition root and selected by key; adding a variant adds a class, it does not edit the use case.
 
 ### LSP — Use the "Is-Substitutable-For" test
-Ask: "Can I pass a `<Subtype>` everywhere a `<BaseType>` is expected and get correct behavior?" If not → LSP violation.
+Ask: "Can I pass a `<Subtype>` everywhere a `<BaseType>` is expected and get correct behavior?" If not → LSP violation. The classic case in this layout: an in-memory repository that does not raise the same errors as the SQL one — tests pass against a substitute that is not substitutable.
 
 ### ISP — Use Role Interfaces
-```typescript
-// Violation: one fat interface
-interface UserRepository {
-  findById(id: string): User;
-  findByEmail(email: string): User;
-  save(user: User): void;
-  delete(id: string): void;
-  generateReport(): Report; // Why is this here?
-}
-
-// Fix: role interfaces
-interface UserReader { findById(id: string): User; findByEmail(email: string): User; }
-interface UserWriter { save(user: User): void; delete(id: string): void; }
-interface UserReporter { generateReport(): Report; }
-```
+A fat port (a repository with reading, writing, deletion and reporting) makes every use case depend on methods it never calls. The fix is role interfaces declared by the consumers (`CustomerReader`, `CustomerWriter`); one gateway may implement several.
 
 ### DIP — Constructor Injection
-```typescript
-// Violation:
-class PlaceOrderInteractor {
-  execute() {
-    const repo = new PostgresOrderRepository(); // DIP violation
-  }
-}
+A use case that constructs its gateway (`new PostgresOrderRepository()`) depends on infrastructure. The fix is a port in the module's `application/ports/output/`, received through the constructor, with the implementation constructed only in the composition root.
 
-// Fix:
-class PlaceOrderInteractor {
-  constructor(private readonly repo: IOrderRepository) {} // DIP compliant
-}
-```
+**For before/after code in the project's language, read** [TypeScript / JavaScript](references/typescript.md), [Python](references/python.md) or [Go](references/go.md).
 
 ## Output
 Provide:

@@ -1,25 +1,25 @@
 ---
 name: init
-description: "This skill should be used when the user asks to \"start a new project with Clean Architecture\", \"scaffold a feature-first project\", \"set up modules with domain/app/infra\", \"initialize the clean-architecture layout\", or wants to retrofit an empty repository with the src/modules/<module>/{domain,app,infra} structure, the composition root and the lint rules that enforce the Dependency Rule and the Module Rule."
+description: "This skill should be used when the user asks to \"start a new project with Clean Architecture\", \"scaffold a feature-first project\", \"set up modules with domain/application/infrastructure\", \"initialize the clean-architecture layout\", or wants to retrofit an empty repository with the src/modules/<module>/{domain,application,infrastructure} structure, the composition root and the lint rules that enforce the Dependency Rule and the Module Rule."
 argument-hint: "[description of the project and its modules]"
 ---
 You are a Clean Architecture expert following Robert C. Martin's book *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
 
 The user wants to initialize a new project (or retrofit an existing one) with a full Clean Architecture structure. Arguments provided after the command describe the project domain/technology.
 
-The plugin uses a **feature-first** layout: business capabilities are **modules** under `src/modules/`, and every module has the three layers `domain`, `app` and `infra`.
+The plugin uses a **feature-first** layout: business capabilities are **modules** under `src/modules/`, and every module has the three layers `domain`, `application` and `infrastructure`.
 
 ## Your Task
 
 1. **Detect the language and framework** from the project context (check package.json, go.mod, pom.xml, Pipfile, etc.). If none exists, infer from the user's description.
-2. **Identify the modules** from the description. Each module is a business capability (`orders`, `customers`, `billing`), named in kebab-case. The architecture must scream the domain, not the framework (Screaming Architecture principle). If the user names only one capability, create one module; if the description is vague, ask for the module names rather than inventing a generic one.
-3. **Create the lean directory structure** below: `domain/`, `app/` and `infra/` per module, plus `main/` and `docs/architecture/`. Do NOT create empty folders for things that do not exist yet.
-   When the `ca_scaffold` MCP tool is available, use it for this step: call it with `rootPath` (absolute project root), `language`, `domain` and `modules`. It creates exactly this structure (with the `.gitkeep` stubs, `src/main/index.<ext>` and a generic `ARCHITECTURE.md`), rejects reserved module names and never overwrites existing files. Create the folders by hand only when the tool is unavailable, following the same structure.
+2. **Identify the modules** from the description. Each module is a business capability (`orders`, `customers`, `billing`), named as the language's conventions say (kebab-case in TypeScript, snake_case in Python, one lowercase word in Go — see "Language conventions" in the `rules` skill). The architecture must scream the domain, not the framework (Screaming Architecture principle). If the user names only one capability, create one module; if the description is vague, ask for the module names rather than inventing a generic one.
+3. **Create the lean directory structure** below: `domain/`, `application/` and `infrastructure/` per module, plus `main/` and `docs/architecture/`. Do NOT create empty folders for things that do not exist yet.
+   When the `ca_scaffold` MCP tool is available, use it for this step: call it with `rootPath` (absolute project root), `language` (`typescript`, `javascript`, `python` or `go`), `domain` and `modules`. It creates this structure in the language's own layout (below: TypeScript/JavaScript, then Python and Go), with names adapted to the language, the composition root stub and a generic `ARCHITECTURE.md`; it rejects reserved or invalid module names and any other language, and never overwrites existing files. Follow its `nextSteps`. Create the folders by hand only when the tool is unavailable, following the same structure.
 4. **Generate a minimal base set of files** for the first module: an entity, a repository interface and an interactor stub.
 5. **Create the architecture doc** at `docs/architecture/ARCHITECTURE.md` (never inside `src/`).
 6. **Enforce both rules from the start** (Dependency Rule and Module Rule) by setting up linting rules or module boundary checks appropriate to the language.
 
-Module names `shared`, `platform`, `main`, `app`, `domain`, `infra`, `modules`, `adapters`, `bootstrap` and `composition` are reserved — they would be ambiguous with layer folders.
+Module names `shared`, `platform`, `main`, `domain`, `application`, `infrastructure`, `modules`, `bootstrap`, `composition`, `app`, `infra` and `adapters` are reserved — they would be ambiguous with layer folders.
 
 ## Directory Structure to Create
 
@@ -31,8 +31,8 @@ Create only this:
 │   ├── modules/
 │   │   └── <module>/                       # repeat per module
 │   │       ├── domain/                     # Enterprise Business Rules
-│   │       ├── app/                        # Application Business Rules
-│   │       └── infra/                      # Adapters (detail)
+│   │       ├── application/                # Application Business Rules
+│   │       └── infrastructure/             # Interface Adapters (detail)
 │   └── main/
 │       └── index.<ext>                     # Composition Root — the only place dependencies are wired
 ├── docs/
@@ -44,139 +44,113 @@ Create only this:
 Everything else is **created on demand** by the first file that needs it (the skills do this): never scaffold it empty.
 
 ```
-src/shared/                                  # shared kernel — only when two modules truly share a type
-src/platform/{web,db,external}/              # frameworks & drivers — when the first framework wiring appears
-src/main/<app>/index.<ext>                   # instead of main/index when there are several entry points
-src/modules/<m>/domain/{events,errors,services}/   # when the first event / domain error / domain service exists
-src/modules/<m>/app/ports/input/             # only if another module or a second entry point calls the use case
-src/modules/<m>/app/ports/output/            # repository interface and other outbound ports
-src/modules/<m>/app/interactors/             # use case implementations
-src/modules/<m>/infra/adapters/{controllers,presenters,gateways}/   # presenters only if the use case has an Output Port
-src/modules/<m>/infra/adapters/gateways/{in-memory,migrations}/
-tests/<module>/{unit,integration}/           # mirrors src/modules/<module>/
+src/shared/                                                         # shared kernel — only when two modules truly share a type
+src/platform/{web,db,external}/                                     # frameworks & drivers — when the first framework wiring appears
+src/main/<app>/index.<ext>                                          # instead of main/index when there are several entry points
+src/modules/<m>/domain/{events,errors,services}/                    # when the first event / domain error / domain service exists
+src/modules/<m>/application/ports/input/                            # only if another module or a second entry point calls the use case
+src/modules/<m>/application/ports/output/                           # repository interface and other outbound ports
+src/modules/<m>/application/interactors/                            # use case implementations
+src/modules/<m>/infrastructure/{controllers,presenters,gateways}/   # presenters only if the use case has an Output Port
+src/modules/<m>/infrastructure/gateways/{in-memory,migrations}/
+tests/<module>/unit/                                                # mirrors src/modules/<module>/
+tests/<module>/integration/                                         # flat: gateway tests against a real DB
 tests/e2e/
 ```
 
-File names are kebab-case (snake_case in Python).
+File names are kebab-case (snake_case in Python and Go).
+
+### Go
+
+Go has no `src/`, keeps its tests beside the code and splits the composition root in two. `ca_scaffold` with `language: "go"` creates:
+
+```
+<project-root>/
+├── go.mod                                      # create it with `go mod init <module-path>` if missing
+├── cmd/<app>/main.go                           # entry point: calls bootstrap, runs the app
+├── internal/
+│   ├── bootstrap/bootstrap.go                  # composition root — the only place dependencies are wired
+│   └── modules/<module>/                       # one lowercase word: orders, orderhistory
+│       ├── domain/
+│       ├── application/
+│       └── infrastructure/
+└── docs/architecture/ARCHITECTURE.md
+```
+
+On demand, as in the other languages: `internal/shared/`, `internal/platform/<driver>/`, `application/ports/{input,output}/`, `application/interactors/`, `infrastructure/gateways/{inmemory,migrations}/`. Tests are `<file>_test.go` in the same package; gateway tests against a real database carry `//go:build integration` and run with `go test -tags integration ./...`. Imports of same-named packages from several modules are aliased `<module><package>` (`ordersinteractors`).
+
+### Python
+
+Python uses the `src/` layout with the code inside one package, so that `modules`, `shared` or `platform` never become top-level packages (`import platform` must stay the standard library). `ca_scaffold` with `language: "python"` creates:
+
+```
+<project-root>/
+├── pyproject.toml                              # add it if missing: [tool.setuptools.packages.find] where = ["src"]
+├── src/<package>/                              # named after pyproject.toml's project name, else the domain
+│   ├── __init__.py
+│   ├── main/__main__.py                        # composition root and entry point: python -m <package>.main
+│   └── modules/<module>/                       # snake_case: orders, order_history
+│       ├── domain/__init__.py
+│       ├── application/__init__.py
+│       └── infrastructure/__init__.py
+└── docs/architecture/ARCHITECTURE.md
+```
+
+Every folder is a package: its `__init__.py` takes the place of the `.gitkeep` and stays. On demand: `src/<package>/shared/`, `src/<package>/platform/<driver>/`, `application/ports/{input,output}/`, `application/interactors/`, `infrastructure/gateways/{in_memory,migrations}/`, and `tests/<module>/{unit,integration}/` with pytest. Imports between modules are absolute (`from <package>.modules.customers.application.ports.input.get_customer import GetCustomer`); inside a module, relative imports are fine.
 
 ## Files to Generate (for the first module `<module>`)
 
 Keep it minimal — three files plus the composition root.
 
-### 1. Entity (`src/modules/<module>/domain/<entity>.<ext>`)
-- Header comment: enterprise business rules; imports at most from `src/shared/`.
-- Never imports from `app/`, `infra/`, `platform/`, `main/` or any other module.
+### 1. Entity (in the module's `domain/`)
+- Header comment: enterprise business rules; imports at most from `shared/`.
+- Never imports from `application/`, `infrastructure/`, `platform/`, the composition root or any other module. See the `entity` skill and its language references.
 
-### 2. Repository interface (`src/modules/<module>/app/ports/output/<entity>-repository.<ext>`)
-- Lives in the `app` layer (not in `infra`), following DIP.
+### 2. Repository interface (in the module's `application/ports/output/`)
+- Lives in the `application` layer (not in `infrastructure`), following DIP.
 
-### 3. Interactor stub (`src/modules/<module>/app/interactors/<use-case>.<ext>`)
+### 3. Interactor stub (in the module's `application/interactors/`)
 - Depends on the repository interface; `execute(request)` returns a response model.
-- Add an **Input Port** (`app/ports/input/<use-case>.<ext>`) only if another module or a second entry point will call it.
+- Add an **Input Port** (`application/ports/input/`) only if another module or a second entry point will call it.
 - Add an **Output Port + Presenter** only if output formatting is non-trivial (see the `usecase` and `presenter` skills).
 
 ### 4. Domain extras — on demand
 `events/`, `errors/` and `services/` inside `domain/` are created when the first domain event, domain error or domain service exists. Do not scaffold them.
 
 ### 5. Composition root
-- `src/main/index.<ext>` — comment explaining that it is the only file allowed to instantiate concrete classes. If the project will have several entry points (api, worker, cli), use `src/main/<app>/index.<ext>`.
+- TypeScript/JavaScript: `src/main/index` — comment explaining that it is the only file allowed to construct concrete classes. With several entry points (api, worker, cli), `src/main/<app>/index`.
+- Python: `src/<package>/main/__main__.py`, run with `python -m <package>.main`.
+- Go: `internal/bootstrap/bootstrap.go` wires everything and returns the app; each `cmd/<app>/main.go` only calls it and runs.
 
 ### 6. Rule enforcement
 Both axes must be enforced:
 
-- **Axis 1 — layers** (`infra → app → domain`, `adapters ↛ platform`).
-- **Axis 2 — modules** (no cross-module imports except `A/infra/adapters → B/app/ports/input`).
+- **Axis 1 — layers** (`infrastructure → application → domain`, `infrastructure ↛ platform`).
+- **Axis 2 — modules** (no cross-module imports except `A/infrastructure → B/application/ports/input`).
 
-By language:
-- **TypeScript/JavaScript**: `eslint.config.js` with `eslint-plugin-boundaries` (element types `shared`, `domain`, `input-port`, `app`, `infra`, `platform`, `main`, each module-scoped one with a `module` capture) — see the tested example below.
-- **Python**: `import-linter` contracts (a `layers` contract per module plus a `forbidden` contract between modules).
-- **Java/Kotlin**: ArchUnit layered-architecture and package-slice tests.
-- **Go**: `go-cleanarch` plus `internal/` packages per module.
-- **C#**: NDepend or architecture tests.
+**Before setting it up, read the reference for the project's language** — it has the tested configuration and the setup files:
 
-Example for TypeScript — `eslint.config.js` (flat config). **Tested** against `eslint@9`, `typescript-eslint@8` and `eslint-plugin-boundaries@7`, which uses the `boundaries/dependencies` rule with `policies` (older versions used `boundaries/element-types` with a different syntax — check the installed major version before copying):
+- [TypeScript / JavaScript](references/typescript.md) — ESLint with `eslint-plugin-boundaries` (tested in `examples/typescript`)
+- [Python](references/python.md) — `pyproject.toml` and import-linter contracts (tested)
+- [Go](references/go.md) — `go.mod` and a go-arch-lint configuration per module (tested)
 
-```js
-// eslint.config.js — enforces the Dependency Rule (layers) and the Module Rule (modules).
-// Written for eslint-plugin-boundaries v7 (`boundaries/dependencies` + policies).
-import tseslint from 'typescript-eslint';
-import boundaries from 'eslint-plugin-boundaries';
-
-// Same module as the importing file
-const same = (type) => ({
-  element: { type, captured: { module: '{{ from.element.captured.module }}' } },
-});
-// Any file of that type
-const any = (type) => ({ element: { type } });
-
-// from → [allowed targets]
-const rule = (from, ...targets) =>
-  targets.map((to) => ({ from: { element: { type: from } }, allow: { to } }));
-
-export default [
-  { files: ['src/**/*.ts'], languageOptions: { parser: tseslint.parser } },
-  {
-    files: ['src/**/*.ts'],
-    plugins: { boundaries },
-    settings: {
-      'import/resolver': { typescript: { project: './tsconfig.json' } },
-      'boundaries/include': ['src/**/*'],
-      // Order matters: the first matching descriptor wins, so `input-port` precedes `app`.
-      'boundaries/elements': [
-        { type: 'shared',     pattern: 'src/shared',                      partialMatch: false },
-        { type: 'domain',     pattern: 'src/modules/*/domain',            partialMatch: false, capture: ['module'] },
-        { type: 'input-port', pattern: 'src/modules/*/app/ports/input',   partialMatch: false, capture: ['module'] },
-        { type: 'app',        pattern: 'src/modules/*/app',               partialMatch: false, capture: ['module'] },
-        { type: 'infra',      pattern: 'src/modules/*/infra',             partialMatch: false, capture: ['module'] },
-        { type: 'platform',   pattern: 'src/platform',                    partialMatch: false },
-        { type: 'main',       pattern: 'src/main',                        partialMatch: false },
-      ],
-    },
-    rules: {
-      'boundaries/dependencies': [2, {
-        default: 'disallow',
-        policies: [
-          // Layers — inward only, and only inside the SAME module
-          ...rule('domain', { element: { type: 'shared' } }, same('domain')),
-          ...rule('app',    { element: { type: 'shared' } }, same('domain'), same('app'), same('input-port')),
-          ...rule('input-port', { element: { type: 'shared' } }, same('domain'), same('app'), same('input-port')),
-          ...rule('infra',  { element: { type: 'shared' } }, same('domain'), same('app'), same('input-port'), same('infra'),
-                            // The ONE legal cross-module edge: infra → another module's app/ports/input
-                            any('input-port')),
-          ...rule('platform', any('shared'), any('domain'), any('app'), any('input-port'), any('infra'), any('platform')),
-          ...rule('main', any('shared'), any('domain'), any('app'), any('input-port'), any('infra'), any('platform'), any('main')),
-        ],
-      }],
-    },
-  },
-];
-```
-
-Install: `npm i -D eslint typescript typescript-eslint eslint-plugin-boundaries eslint-import-resolver-typescript` (do **not** add `@eslint/js` pinned to a different ESLint major — it fails with `ERESOLVE`).
-
-Notes for the generated project:
-- `tsconfig.json`: use `"paths": { "@/*": ["./src/*"] }` **without `baseUrl`** (deprecated in TypeScript 6 and an error without `ignoreDeprecations`).
-- `tsconfig.json`: TypeScript 6 no longer includes `@types/*` automatically — if the code uses Node built-ins (`node:fs`, `node:sqlite`, `node:crypto`), install `@types/node` and set `"types": ["node"]`.
-- Do not name a folder under `src/main/` `modules/`: use `src/main/compose/`. `src/modules/` is the business code, and the same name in two places confuses people.
-- The `input-port` element must come **before** `app` in `boundaries/elements`: the first matching descriptor wins, and `app/ports/input` is the only place another module may reach.
-- The whole `src/modules/*/infra` folder is the infra layer, not just `infra/adapters`.
-- After generating the config, verify it by temporarily adding a file that imports outward (for example a `domain/` file importing from `app/`) and checking that ESLint reports it, then delete it. A config that reports nothing may simply not be matching your folders.
+Every reference also has the CI job for `ca-scan`, the plugin's command-line scan: it checks both axes in every supported language (TypeScript/JavaScript, Python, Go), plus SQL placement, table ownership, configuration and i18n placement, and cycles, with no per-module configuration. A native linter adds faster feedback in the editor; the configurations in the references are proven in both directions by the plugin's own CI. After setting up a linter, verify it: add a file that imports outward (a `domain/` file importing from `application/`), check that the linter reports it, then delete it. A configuration that reports nothing may simply not be matching your folders.
 
 ### 7. Architecture README (`docs/architecture/ARCHITECTURE.md`)
-The scaffold only writes a **generic stub**: once the modules exist, rewrite it so it describes THIS project (its modules, which optional pieces each use case has and why, the cross-module links, the decisions taken) instead of leaving the template text. Explain the layout, both rules, the optional pieces (input port, output port + presenter), the cross-module recipe (port owned by the caller, implemented in its `infra`, calling the other module's input port), where tests, docs and migrations live, and how to add a new module or feature.
+The scaffold only writes a **generic stub**: once the modules exist, rewrite it so it describes THIS project (its modules, which optional pieces each use case has and why, the cross-module links, the decisions taken) instead of leaving the template text. Explain the layout, both rules, the optional pieces (input port, output port + presenter), the cross-module recipe (port owned by the caller, implemented in its `infrastructure`, calling the other module's input port), where tests, docs and migrations live, and how to add a new module or feature.
 
 ## Validation Before Finishing
 
 After creating files, verify:
-- [ ] No file in `domain/` imports from `app/`, `infra/`, `platform/`, `main/`, or another module.
-- [ ] No file in `app/` imports from `infra/`, `platform/`, `main/`, or another module.
-- [ ] No file in `infra/adapters/` imports from `platform/` or `main/`; the only cross-module import allowed is into another module's `app/ports/input/`.
+- [ ] No file in `domain/` imports from `application/`, `infrastructure/`, `platform/`, `main/`, or another module.
+- [ ] No file in `application/` imports from `infrastructure/`, `platform/`, `main/`, or another module.
+- [ ] No file in `infrastructure/` imports from `platform/` or `main/`; the only cross-module import allowed is into another module's `application/ports/input/`.
 - [ ] `shared/` imports nothing.
 - [ ] `main/` is the ONLY place where concrete classes are instantiated and wired together.
-- [ ] Port interfaces live in the `app/` layer of the module that owns them, not in `infra/`.
-- [ ] No empty folders were created beyond `domain/`, `app/` and `infra/` per module, `main/` and `docs/architecture/`.
+- [ ] Port interfaces live in the `application/` layer of the module that owns them, not in `infrastructure/`.
+- [ ] No empty folders were created beyond `domain/`, `application/` and `infrastructure/` per module, `main/` and `docs/architecture/`.
 - [ ] Documentation is in `docs/architecture/`, not in `src/`, and `ARCHITECTURE.md` describes this project rather than the generic stub.
-- [ ] No `.gitkeep` is left in a folder that now contains other files (the scaffold creates them in `domain/`, `app/` and `infra/`; delete each one when its folder gets its first real file).
+- [ ] No `.gitkeep` is left in a folder that now contains other files (the scaffold creates them in `domain/`, `application/` and `infrastructure/`; delete each one when its folder gets its first real file).
 - [ ] No module name is reserved.
 
 ## Output

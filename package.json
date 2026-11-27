@@ -1,11 +1,12 @@
 {
   "name": "clean-architecture-plugin",
-  "version": "1.1.0",
+  "version": "2.10.0",
   "description": "Full Clean Architecture plugin for Claude Code based on Uncle Bob's book",
   "type": "module",
   "main": "src/server.js",
   "bin": {
-    "ca-mcp-server": "src/server.js"
+    "ca-mcp-server": "src/server.js",
+    "ca-scan": "src/cli.js"
   },
   "repository": {
     "type": "git",

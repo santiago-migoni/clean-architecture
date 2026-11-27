@@ -28,10 +28,13 @@ jobs:
       - name: Syntax check
         run: |
           node --check src/server.js
-          node --check src/lib/architecture.js
+          for f in src/lib/*.js src/lib/languages/*.js; do node --check "$f"; done
           node --check src/hooks/dependency-check.js
           node --check src/hooks/session-start.js
           node --check scripts/verify-example.mjs
+          node --check scripts/check-snippets.mjs
+          node --check scripts/check-linters.mjs
+          node --check src/cli.js
 
       - name: Validate JSON manifests
         run: |
@@ -73,7 +76,7 @@ jobs:
         node: ['22.13.0', '22', '24']
     defaults:
       run:
-        working-directory: examples/shop
+        working-directory: examples/typescript
     steps:
       - uses: actions/checkout@v4
 
@@ -81,7 +84,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-          cache-dependency-path: examples/shop/package-lock.json
+          cache-dependency-path: examples/typescript/package-lock.json
 
       - name: Install (from the lockfile)
         run: npm ci
@@ -94,3 +97,57 @@ jobs:
 
       - name: Test
         run: npm test
+
+
+  # The Python and Go examples: each installs, passes its own tests and its native architecture linter.
+  examples:
+    name: Examples (Python, Go), skill references and linters
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Go 1.26: the example's minimum (modernc.org/sqlite needs it), and what go-arch-lint v1.19.2 needs to install.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: examples/go/go.sum
+
+      - name: Go example builds, vets and passes its tests (unit, e2e, and the SQL gateways)
+        working-directory: examples/go
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./... && go vet -tags integration ./...
+          go test ./...
+          go test -tags integration ./...
+
+      # Python 3.11: the example's minimum (current FastAPI and Starlette need it).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Python example installs and passes its tests (unit, integration, e2e)
+        working-directory: examples/python
+        run: |
+          pip install -e ".[dev]"
+          pytest
+
+      # The skills' code lives in references/<language>.md; every block must parse with its own parser.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: TypeScript for the snippet check (from the example's lockfile)
+        run: npm ci --prefix examples/typescript
+
+      - name: Every code block in the skill references parses (TypeScript, Python, Go)
+        run: node scripts/check-snippets.mjs --strict
+
+      # The native linter configurations the skills recommend, proven in both directions on the examples.
+      # import-linter came with the Python example's dev dependencies.
+      - name: Install go-arch-lint (pinned)
+        run: |
+          go install github.com/fe3dback/go-arch-lint@v1.19.2
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: ESLint, import-linter and go-arch-lint pass when clean and fail on planted violations
+        run: node scripts/check-linters.mjs --strict

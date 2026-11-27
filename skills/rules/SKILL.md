@@ -1,47 +1,67 @@
 ---
 name: rules
-description: "This skill should be used before writing, editing or reviewing code in a project that follows the Clean Architecture plugin layout (src/modules/<module>/{domain,app,infra}, src/shared, src/platform, src/main), or when the user asks \"what are the Clean Architecture rules\", \"where does this file go\", \"may this layer import that one\", \"how do two modules talk\", or about the Dependency Rule, the Module Rule, ports, the composition root or the Test Boundary. It is the reference every other clean-architecture skill assumes."
+description: "This skill should be used before writing, editing or reviewing code in a project that follows the Clean Architecture plugin layout (src/modules/<module>/{domain,application,infrastructure}, src/shared, src/platform, src/main), or when the user asks \"what are the Clean Architecture rules\", \"where does this file go\", \"may this layer import that one\", \"how do two modules talk\", or about the Dependency Rule, the Module Rule, ports, the composition root or the Test Boundary. It is the reference every other clean-architecture skill assumes."
 ---
 # Clean Architecture Plugin — Rules
 
 These are the rules for any project that uses the **Clean Architecture** plugin. All code written or reviewed in such a project must conform to the principles established by Robert C. Martin in *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
 
-The plugin uses a **feature-first** layout: the code is grouped into **modules** (`orders`, `customers`, …) and every module contains the three layers `domain`, `app` and `infra`.
+The plugin uses a **feature-first** layout: the code is grouped into **modules** (`orders`, `customers`, …) and every module contains the three layers `domain`, `application` and `infrastructure`.
 
 ## Project Layout
+
+Shown with the TypeScript code root (`src/`); Python and Go place the same tree as "Language conventions" below says.
 
 ```
 <project-root>/
 ├── src/
 │   ├── modules/
-│   │   └── <module>/          # one folder per business capability (screams the domain)
-│   │       ├── domain/        # Enterprise business rules
-│   │       ├── app/           # Application business rules
-│   │       │   ├── ports/{input,output}/
+│   │   └── <module>/              # one folder per business capability (screams the domain)
+│   │       ├── domain/            # Enterprise business rules
+│   │       ├── application/       # Application business rules
+│   │       │   ├── ports/{input,output,published}/
 │   │       │   └── interactors/
-│   │       └── infra/
-│   │           └── adapters/{controllers,presenters,gateways}/
+│   │       └── infrastructure/    # Interface adapters
+│   │           └── {controllers,presenters,gateways,subscribers}/
 │   ├── shared/                # Shared kernel — pure and minimal
 │   ├── platform/              # Frameworks & drivers: web, db, external
 │   └── main/                  # Composition root (main/<app>/ if there are several entry points)
 ├── tests/
-│   ├── <module>/{unit,integration}/    # mirrors src/modules/<module>/
+│   ├── <module>/
+│   │   ├── unit/              # mirrors src/modules/<module>/
+│   │   └── integration/       # flat: gateway tests against a real DB
 │   └── e2e/
 ├── docs/architecture/         # ARCHITECTURE.md, diagrams, ADRs (never inside src/)
 └── <config files>
 ```
 
-**Create on demand.** `init` creates only `modules/<m>/{domain,app,infra}`, `main/` and `docs/architecture/`. `shared/`, `platform/`, the `ports/`, `interactors/` and `adapters/` subfolders, `in-memory/` and the test folders are created by the first file that needs them — never as empty folders. The same applies to `domain/{events,errors,services}`: add them when the first event, domain error or domain service exists.
+**Create on demand.** `init` creates only `modules/<m>/{domain,application,infrastructure}`, `main/` and `docs/architecture/`. `shared/`, `platform/`, the `ports/`, `interactors/`, `controllers/`, `presenters/` and `gateways/` subfolders, `in-memory/` and the test folders are created by the first file that needs them — never as empty folders. The same applies to `domain/{events,errors,services}`: add them when the first event, domain error or domain service exists.
 
-**`.gitkeep` files** exist only so that git keeps an otherwise-empty folder. The scaffold writes one into each of `domain/`, `app/` and `infra/`: **delete a folder's `.gitkeep` in the same change that adds its first real file.** A `.gitkeep` next to other files is leftover noise.
+**`.gitkeep` files** exist only so that git keeps an otherwise-empty folder. The scaffold writes one into each of `domain/`, `application/` and `infrastructure/`: **delete a folder's `.gitkeep` in the same change that adds its first real file.** A `.gitkeep` next to other files is leftover noise.
 
 **Macro decisions.**
-- Tests are grouped by module (`tests/<module>/{unit,integration}`) so that removing or extracting a module means deleting `src/modules/<m>` and `tests/<m>`. `tests/e2e/` is shared.
+- Tests are grouped by module (`tests/<module>/{unit,integration}`) so that removing or extracting a module means deleting `src/modules/<m>` and `tests/<m>`. `unit/` mirrors the module's folders; `integration/` is flat, because only gateways are tested against a real database (use case tests never touch it). `tests/e2e/` is shared. (Go keeps its tests beside the code: see Language conventions.)
+- A class's companion types live **beside it**, named by suffix, not in a subfolder: `place-order-http-request` next to its controller, `place-order-view-model` next to its presenter, `order-persistence-model` next to its gateway. Subfolders are kept only for a different kind of thing: `gateways/in-memory/` (non-production implementations) and `gateways/migrations/` (SQL, not code).
 - Documentation lives only in `docs/architecture/`.
-- One entry point → `src/main/index`. Several (api, worker, cli) → `src/main/<app>/index`, all sharing the modules. A monorepo (`apps/`, `packages/`) is justified only for separately deployed artifacts.
-- Database migrations live with their module (`infra/adapters/gateways/migrations/`); the connection and the runner live in `platform/db/`.
+- One entry point → one composition root (`src/main/index` in TypeScript). Several (api, worker, cli) → one per entry point (`src/main/<app>/index`, `main/<app>/__main__.py`, `cmd/<app>/main.go`), all sharing the modules. A monorepo (`apps/`, `packages/`) is justified only for separately deployed artifacts.
+- Database migrations live with their module (`infrastructure/gateways/migrations/`); the connection and the runner live in `platform/db/`.
 
-File names are kebab-case (snake_case in Python): `create-order`, `order-repository`, `sql-order-repository`.
+File names are kebab-case: `create-order`, `order-repository`, `sql-order-repository`, unless the language's conventions below say otherwise.
+
+### Language conventions
+
+The layers, the folders that name them (`modules/<m>/{domain,application,infrastructure}`, `application/ports/{input,output,published}`, `shared/`, `platform/`) and both rules are the same in every language. Only names, tests and the entry point follow the language:
+
+| | TypeScript / JavaScript | Python | Go |
+|---|---|---|---|
+| Code root | `src/` | `src/<package>/` | `internal/` (no `src/`) |
+| Module folder | kebab-case (`order-history`) | snake_case (`order_history`) | one lowercase word (`orderhistory`) |
+| File names | kebab-case (`place-order.ts`) | snake_case (`place_order.py`) | snake_case (`place_order.go`) |
+| Non-production gateways | `gateways/in-memory/` | `gateways/in_memory/` | `gateways/inmemory/` |
+| Composition root | `src/main/index.ts` | `src/<package>/main/__main__.py` | `internal/bootstrap/` (wiring) + `cmd/<app>/main.go` (entry point) |
+| Tests | `tests/<m>/{unit,integration}/`, `tests/e2e/` | same as TypeScript | `_test.go` beside the code; gateway tests against a real DB carry `//go:build integration`; e2e in `cmd/<app>/` |
+
+**Go.** The module path in `go.mod` is the import root: `<module-path>/internal/modules/<m>/domain`. Keep the `modules/` segment: it is what tells a module from `internal/shared`, `internal/platform` or `internal/bootstrap`. Every module has packages with the same names (`domain`, `interactors`, `output`, `inmemory`), so code that imports several of them, usually only `bootstrap`, aliases each import as `<module><package>`: `ordersinteractors`, `customersinmemory`. Under `infrastructure/`, a subpackage may be named after its technology (`infrastructure/postgres/`, `infrastructure/httpapi/`) instead of `gateways/` or `controllers/`: the whole `infrastructure/` folder is one layer. Each output port gets its own file in `application/ports/output/`.
 
 ## Non-Negotiable Rules
 
@@ -49,43 +69,49 @@ File names are kebab-case (snake_case in Python): `create-order`, `order-reposit
 Source code dependencies MUST point only **inward** — toward higher-level policy.
 
 ```
-domain  ←  app  ←  infra/adapters  ←  platform
+domain  ←  application  ←  infrastructure  ←  platform
 (inner)                               (outer)
 ```
 
 | Book term | This layout |
 |---|---|
 | Entities | `domain` |
-| Use Cases | `app` |
-| Interface Adapters | `infra/adapters` |
+| Use Cases | `application` |
+| Interface Adapters | `infrastructure` |
 | Frameworks & Drivers | `platform` |
 
 - Outer layers may depend on inner layers.
 - Inner layers MUST NEVER import from outer layers.
 - If an inner layer needs to call an outer layer, use a **boundary interface** (DIP).
-- `infra/adapters` MUST NOT import from `platform`: the framework client (DB connection, HTTP client) is injected from `main/`.
+- `infrastructure` MUST NOT import from `platform`: the framework client (DB connection, HTTP client) is injected from `main/`.
 
 ### 2. Layer Responsibilities
 
 | Layer | Folder | Contains | May depend on |
 |---|---|---|---|
-| domain | `src/modules/<m>/domain/` | Enterprise business rules, entities, value objects | `shared` only |
-| app | `src/modules/<m>/app/` | Application business rules, interactors, input/output ports | `domain`, `shared` |
-| infra | `src/modules/<m>/infra/adapters/` | Controllers, Presenters, Gateways | `app`, `domain`, `shared` |
-| shared | `src/shared/` | Shared kernel: `Money`, `Id`, base errors | Nothing |
-| platform | `src/platform/` | Web, DB, external tools | All inner layers |
-| main | `src/main/` | Composition root, wiring | Everything |
+| domain | `modules/<m>/domain/` | Enterprise business rules, entities, value objects | `shared` only |
+| application | `modules/<m>/application/` | Application business rules, interactors, input/output ports | `domain`, `shared` |
+| infrastructure | `modules/<m>/infrastructure/` | Controllers, Presenters, Gateways | `application`, `domain`, `shared` |
+| shared | `shared/` | Shared kernel: `Money`, `Id`, base errors | Nothing |
+| platform | `platform/` | Web, DB, external tools | All inner layers |
+| main | `main/` (Go: `bootstrap/` + `cmd/`) | Composition root, wiring, configuration | Everything |
 
 ### 3. The Module Rule (axis 2 — modules)
 A module is a cohesive component (CCP/CRP): it changes and is deployed as a unit.
 
-- A module MUST NOT import another module's `domain/` or `infra/`.
-- The **only** legal crossing is `A/infra/adapters` → `B/app/ports/input`, through a port **owned by A**:
-  1. `A/app/ports/output/` declares the port it needs (e.g. `customer-lookup`).
-  2. `A/infra/adapters/gateways/` implements it by calling `B/app/ports/input/`.
-  3. `A/domain` refers to B's entities **by id only** (`customerId`), never by importing them.
+- A module MUST NOT import another module's `domain/` or `infrastructure/`.
+- There are **two** legal crossings, both from a module's `infrastructure/` into the other module's public surface in `application/ports/`:
+  - **A call** — `A/infrastructure` → `B/application/ports/input`, when A needs an answer from B, through a port **owned by A**:
+    1. `A/application/ports/output/` declares the port it needs (e.g. `customer-lookup`).
+    2. `A/infrastructure/gateways/` implements it by calling `B/application/ports/input/`.
+  - **A subscription** — `B/infrastructure/subscribers/` → `A/application/ports/published/`, when B reacts to what A announces and A does not care who listens:
+    1. `A/application/ports/published/` declares the **integration event**: plain, versioned data (`orders.order-placed.v1`) that imports nothing but `shared/`.
+    2. `A/infrastructure/` maps its domain event to it and publishes it on the bus `main/` injects (`platform/events/`).
+    3. `B/infrastructure/subscribers/` receives it and calls a use case **of B**, idempotently (an event may arrive twice).
+  - Either way, a module's `domain/` refers to another module's entities **by id only** (`customerId`), never by importing them.
 - `shared/` is the only code modules may share. Keep it minimal, pure and free of business policy that belongs to a module.
-- Cycles between modules are forbidden (ADP).
+- Cycles between modules are forbidden (ADP). A subscription is a dependency too: B may not subscribe to A while A calls B.
+- **Each module owns its tables**: a table belongs to the module whose migrations create it. A module never queries, alters or references (foreign key) another module's tables — that is the database version of importing its `domain/`. It asks the other module through its input port, or keeps its own copy of the data it needs, and stores the other entity's id without a foreign key.
 
 ### 4. Domain (Entities)
 - Must contain only enterprise-wide business rules.
@@ -93,17 +119,18 @@ A module is a cohesive component (CCP/CRP): it changes and is deployed as a unit
 - Can be plain objects, classes, or sets of functions.
 - Must be the most stable code in the system.
 
-### 5. App (Use Cases)
+### 5. Application (Use Cases)
 - Orchestrate the flow of data to/from entities.
-- The interactor lives in `app/interactors/`; the interfaces to the outside it needs (repository, payment, clock, …) live in `app/ports/output/`.
-- **Input Port** (`app/ports/input/`): **required** when another module or a second entry point calls the use case; otherwise optional — a controller in the same module may depend on the interactor directly (the dependency still points inward: infra → app).
+- The interactor lives in `application/interactors/`; the interfaces to the outside it needs (repository, payment, clock, …) live in `application/ports/output/`.
+- **Input Port** (`application/ports/input/`): **required** when another module or a second entry point calls the use case; otherwise optional — a controller in the same module may depend on the interactor directly (the dependency still points inward: infrastructure → application).
 - **Output Port + Presenter**: **optional**. By default the interactor returns a response model. Use an Output Port when output formatting is non-trivial or several delivery mechanisms exist.
 - MUST NOT know about HTTP, SQL, UI, or any framework.
 
-### 6. Infra (Interface Adapters)
+### 6. Infrastructure (Interface Adapters)
 - **Controllers**: Convert framework input (HTTP request, CLI args) → use case input model.
 - **Presenters** (when the use case uses an Output Port): Implement the Output Port; convert use case output model → view model.
-- **Gateways**: Implement repository interfaces defined in `app/ports/output/`; translate between domain objects and DB rows.
+- **Gateways**: Implement repository interfaces defined in `application/ports/output/`; translate between domain objects and DB rows.
+- **SQL lives only here and in `platform/db/`**: queries in `gateways/` (inline or in `gateways/queries/`), schema changes in `gateways/migrations/`. SQL in `domain/`, `application/`, `shared/` or `main/` is a violation.
 
 ### 7. Platform (Frameworks & Drivers)
 - Thin adapters that plug into the architecture: route registration, DB connection, third-party clients.
@@ -119,8 +146,8 @@ Always apply:
 - **DIP**: Depend on abstractions, not concretions.
 
 ### 9. Screaming Architecture
-`src/modules/` MUST scream the domain (`orders`, `customers`, `billing`), NOT the framework (not `rails/`, `django/`, `spring/`, not `controllers/` at the top level).
-Reserved names that may not be used as a module name: `shared`, `platform`, `main`, `app`, `domain`, `infra`, `modules`, `adapters`, `bootstrap`, `composition` (the last two are aliases of `main`).
+`modules/` MUST scream the domain (`orders`, `customers`, `billing`), NOT the framework (not `rails/`, `django/`, `spring/`, not `controllers/` at the top level).
+Reserved names that may not be used as a module name: `shared`, `platform`, `main`, `domain`, `application`, `infrastructure`, `modules`, `bootstrap` and `composition` (aliases of `main`), plus `app`, `infra` and `adapters` (layer folders of versions before 2.0).
 
 ### 10. Humble Object Pattern
 Split every object that touches a boundary (UI, DB, network) into two parts:
@@ -134,21 +161,40 @@ Use this for Presenters, Views, and Database Gateways.
 - Domain tests must NOT touch use cases.
 - Follow the same Dependency Rule and Module Rule for test code.
 
+### 12. Configuration
+Configuration is a detail, and it has one place: the composition root.
+- Only `main/` reads the environment (`process.env`, `os.environ`, `os.Getenv`) or imports a configuration loader (`dotenv`, `pydantic-settings`, `viper`). `platform/` included: the connection receives its URL from `main/`.
+- `main/` loads it once, at startup, into a typed object and validates every value: a wrong setting stops the process before it serves anything.
+- Each piece receives through its constructor only the values it uses (ISP), never the whole configuration object.
+- A business policy value (a limit, a rate) reaches the use case as a plain value whose type lives in `application/`; `main/` decides where it comes from.
+- A test is its own composition root and may read the environment (Go keeps tests beside the code: `_test.go` files are not reported).
+
+### 13. Translations
+Text for users is a detail of delivery: business code returns codes, the outer layers write the words.
+- `domain/` and `application/` never produce text for users. A failure carries a stable **reason** code (`NO_LINES`, `INVALID_EMAIL`) and data; a status is a code (`PENDING`). The error's message is for logs, in one language, and is never sent as it is.
+- `domain/`, `application/` and `shared/` never import an i18n library (`i18next`, `react-intl`, `gettext`, `babel`, `go-i18n`, `x/text/message`).
+- The **locale is delivery input**: `platform/web/` negotiates it (`Accept-Language`) and passes it to the controller or the presenter, never to the use case. If a language or a region changes a business rule (taxes, for example), it is not a locale: it is a domain concept with its own name.
+- Each module owns its **catalog**, beside the adapter that writes the text (a controller or a presenter); removing the module removes its texts. The translator is a driver in `platform/i18n/`, injected by `main/`, which also decides which locales the app speaks. Every catalog provides every locale.
+- A fact of the domain (the currency of an amount) is data, not language: only how it is written may follow the locale.
+
 ## When Reviewing or Writing Code
 
 Always check:
 1. Does any import in an inner layer reference an outer layer path?
-2. Does any module import another module's `domain/` or `infra/` (other than `adapters → app/ports/input`)?
+2. Does any module import another module's `domain/`, `application/` or `infrastructure/` (other than `infrastructure → application/ports/input` or `application/ports/published`)? Does a published contract import anything but `shared/`?
 3. Do entities contain application or framework logic?
-4. Do use cases reference HTTP status codes, SQL, or ORMs?
-5. Are port interfaces (repository, input, output) defined in the `app` layer of the module that owns them?
+4. Do use cases reference HTTP status codes, SQL, or ORMs? Is all SQL in `infrastructure/` or `platform/db/`?
+5. Are port interfaces (repository, input, output) defined in the `application` layer of the module that owns them?
 6. Is `main/` the ONLY place where dependencies are wired together?
 7. Does each component have a single axis of change (SRP)?
 8. Are there cyclic dependencies between modules or layers?
+9. Does any module's SQL use a table that another module's migrations create?
+10. Does any code outside `main/` read the environment or load configuration?
+11. Does `domain/` or `application/` produce text for users, or import an i18n library?
 
 ## Available Skills
 
-Where a skill takes `<module>/<Name>`, the module prefix selects the folder under `src/modules/`. If the project has a single module it may be omitted.
+Where a skill takes `<module>/<Name>`, the module prefix selects the folder under `modules/`. If the project has a single module it may be omitted.
 
 - `/clean-architecture:rules` — These rules (load before writing or reviewing code)
 - `/clean-architecture:init [description]` — Scaffold project
@@ -158,6 +204,7 @@ Where a skill takes `<module>/<Name>`, the module prefix selects the folder unde
 - `/clean-architecture:presenter [module/Name]` — Create presenter
 - `/clean-architecture:gateway [module/Name]` — Create gateway
 - `/clean-architecture:boundary [description]` — Define boundary
+- `/clean-architecture:event [module/EventName]` — Publish an event another module reacts to
 - `/clean-architecture:solid [path]` — SOLID audit
 - `/clean-architecture:components [path]` — Component cohesion/coupling audit
 - `/clean-architecture:check` — Dependency Rule and Module Rule scan
