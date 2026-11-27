@@ -75,4 +75,26 @@ Notes for the generated project:
 - The whole `src/modules/*/infrastructure` folder is the infrastructure layer, not just `infrastructure`.
 - After generating the config, verify it by temporarily adding a file that imports outward (for example a `domain/` file importing from `application/`) and checking that ESLint reports it, then delete it. A config that reports nothing may simply not be matching your folders.
 
-`ca_scan` checks the same two rules and, beyond ESLint, SQL placement and table ownership.
+`scripts/check-linters.mjs` in the plugin proves this configuration in both directions on `examples/shop`: clean, and failing on planted violations of each kind.
+
+## In CI: ca-scan
+
+`ca-scan` runs the plugin's checks without Claude Code: both axes, SQL placement and table ownership, and cycles between components. It needs only Node.js (no dependencies). Exit codes: `0` clean, `1` violations or cycles (with `--strict`, also any warning), `2` not reliable (legacy layout, or code in a language without a profile).
+
+```yaml
+# .github/workflows/architecture.yml
+name: Architecture
+on: [push, pull_request]
+jobs:
+  ca-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Pin the plugin to a commit or tag for reproducible builds: github:santiago-migoni/clean-architecture#<ref>
+      - run: npx --yes --package=github:santiago-migoni/clean-architecture ca-scan . --strict
+```
+
+ESLint gives feedback in the editor; `ca-scan` adds what ESLint cannot see (SQL, cycles between modules).

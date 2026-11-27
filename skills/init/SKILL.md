@@ -131,10 +131,10 @@ Both axes must be enforced:
 **Before setting it up, read the reference for the project's language** — it has the tested configuration and the setup files:
 
 - [TypeScript / JavaScript](references/typescript.md) — ESLint with `eslint-plugin-boundaries` (tested in `examples/shop`)
-- [Python](references/python.md) — `pyproject.toml` and import-linter contracts
-- [Go](references/go.md) — `go.mod`, and why the Module Rule needs `ca_scan`
+- [Python](references/python.md) — `pyproject.toml` and import-linter contracts (tested)
+- [Go](references/go.md) — `go.mod` and a go-arch-lint configuration per module (tested)
 
-`ca_scan` checks both axes in every supported language (TypeScript/JavaScript, Python, Go) and SQL placement and table ownership on top; a native linter gives faster feedback in the editor. After setting up a linter, verify it: add a file that imports outward (a `domain/` file importing from `application/`), check that the linter reports it, then delete it. A configuration that reports nothing may simply not be matching your folders.
+Every reference also has the CI job for `ca-scan`, the plugin's command-line scan: it checks both axes in every supported language (TypeScript/JavaScript, Python, Go), plus SQL placement, table ownership and cycles, with no per-module configuration. A native linter adds faster feedback in the editor; the configurations in the references are proven in both directions by the plugin's own CI. After setting up a linter, verify it: add a file that imports outward (a `domain/` file importing from `application/`), check that the linter reports it, then delete it. A configuration that reports nothing may simply not be matching your folders.
 
 ### 7. Architecture README (`docs/architecture/ARCHITECTURE.md`)
 The scaffold only writes a **generic stub**: once the modules exist, rewrite it so it describes THIS project (its modules, which optional pieces each use case has and why, the cross-module links, the decisions taken) instead of leaving the template text. Explain the layout, both rules, the optional pieces (input port, output port + presenter), the cross-module recipe (port owned by the caller, implemented in its `infrastructure`, calling the other module's input port), where tests, docs and migrations live, and how to add a new module or feature.

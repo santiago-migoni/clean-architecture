@@ -5,3 +5,25 @@ requires-python = ">=3.10"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# import-linter (2.x): both axes. Run with: PYTHONPATH=src lint-imports
+[tool.importlinter]
+root_package = "shop"
+
+[[tool.importlinter.contracts]]
+name = "Layers point inward inside every module"
+type = "layers"
+containers = ["shop.modules.orders", "shop.modules.customers"]
+layers = ["infrastructure", "application", "domain"]
+
+[[tool.importlinter.contracts]]
+name = "Modules never import platform or main (drivers are injected)"
+type = "forbidden"
+source_modules = ["shop.modules"]
+forbidden_modules = ["shop.platform", "shop.main"]
+
+[[tool.importlinter.contracts]]
+name = "Modules do not import each other, except another module's input port from infrastructure"
+type = "independence"
+modules = ["shop.modules.orders", "shop.modules.customers"]
+ignore_imports = ["shop.modules.*.infrastructure.** -> shop.modules.*.application.ports.input.**"]

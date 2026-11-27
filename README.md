@@ -107,6 +107,18 @@ The skills are language-neutral: each `SKILL.md` holds the workflow and the chec
 
 Each profile has a fixture in [`fixtures/<language>/`](fixtures): a small project that builds and runs with its own toolchain, and that `verify:example` scans clean and then with planted violations. Adding a language means adding a profile, its fixture and its checks — the rules themselves do not change.
 
+## Command line: `ca-scan`
+
+The same checks as the `ca_scan` and `ca_cycles` tools, without Claude Code, for CI and the terminal: both axes, SQL placement and table ownership, and cycles between components. Node.js only, no dependencies.
+
+```bash
+npx --yes --package=github:santiago-migoni/clean-architecture ca-scan . --strict
+```
+
+Options: `--json` (the full report), `--strict` (warnings fail too). Exit codes: `0` clean, `1` violations or cycles, `2` not reliable (legacy layout, or code in a language without a profile), `64` bad usage. Pin a commit or tag (`…/clean-architecture#<ref>`) for reproducible CI. A ready GitHub Actions job is in the `init` skill's references.
+
+Native linters for faster feedback in the editor — ESLint with `eslint-plugin-boundaries`, import-linter, go-arch-lint — are configured in the same references, and `scripts/check-linters.mjs` proves each configuration in both directions in this repository's CI.
+
 ## Hooks
 
 **SessionStart.** A plugin's `CLAUDE.md` is never loaded into the projects that install it, so the rules ship as the `rules` skill. When a session starts in a project that has a `modules/` folder (under `src/`, `app/` or the root), this hook tells Claude to load `clean-architecture:rules` before writing or reviewing code. Any other project gets no Clean Architecture context at all.
@@ -155,6 +167,7 @@ cd examples/shop && npm ci && npm test && npm start
 |---|---|
 | **Plugin engine** | Syntax of the MCP server, hook and rules; the JSON manifests; and `npm run verify:example`, which checks the scanner **in both directions**: `examples/shop` and every language fixture must be clean, and planted violations (outward import, cross-module import, `infrastructure` → `platform`, a file directly under `infrastructure/`, a folder named `modules/` that is not business code, a legacy layout) must be found — in each language's own import syntax, while external packages named like a layer are ignored. A scanner that reports nothing may simply be broken, so a clean result alone proves nothing. |
 | **Example** (Node 22.13.0, 22, 24) | `npm ci` from the lockfile, `tsc`, ESLint with the architecture rules, and the 57 tests. The TypeScript fixture is typechecked with the same toolchain. |
+| **Linters** | `scripts/check-linters.mjs --strict`: the ESLint, import-linter and go-arch-lint configurations the skills recommend pass on their clean project and fail on planted violations of each kind, naming every planted file. |
 | **Fixtures** | Each language fixture builds and runs with its own toolchain: `go vet` and `go test` for Go, `python -m shop.main` for Python, and for SQL every migration applies on SQLite and every query compiles. A fixture that is not real code would test the scanner against imports nobody writes. |
 
 Run the engine check locally with `npm run verify:example`.

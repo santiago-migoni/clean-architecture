@@ -80,4 +80,4 @@ The queries of the old store move to `internal/modules/orders/infrastructure/gat
 
 ## Phase 7 — enforcement
 
-The compiler already forbids import cycles and `internal/` keeps other repositories out, but neither stops one module from importing another. Run `ca_scan` in CI (see the `init` skill's Go reference): it reads imports through the `go.mod` module path and checks both axes and SQL table ownership.
+The compiler already forbids import cycles and `internal/` keeps other repositories out, but neither stops one module from importing another. Run `ca-scan` in CI, and optionally go-arch-lint (both in the `init` skill's Go reference): it reads imports through the `go.mod` module path and checks both axes and SQL table ownership.

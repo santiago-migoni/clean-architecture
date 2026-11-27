@@ -441,6 +441,31 @@ try {
       fm ? fm.split('\n')[0] : '(no frontmatter)');
   }
 
+  // ── 10. the ca-scan CLI, for CI ─────────────────────────────────────────────────────────
+  console.log('\n[10] the ca-scan CLI runs the same checks with exit codes CI can use');
+  const CLI = join(ROOT, 'src/cli.js');
+  const cli = (...a) => spawnSync(process.execPath, [CLI, ...a], { encoding: 'utf8' });
+  const cleanRun = cli(EXAMPLE);
+  check('ca-scan: a compliant project exits 0', cleanRun.status === 0 && /0 violation\(s\)/.test(cleanRun.stdout), cleanRun.stdout + cleanRun.stderr);
+  const badRun = cli(bad);
+  check('ca-scan: violations exit 1 and are printed with rule, file and fix',
+    badRun.status === 1 && /dependency-rule/.test(badRun.stdout) && /cross-module/.test(badRun.stdout) && /Fix:/.test(badRun.stdout),
+    `exit ${badRun.status}: ${badRun.stdout.slice(0, 300)}`);
+  const json = cli(bad, '--json');
+  let parsed = null;
+  try { parsed = JSON.parse(json.stdout); } catch { /* checked below */ }
+  check('ca-scan --json: the full report as JSON, with the exit code', parsed?.exitCode === 1 && parsed.violations.length === want.length, json.stdout.slice(0, 200));
+  const notReliable = cli(other);
+  check('ca-scan: code in a language without a profile exits 2 (not reliable), not 0', notReliable.status === 2, `exit ${notReliable.status}`);
+  const warned = tmpProject('cli-strict'); temps.push(warned);
+  cpSync(join(FIXTURES, 'typescript'), warned, { recursive: true });
+  write(warned, 'src/tools/generate.ts', 'export {};\n'); // outside every layer: a warning, not a violation
+  check('ca-scan: a warning alone exits 0, and 1 with --strict', cli(warned).status === 0 && cli(warned, '--strict').status === 1);
+  check('ca-scan: bad usage exits 64', cli('--nope').status === 64 && cli(join(ROOT, 'no-such-dir')).status === 64);
+  const viaNpx = spawnSync('npx', ['--yes', `--package=${ROOT}`, 'ca-scan', EXAMPLE], { encoding: 'utf8', cwd: tmpdir() });
+  if (viaNpx.error) console.log('  skip  ca-scan through npx: npx is not available');
+  else check('ca-scan runs as a package bin (npx --package=<plugin> ca-scan)', viaNpx.status === 0, viaNpx.stderr.slice(0, 300));
+
   // ── 9. skills are language-neutral; code lives in per-language references that parse ─────
   console.log('\n[9] SKILL.md files carry no code; references cover every language and parse');
   const CODE_LANGS = /^```(typescript|ts|tsx|javascript|js|python|py|go|golang|java|kotlin|csharp|cs|rust|ruby|php|sql)\s*$/m;

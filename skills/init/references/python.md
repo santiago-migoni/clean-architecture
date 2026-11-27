@@ -26,27 +26,51 @@ testpaths = ["tests"]
 
 ## Both axes with import-linter
 
-One `layers` contract per module (the layers of a module, outermost first) and one `independence` contract between modules, with the single legal edge ignored:
+Tested with import-linter 2.17 on the plugin's Python fixture, in both directions (clean, and failing on planted violations of each kind). One `layers` contract covers every module through `containers`; a `forbidden` contract keeps the drivers out; an `independence` contract keeps modules apart, with the single legal edge ignored.
 
 ```toml
 [tool.importlinter]
 root_package = "shop"
 
 [[tool.importlinter.contracts]]
-name = "orders: layers point inward"
+name = "Layers point inward inside every module"
 type = "layers"
-layers = ["shop.modules.orders.infrastructure", "shop.modules.orders.application", "shop.modules.orders.domain"]
+containers = ["shop.modules.orders", "shop.modules.customers"]
+layers = ["infrastructure", "application", "domain"]
 
 [[tool.importlinter.contracts]]
-name = "customers: layers point inward"
-type = "layers"
-layers = ["shop.modules.customers.infrastructure", "shop.modules.customers.application", "shop.modules.customers.domain"]
+name = "Modules never import platform or main (drivers are injected)"
+type = "forbidden"
+source_modules = ["shop.modules"]
+forbidden_modules = ["shop.platform", "shop.main"]
 
 [[tool.importlinter.contracts]]
-name = "modules do not import each other (except another module's input port)"
+name = "Modules do not import each other, except another module's input port from infrastructure"
 type = "independence"
 modules = ["shop.modules.orders", "shop.modules.customers"]
-ignore_imports = ["shop.modules.orders.infrastructure.** -> shop.modules.customers.application.ports.input.**"]
+ignore_imports = ["shop.modules.*.infrastructure.** -> shop.modules.*.application.ports.input.**"]
 ```
 
-Run it with `lint-imports`. Add a contract (and a module to the independence list) for every new module. `ca_scan` checks the same rules without per-module configuration, plus SQL placement and table ownership.
+Add each new module to `containers` and `modules`. Run it with `PYTHONPATH=src lint-imports` (or install the package in the environment first).
+
+## In CI: ca-scan
+
+`ca-scan` runs the plugin's checks without Claude Code: both axes, SQL placement and table ownership, and cycles between components. It needs only Node.js (no dependencies). Exit codes: `0` clean, `1` violations or cycles (with `--strict`, also any warning), `2` not reliable (legacy layout, or code in a language without a profile).
+
+```yaml
+# .github/workflows/architecture.yml
+name: Architecture
+on: [push, pull_request]
+jobs:
+  ca-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Pin the plugin to a commit or tag for reproducible builds: github:santiago-migoni/clean-architecture#<ref>
+      - run: npx --yes --package=github:santiago-migoni/clean-architecture ca-scan . --strict
+```
+
+import-linter gives feedback before commit; `ca-scan` adds SQL placement, table ownership and cycles.

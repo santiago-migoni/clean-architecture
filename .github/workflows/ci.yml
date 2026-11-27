@@ -33,6 +33,8 @@ jobs:
           node --check src/hooks/session-start.js
           node --check scripts/verify-example.mjs
           node --check scripts/check-snippets.mjs
+          node --check scripts/check-linters.mjs
+          node --check src/cli.js
 
       - name: Validate JSON manifests
         run: |
@@ -101,7 +103,7 @@ jobs:
 
   # Every language fixture must be real code: it builds and runs with its own toolchain.
   fixtures:
-    name: Fixtures and skill references (Go, Python, SQL, TypeScript)
+    name: Fixtures, skill references and linters
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -139,3 +141,13 @@ jobs:
 
       - name: Every code block in the skill references parses (TypeScript, Python, Go)
         run: node scripts/check-snippets.mjs --strict
+
+      # The native linter configurations the skills recommend, proven in both directions.
+      - name: Install import-linter and go-arch-lint (pinned)
+        run: |
+          pip install import-linter==2.17
+          go install github.com/fe3dback/go-arch-lint@v1.19.2
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: ESLint, import-linter and go-arch-lint pass when clean and fail on planted violations
+        run: node scripts/check-linters.mjs --strict

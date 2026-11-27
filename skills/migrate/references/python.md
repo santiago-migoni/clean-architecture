@@ -88,4 +88,4 @@ The declarative model (`class OrderRecord(Base)`) moves from `app/models.py` to 
 
 ## Phase 7 — enforcement
 
-Run `ca_scan` in CI (see the `init` skill's Python reference): it checks both axes and SQL table ownership. While a module is half-migrated, its warnings show what is left.
+Run `ca-scan` in CI, and optionally import-linter (both in the `init` skill's Python reference): it checks both axes and SQL table ownership. While a module is half-migrated, its warnings show what is left.
