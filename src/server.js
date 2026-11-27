@@ -6,8 +6,8 @@
  */
 
 import { createInterface } from 'readline';
-import { readFileSync, existsSync, readdirSync, statSync, lstatSync, mkdirSync, writeFileSync } from 'fs';
-import { join, relative, extname, dirname, resolve, normalize } from 'path';
+import { readFileSync, existsSync, readdirSync, statSync, lstatSync, mkdirSync, writeFileSync, realpathSync } from 'fs';
+import { join, relative, extname, dirname, resolve, normalize, sep } from 'path';
 import { fileURLToPath } from 'url';
 import {
   ALLOWED_LAYERS,
@@ -111,7 +111,7 @@ const TOOLS = [
           description:
             'Module names to create under src/modules/ (e.g. ["orders", "customers"]). ' +
             'Defaults to one module named after the domain, or "core". ' +
-            'Names like shared, platform, main, app, domain, infra are reserved.',
+            'Reserved: shared, platform, main, app, domain, infra, modules, adapters, bootstrap, composition.',
         },
       },
       required: ['rootPath'],
@@ -152,12 +152,28 @@ const TOOLS = [
 
 // ── Path safety ───────────────────────────────────────────────────────────
 
-const SAFE_ROOT = resolve(process.cwd());
+const SAFE_ROOT = realpathSync(resolve(process.cwd()));
+
+/** Real path of `p`, following symlinks in the part that exists (the rest may not exist yet). */
+function realPathOf(p) {
+  let head = p;
+  const tail = [];
+  while (!existsSync(head)) {
+    const parent = dirname(head);
+    if (parent === head) break;
+    tail.unshift(head.slice(parent.length).replace(/^[\\/]+/, ''));
+    head = parent;
+  }
+  return join(existsSync(head) ? realpathSync(head) : head, ...tail);
+}
 
 function safePath(p) {
   if (!p || typeof p !== 'string') return SAFE_ROOT;
-  const resolved = resolve(normalize(p));
-  if (!resolved.startsWith(SAFE_ROOT)) {
+  // Compare real paths (macOS: /var → /private/var) and against "<root><sep>", so neither a
+  // symlink nor a sibling such as "<root>-other" passes as inside the working directory.
+  const resolved = realPathOf(resolve(normalize(p)));
+  const rootWithSep = SAFE_ROOT.endsWith(sep) ? SAFE_ROOT : SAFE_ROOT + sep;
+  if (resolved !== SAFE_ROOT && !resolved.startsWith(rootWithSep)) {
     throw new Error(`Path "${p}" is outside the working directory.`);
   }
   return resolved;

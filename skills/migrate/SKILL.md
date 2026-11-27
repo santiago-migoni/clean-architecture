@@ -76,7 +76,7 @@ Mapping (per module): `entities/<x>` → `modules/<m>/domain/`, `usecases/ports|
 
 Steps:
 1. List the business capabilities in the code (`orders`, `customers`, `billing`…). Group by *reason to change* (CCP), not by technical type: a module is what changes together.
-2. Name each module in kebab-case. Avoid the reserved names `shared`, `platform`, `main`, `app`, `domain`, `infra`, `modules`, `adapters`.
+2. Name each module in kebab-case. Avoid the reserved names `shared`, `platform`, `main`, `app`, `domain`, `infra`, `modules`, `adapters`, `bootstrap`, `composition` (the last two are aliases of `main`).
 3. Map every existing class/file to a module. Anything used by several modules and free of business policy (Money, Id, base errors) is a candidate for `src/shared/`.
 4. Find the places where one capability calls another. Each becomes a **cross-module port** (owned by the caller, implemented in the caller's `infra`, calling the other module's input port) — decide them now.
 5. Order the migration: start with the module that is depended on the least.

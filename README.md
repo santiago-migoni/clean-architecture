@@ -78,7 +78,7 @@ The plugin ships an MCP server (`src/server.js`) that gives Claude real file-sys
 |---|---|
 | `ca_scan` | Scans every source file for Dependency Rule and Module Rule violations — returns severity, rule, file, import, and fix |
 | `ca_metrics` | Calculates Fan-in, Fan-out, Instability (I), Abstractness (A), and Distance from Main Sequence (D) per component (each module, `shared`, `platform`, `main`) |
-| `ca_scaffold` | Creates the full directory and file scaffold: one `domain/app/infra` set per module, plus `shared/`, `platform/`, `main/` and the matching `tests/` tree |
+| `ca_scaffold` | Creates the lean scaffold: `domain/app/infra` per module (with `.gitkeep` stubs), `src/main/index` and `docs/architecture/ARCHITECTURE.md`. `shared/`, `platform/`, `ports/`, `adapters/` and `tests/` are created on demand by the skills, never empty. Never overwrites existing files |
 | `ca_layer_of` | Identifies which layer and module a file belongs to and checks its imports for compliance |
 | `ca_cycles` | Detects cyclic dependencies between components — modules, `shared`, `platform`, `main` (ADP check) |
 
@@ -204,7 +204,7 @@ tests/
 | **Layers** | Dependencies point inward: `infra → app → domain`. `infra/adapters` never imports `platform/` (the framework client is injected from `main/`). |
 | **Modules** | A module never imports another module's `domain/` or `infra/`. The only legal crossing is `A/infra/adapters → B/app/ports/input`, through a port owned by A. |
 
-Reserved names that cannot be module names: `shared`, `platform`, `main`, `app`, `domain`, `infra`, `modules`, `adapters`.
+Reserved names that cannot be module names: `shared`, `platform`, `main`, `app`, `domain`, `infra`, `modules`, `adapters`, `bootstrap`, `composition` (the last two are aliases of `main`).
 
 ### Migrating from the previous layout
 

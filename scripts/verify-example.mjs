@@ -157,6 +157,9 @@ try {
   check('scaffold rejects a reserved module name', typeof rejected === 'string' && /reserved/.test(rejected), String(rejected));
   const escaped = callTool(scaf, 'ca_scaffold', { rootPath: scaf, modules: ['../../etc'] });
   const outside = readdirSync(dirname(scaf)).includes('etc');
+  const sibling = callTool(scaf, 'ca_scaffold', { rootPath: `${scaf}-sibling`, modules: ['orders'] });
+  check('scaffold rejects a sibling folder that only shares the root as a name prefix',
+    typeof sibling === 'string' && /outside the working directory/.test(sibling) && !existsSync(`${scaf}-sibling`), String(sibling).slice(0, 160));
   check('scaffold sanitises path-traversal module names', !outside && (typeof escaped !== 'string' || !/etc\//.test(JSON.stringify(escaped.created))), JSON.stringify(escaped).slice(0, 160));
 
   // ── 5. classification is positional and resolves every import form ─────────────────────

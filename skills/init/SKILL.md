@@ -9,11 +9,12 @@ The plugin uses a **feature-first** layout: business capabilities are **modules*
 1. **Detect the language and framework** from the project context (check package.json, go.mod, pom.xml, Pipfile, etc.). If none exists, infer from the user's description.
 2. **Identify the modules** from the description. Each module is a business capability (`orders`, `customers`, `billing`), named in kebab-case. The architecture must scream the domain, not the framework (Screaming Architecture principle). If the user names only one capability, create one module; if the description is vague, ask for the module names rather than inventing a generic one.
 3. **Create the lean directory structure** below: `domain/`, `app/` and `infra/` per module, plus `main/` and `docs/architecture/`. Do NOT create empty folders for things that do not exist yet.
+   When the `ca_scaffold` MCP tool is available, use it for this step: call it with `rootPath` (absolute project root), `language`, `domain` and `modules`. It creates exactly this structure (with the `.gitkeep` stubs, `src/main/index.<ext>` and a generic `ARCHITECTURE.md`), rejects reserved module names and never overwrites existing files. Create the folders by hand only when the tool is unavailable, following the same structure.
 4. **Generate a minimal base set of files** for the first module: an entity, a repository interface and an interactor stub.
 5. **Create the architecture doc** at `docs/architecture/ARCHITECTURE.md` (never inside `src/`).
 6. **Enforce both rules from the start** (Dependency Rule and Module Rule) by setting up linting rules or module boundary checks appropriate to the language.
 
-Module names `shared`, `platform`, `main`, `app`, `domain`, `infra`, `modules` and `adapters` are reserved — they would be ambiguous with layer folders.
+Module names `shared`, `platform`, `main`, `app`, `domain`, `infra`, `modules`, `adapters`, `bootstrap` and `composition` are reserved — they would be ambiguous with layer folders.
 
 ## Directory Structure to Create
 

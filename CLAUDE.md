@@ -116,7 +116,7 @@ Always apply:
 
 ### 9. Screaming Architecture
 `src/modules/` MUST scream the domain (`orders`, `customers`, `billing`), NOT the framework (not `rails/`, `django/`, `spring/`, not `controllers/` at the top level).
-Reserved names that may not be used as a module name: `shared`, `platform`, `main`, `app`, `domain`, `infra`, `modules`, `adapters`.
+Reserved names that may not be used as a module name: `shared`, `platform`, `main`, `app`, `domain`, `infra`, `modules`, `adapters`, `bootstrap`, `composition` (the last two are aliases of `main`).
 
 ### 10. Humble Object Pattern
 Split every object that touches a boundary (UI, DB, network) into two parts:
