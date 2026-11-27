@@ -6,7 +6,7 @@
  *
  *   ESLint + eslint-plugin-boundaries  examples/typescript/eslint.config.js   (npm ci in examples/typescript)
  *   import-linter                      examples/python/pyproject.toml   (pip install -e ".[dev]" there; Python >= 3.11)
- *   go-arch-lint                       fixtures/go/.go-arch-lint.yml    (go install github.com/fe3dback/go-arch-lint@v1.19.2; Go >= 1.26)
+ *   go-arch-lint                       examples/go/.go-arch-lint.yml    (go install github.com/fe3dback/go-arch-lint@v1.19.2; Go >= 1.26)
  *
  *   node scripts/check-linters.mjs            # skips a linter that is not installed
  *   node scripts/check-linters.mjs --strict   # a missing linter is a failure (CI)
@@ -53,13 +53,13 @@ const LINTERS = [
   },
   {
     name: 'go-arch-lint',
-    project: join(ROOT, 'fixtures/go'),
+    project: join(ROOT, 'examples/go'),
     command: () => ['go-arch-lint', ['check', '--output-color=false']],
     available: () => !spawnSync('go-arch-lint', ['version']).error,
     plant: {
       'internal/modules/orders/domain/planted_outward.go': 'package domain\n\nimport _ "example.com/shop/internal/modules/orders/application/interactors"\n',
       'internal/modules/orders/application/interactors/planted_cross.go': 'package interactors\n\nimport _ "example.com/shop/internal/modules/customers/domain"\n',
-      'internal/modules/orders/infrastructure/gateways/planted_platform.go': 'package gateways\n\nimport _ "example.com/shop/internal/platform/clock"\n',
+      'internal/modules/orders/infrastructure/gateways/planted_platform.go': 'package gateways\n\nimport _ "example.com/shop/internal/platform/db"\n',
       'internal/modules/orders/infrastructure/gateways/planted_infra.go':
         'package gateways\n\nimport _ "example.com/shop/internal/modules/customers/infrastructure/gateways/inmemory"\n',
     },

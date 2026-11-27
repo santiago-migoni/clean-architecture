@@ -24,7 +24,6 @@ const SERVER = join(ROOT, 'src/server.js');
 const HOOK = join(ROOT, 'src/hooks/dependency-check.js');
 const SESSION_HOOK = join(ROOT, 'src/hooks/session-start.js');
 const EXAMPLE = join(ROOT, 'examples/typescript');
-const FIXTURES = join(ROOT, 'fixtures');
 
 const failures = [];
 const check = (name, ok, detail = '') => {
@@ -276,7 +275,7 @@ try {
     JSON.stringify(lo).slice(0, 200));
 
   // ── 5b. every language profile, against its fixture ───────────────────────────────────
-  // fixtures/<lang> is a small real project (it builds, runs or typechecks with its own toolchain).
+  // examples/<lang> is the reference application in that language (it builds and passes its own tests in CI).
   // It must scan clean; then the same four kinds of violation are planted with that language's
   // import syntax, plus imports that must NOT be reported (external packages named like a layer).
   console.log('\n[5b] each language profile: its fixture is clean, and planted violations are found exactly');
@@ -311,13 +310,13 @@ try {
         'cross-module:planted_infra.py'],
     },
     go: {
-      dir: join(FIXTURES, 'go'),
+      dir: join(ROOT, 'examples/go'),
       modules: 'internal/modules',
       plant: {
         'orders/domain/planted_outward.go':
           'package domain\n\nimport (\n\t"fmt"\n\n\tic "example.com/shop/internal/modules/orders/application/interactors"\n)\n',
         'orders/application/interactors/planted_cross.go': 'package interactors\n\nimport "example.com/shop/internal/modules/customers/domain"\n',
-        'orders/infrastructure/gateways/planted_platform.go': 'package gateways\n\nimport _ "example.com/shop/internal/platform/clock"\n',
+        'orders/infrastructure/gateways/planted_platform.go': 'package gateways\n\nimport _ "example.com/shop/internal/platform/db"\n',
         'orders/infrastructure/gateways/planted_infra.go':
           'package gateways\n\nimport (\n\tmem "example.com/shop/internal/modules/customers/infrastructure/gateways/inmemory"\n)\n',
         'orders/domain/planted_external.go': 'package domain\n\nimport "github.com/other/lib/modules/customers/domain"\n',
@@ -326,10 +325,9 @@ try {
         'cross-module:planted_infra.go'],
     },
     sql: {
-      dir: join(FIXTURES, 'sql'),
-      modules: 'src/modules',
-      components: [], // SQL files are tables, not code: ca_metrics leaves them out
-      minFiles: 6,
+      // SQL has no project of its own: it is checked on the Go example, whose queries and migrations are .sql files.
+      dir: join(ROOT, 'examples/go'),
+      modules: 'internal/modules',
       plant: {
         'orders/domain/planted-placement.sql': 'SELECT id FROM orders;\n',
         'orders/infrastructure/gateways/queries/planted-cross.sql':
@@ -384,8 +382,8 @@ try {
   }
 
   // Table ownership is inferred from the migrations, in .sql files and in code alike
-  const owned = callTool(join(FIXTURES, 'sql'), 'ca_scan').summary.tables;
-  check('sql: each table is owned by the module whose migrations create it (platform owns its bookkeeping)',
+  const owned = callTool(join(ROOT, 'examples/go'), 'ca_scan').summary.tables;
+  check('examples/go: each table is owned by the module whose .sql migrations create it (platform owns its bookkeeping, created in Go code)',
     same(Object.entries(owned).map(([t, o]) => `${t}=${o}`),
       ['schema_migrations=platform', 'customers=customers', 'orders=orders', 'order_lines=orders']),
     JSON.stringify(owned));

@@ -1,0 +1,50 @@
+# go-arch-lint (v1.19, config v3): both axes, declared per module.
+# Layers point inward inside a module; the only edge between modules is
+# orders/infrastructure -> customers/application/ports/input.
+# shared depends on nothing, so it has no entry under deps. A module's ports/input component
+# exists only once the folder does (go-arch-lint rejects a glob that matches nothing).
+version: 3
+workdir: internal
+
+allow:
+  # deepScan reports the composition root injecting an implementation into a use case
+  # (infrastructure passed to application) as a violation: that injection IS the Dependency
+  # Inversion this architecture relies on. Imports are what the rules constrain.
+  deepScan: false
+  depOnAnyVendor: true
+
+components:
+  shared:                   { in: shared/** }
+  platform:                 { in: platform/** }
+  bootstrap:                { in: bootstrap/** }
+
+  customers-domain:         { in: modules/customers/domain/** }
+  customers-input:          { in: modules/customers/application/ports/input/** }
+  customers-application:    { in: modules/customers/application/** }
+  customers-infrastructure: { in: modules/customers/infrastructure/** }
+
+  orders-domain:            { in: modules/orders/domain/** }
+  orders-application:       { in: modules/orders/application/** }
+  orders-infrastructure:    { in: modules/orders/infrastructure/** }
+
+deps:
+  platform:
+    mayDependOn: [shared, orders-infrastructure]  # the web view reads the orders presenter
+  bootstrap:
+    anyProjectDeps: true
+
+  customers-domain:
+    mayDependOn: [shared]
+  customers-input:
+    mayDependOn: [customers-domain, shared]
+  customers-application:
+    mayDependOn: [customers-application, customers-input, customers-domain, shared]
+  customers-infrastructure:
+    mayDependOn: [customers-infrastructure, customers-application, customers-input, customers-domain, shared]
+
+  orders-domain:
+    mayDependOn: [orders-domain, shared]
+  orders-application:
+    mayDependOn: [orders-application, orders-domain, shared]
+  orders-infrastructure:
+    mayDependOn: [orders-infrastructure, orders-application, orders-domain, shared, customers-input]

@@ -99,39 +99,37 @@ jobs:
         run: npm test
 
 
-  # Every language fixture must be real code: it builds and runs with its own toolchain.
-  fixtures:
-    name: Fixtures, skill references and linters
+  # The Python and Go examples: each installs, passes its own tests and its native architecture linter.
+  examples:
+    name: Examples (Python, Go), skill references and linters
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      # Go 1.26: the example's minimum (modernc.org/sqlite needs it), and what go-arch-lint v1.19.2 needs to install.
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.26'
+          cache-dependency-path: examples/go/go.sum
 
-      - name: Go fixture builds, vets and passes its tests
-        working-directory: fixtures/go
+      - name: Go example builds, vets and passes its tests (unit, e2e, and the SQL gateways)
+        working-directory: examples/go
         run: |
           test -z "$(gofmt -l .)"
-          go vet ./...
+          go vet ./... && go vet -tags integration ./...
           go test ./...
-          go run ./cmd/api
+          go test -tags integration ./...
 
-      # The Python example: its own tests (unit, integration, e2e) on its minimum Python, with its pinned
-      # dependencies (FastAPI, pytest, import-linter).
+      # Python 3.11: the example's minimum (current FastAPI and Starlette need it).
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Python example installs and passes its tests
+      - name: Python example installs and passes its tests (unit, integration, e2e)
         working-directory: examples/python
         run: |
           pip install -e ".[dev]"
           pytest
-
-      - name: SQL fixture applies and compiles on SQLite
-        run: python fixtures/sql/check.py
 
       # The skills' code lives in references/<language>.md; every block must parse with its own parser.
       - uses: actions/setup-node@v4
@@ -144,13 +142,8 @@ jobs:
       - name: Every code block in the skill references parses (TypeScript, Python, Go)
         run: node scripts/check-snippets.mjs --strict
 
-      # The native linter configurations the skills recommend, proven in both directions.
-      # import-linter came with the Python example's dev dependencies. The Go fixture was checked above on its
-      # minimum Go (1.22); go-arch-lint v1.19.2 needs Go >= 1.26 to install, and analyses older code fine.
-      - uses: actions/setup-go@v5
-        with:
-          go-version: 'stable'
-
+      # The native linter configurations the skills recommend, proven in both directions on the examples.
+      # import-linter came with the Python example's dev dependencies.
       - name: Install go-arch-lint (pinned)
         run: |
           go install github.com/fe3dback/go-arch-lint@v1.19.2
