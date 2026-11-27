@@ -584,7 +584,7 @@ function handleMessage(msg) {
     ok(id, {
       protocolVersion: '2024-11-05',
       capabilities: { tools: {} },
-      serverInfo: { name: 'clean-architecture', version: '1.0.1' },
+      serverInfo: { name: 'clean-architecture', version: '1.0.2' },
     });
     return;
   }
