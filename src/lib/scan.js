@@ -38,6 +38,9 @@ export function scanProject(root) {
   const languages = {};  // profile id → files checked
   const unsupported = {}; // language without a profile → files found (never checked)
   let unsupportedInLayers = 0;
+  let classified = 0;     // files of a supported language inside a known layer: what the rules actually checked
+  const outside = {};     // profile id → files outside every layer
+  const outsideSample = [];
   for (const file of files) {
     const rel = toPosix(relative(srcDir, file));
     const profile = profileFor(file);
@@ -50,8 +53,13 @@ export function scanProject(root) {
     languages[profile.id] = (languages[profile.id] || 0) + 1;
     let content;
     try { content = read(file); } catch { continue; }
+    if (detectLayer(rel)) classified++;
     if (LEGACY_TOP.test(rel)) legacy++;
-    else if (!detectLayer(rel) && !profile.isNeutral?.(rel, content)) unclassified++;
+    else if (!detectLayer(rel) && !profile.isNeutral?.(rel, content)) {
+      unclassified++;
+      outside[profile.id] = (outside[profile.id] || 0) + 1;
+      if (outsideSample.length < 3) outsideSample.push(relative(root, file));
+    }
     if (usesLegacyLayerName(rel)) legacyNames++;
     for (const v of findViolations(file, srcDir, content, { tables })) {
       violations.push({ file: relative(root, file), ...v });
@@ -87,17 +95,26 @@ export function scanProject(root) {
       'app/ to application/ and infra/adapters/<x>/ to infrastructure/<x>/.'
     );
   }
+  const supportedFiles = Object.values(languages).reduce((a, b) => a + b, 0);
   if (unclassified > 0) {
+    // Where the files should be, in the layout of each language found outside it.
+    const expected = PROFILES.filter((p) => outside[p.id]).map((p) => `${p.name}: ${p.layout}`).join('; ');
+    const none = classified === 0;
     warnings.push(
-      `${unclassified} file(s) are outside any known layer ` +
-      '(expected: src/modules/<module>/{domain,application,infrastructure}, src/shared, src/platform, src/main).'
+      (none
+        ? `No file is in the Clean Architecture layout, so NO rule was checked (${unclassified} file(s), e.g. ${outsideSample.join(', ')}). ` +
+          'Is this the project root? '
+        : `${unclassified} file(s) are outside any known layer (e.g. ${outsideSample.join(', ')}). `) +
+      `Expected — ${expected}.`
     );
   }
 
   // A score computed while part of the architecture is not covered by the rules would be misleading.
   const notCovered =
     legacy > 0 ? 'N/A — legacy layout detected, run /clean-architecture:migrate' :
-    unsupportedInLayers > 0 ? 'N/A — code in languages the plugin cannot check yet' : null;
+    unsupportedInLayers > 0 ? 'N/A — code in languages the plugin cannot check yet' :
+    supportedFiles === 0 && unsupportedTotal === 0 ? 'N/A — no source files found' :
+    classified === 0 && supportedFiles > 0 ? 'N/A — no file is in the Clean Architecture layout' : null;
 
   return {
     warnings,

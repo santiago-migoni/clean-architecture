@@ -461,6 +461,25 @@ try {
   cpSync(join(FIXTURES, 'typescript'), warned, { recursive: true });
   write(warned, 'src/tools/generate.ts', 'export {};\n'); // outside every layer: a warning, not a violation
   check('ca-scan: a warning alone exits 0, and 1 with --strict', cli(warned).status === 0 && cli(warned, '--strict').status === 1);
+  // A project with no file in the layout was not checked at all: it must not pass as "A — Excellent".
+  const outsideTs = tmpProject('outside-ts'); temps.push(outsideTs);
+  write(outsideTs, 'src/index.ts', 'export {};\n');
+  write(outsideTs, 'src/util/strings.ts', "import { x } from '../index';\n");
+  const outsideScan = callTool(outsideTs, 'ca_scan');
+  check('a project with no file in the layout gets no health score, and ca-scan exits 2',
+    outsideScan.summary.healthScore === null && /no file is in the Clean Architecture layout/.test(outsideScan.summary.grade) &&
+    outsideScan.warnings.some((w) => /NO rule was checked/.test(w) && /src\/index\.ts/.test(w)) && cli(outsideTs).status === 2,
+    JSON.stringify({ grade: outsideScan.summary.grade, warnings: outsideScan.warnings }));
+  const outsideGo = tmpProject('outside-go'); temps.push(outsideGo);
+  write(outsideGo, 'go.mod', 'module example.com/x\n\ngo 1.22\n');
+  write(outsideGo, 'internal/orders/order.go', 'package orders\n');
+  write(outsideGo, 'internal/modules/billing/domain/invoice.go', 'package domain\n'); // one file in the layout
+  const goOutside = callTool(outsideGo, 'ca_scan');
+  check('files outside the layout are reported with the layout of THEIR language (Go: internal/modules, cmd/), and still scored',
+    goOutside.summary.healthScore === 100 && goOutside.warnings.some((w) => /internal\/modules/.test(w) && /cmd\/<app>/.test(w) && !/src\/modules/.test(w)),
+    JSON.stringify(goOutside.warnings));
+  const empty = tmpProject('empty'); temps.push(empty);
+  check('an empty project gets no health score either (nothing was checked)', callTool(empty, 'ca_scan').summary.healthScore === null);
   check('ca-scan: bad usage exits 64', cli('--nope').status === 64 && cli(join(ROOT, 'no-such-dir')).status === 64);
   const viaNpx = spawnSync('npx', ['--yes', `--package=${ROOT}`, 'ca-scan', EXAMPLE], { encoding: 'utf8', cwd: tmpdir() });
   if (viaNpx.error) console.log('  skip  ca-scan through npx: npx is not available');

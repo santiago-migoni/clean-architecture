@@ -79,7 +79,7 @@ Notes for the generated project:
 
 ## In CI: ca-scan
 
-`ca-scan` runs the plugin's checks without Claude Code: both axes, SQL placement and table ownership, and cycles between components. It needs only Node.js (no dependencies). Exit codes: `0` clean, `1` violations or cycles (with `--strict`, also any warning), `2` not reliable (legacy layout, or code in a language without a profile).
+`ca-scan` runs the plugin's checks without Claude Code: both axes, SQL placement and table ownership, and cycles between components. It needs only Node.js (no dependencies). Exit codes: `0` clean, `1` violations or cycles (with `--strict`, also any warning), `2` not reliable (no file in the layout, a legacy layout, or code in a language without a profile).
 
 ```yaml
 # .github/workflows/architecture.yml

@@ -7,6 +7,7 @@
  * scripts/verify-example.mjs.
  *
  *   id, name, extensions
+ *   layout                               → where this language's files go (shown when files are outside it)
  *   extractImports(content)              → import specifiers as written
  *   resolveImport(file, spec, srcDir)    → path relative to srcDir, or null when external
  *   isAbstract(content)                  → true for an interface / abstract type (ca_metrics)

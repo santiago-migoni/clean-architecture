@@ -20,6 +20,7 @@ export default {
   id: 'python',
   name: 'Python',
   extensions: ['.py'],
+  layout: 'src/<package>/modules/<module>/{domain,application,infrastructure}/, src/<package>/{shared,platform,main}/',
 
   extractImports(content) {
     const found = new Set();

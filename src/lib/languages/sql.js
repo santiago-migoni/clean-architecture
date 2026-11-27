@@ -67,6 +67,7 @@ export default {
   id: 'sql',
   name: 'SQL',
   extensions: ['.sql'],
+  layout: "a module's infrastructure/ (gateways/, gateways/migrations/) or platform/db/",
   metrics: false, // tables, not types: SQL files do not count in abstractness or fan-in/fan-out
   extractImports: () => [],
   resolveImport: () => null,

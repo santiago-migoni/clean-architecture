@@ -10,7 +10,8 @@
  * Exit codes:
  *   0  clean
  *   1  violations or cycles (or, with --strict, any warning)
- *   2  the result is not reliable: code in a legacy layout or in a language without a profile
+ *   2  the result is not reliable: no file is in the layout (nothing was checked), code in a legacy
+ *      layout, or code in a language without a profile
  *  64  bad usage
  */
 import { existsSync, statSync } from 'fs';
@@ -23,7 +24,7 @@ const flags = new Set(args.filter((a) => a.startsWith('-')));
 const paths = args.filter((a) => !a.startsWith('-'));
 
 if (flags.has('-h') || flags.has('--help')) {
-  console.log(`${USAGE}\n\nChecks layers, modules, SQL placement, table ownership and cycles. Exit 0 clean, 1 violations,\n2 not reliable (legacy layout or unsupported language), 64 bad usage.`);
+  console.log(`${USAGE}\n\nChecks layers, modules, SQL placement, table ownership and cycles. Exit 0 clean, 1 violations,\n2 not reliable (no file in the layout, legacy layout or unsupported language), 64 bad usage.`);
   process.exit(0);
 }
 const unknown = [...flags].filter((f) => !['--json', '--strict'].includes(f));

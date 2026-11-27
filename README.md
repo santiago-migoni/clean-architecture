@@ -115,7 +115,7 @@ The same checks as the `ca_scan` and `ca_cycles` tools, without Claude Code, for
 npx --yes --package=github:santiago-migoni/clean-architecture ca-scan . --strict
 ```
 
-Options: `--json` (the full report), `--strict` (warnings fail too). Exit codes: `0` clean, `1` violations or cycles, `2` not reliable (legacy layout, or code in a language without a profile), `64` bad usage. Pin a commit or tag (`…/clean-architecture#<ref>`) for reproducible CI. A ready GitHub Actions job is in the `init` skill's references.
+Options: `--json` (the full report), `--strict` (warnings fail too). Exit codes: `0` clean, `1` violations or cycles, `2` not reliable (no file in the layout, a legacy layout, or code in a language without a profile), `64` bad usage. Pin a commit or tag (`…/clean-architecture#<ref>`) for reproducible CI. A ready GitHub Actions job is in the `init` skill's references.
 
 Native linters for faster feedback in the editor — ESLint with `eslint-plugin-boundaries`, import-linter, go-arch-lint — are configured in the same references, and `scripts/check-linters.mjs` proves each configuration in both directions in this repository's CI.
 

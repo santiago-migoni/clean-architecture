@@ -24,6 +24,7 @@ export default {
   id: 'typescript',
   name: 'TypeScript / JavaScript',
   extensions: ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'],
+  layout: 'src/modules/<module>/{domain,application,infrastructure}/, src/shared/, src/platform/, src/main/',
 
   extractImports(content) {
     const found = new Set();

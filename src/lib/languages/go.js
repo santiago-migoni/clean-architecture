@@ -45,6 +45,7 @@ export default {
   id: 'go',
   name: 'Go',
   extensions: ['.go'],
+  layout: 'internal/modules/<module>/{domain,application,infrastructure}/, internal/{shared,platform,bootstrap}/, cmd/<app>/',
 
   extractImports(content) {
     const found = new Set();
