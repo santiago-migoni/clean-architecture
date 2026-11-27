@@ -19,7 +19,7 @@ The plugin uses a **feature-first** layout: business capabilities are **modules*
 5. **Create the architecture doc** at `docs/architecture/ARCHITECTURE.md` (never inside `src/`).
 6. **Enforce both rules from the start** (Dependency Rule and Module Rule) by setting up linting rules or module boundary checks appropriate to the language.
 
-Module names `shared`, `platform`, `main`, `domain`, `application`, `infrastructure`, `modules`, `bootstrap`, `composition`, `app`, `infra` and `adapters` are reserved — they would be ambiguous with layer folders.
+Module names `shared`, `platform`, `main`, `domain`, `application`, `infrastructure`, `modules`, `bootstrap`, `composition` and `cmd` are reserved — they would be ambiguous with layer folders.
 
 ## Directory Structure to Create
 

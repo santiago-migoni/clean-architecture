@@ -65,10 +65,6 @@ const TOP_LEVEL = {
 // placed there is held to the same rules.
 const MODULE_LAYER = { domain: 'domain', application: 'application', infrastructure: 'infrastructure' };
 
-// Folder names of plugin versions before 2.0 (app/, infra/ and infra/adapters/). They are still
-// classified, so the rules keep protecting an old project, but ca_scan asks for the rename.
-export const LEGACY_MODULE_LAYER = { app: 'application', infra: 'infrastructure' };
-
 export const ALLOWED_LAYERS = {
   shared:         [],
   domain:         ['shared'],
@@ -81,8 +77,6 @@ export const ALLOWED_LAYERS = {
 /** Folder names that would be ambiguous as a module name. */
 export const RESERVED_MODULE_NAMES = new Set([
   'shared', 'platform', 'main', 'domain', 'application', 'infrastructure', 'modules', 'bootstrap', 'composition', 'cmd',
-  // names of earlier layouts, still classified as layers
-  'app', 'infra', 'adapters',
 ]);
 
 // ── Path helpers ───────────────────────────────────────────────────────────
@@ -100,7 +94,7 @@ function classifyAt(segs, i) {
     const mod = segs[i + 1];
     // A module is a folder: modules/__init__.py or modules/index.ts is not a module called "__init__.py".
     if (!mod || mod.includes('.')) return null;
-    const layer = MODULE_LAYER[segs[i + 2]] ?? LEGACY_MODULE_LAYER[segs[i + 2]];
+    const layer = MODULE_LAYER[segs[i + 2]];
     return { layer: layer ? LAYERS[layer] : null, module: mod };
   }
   // The folder itself counts (a Go or Python import names a package folder, not a file). Profiles
@@ -176,14 +170,6 @@ export function fileImports(file, srcDir, content) {
 }
 
 // ── Rules ──────────────────────────────────────────────────────────────────
-
-/**
- * True when a path relative to src/ uses a layer folder name of an earlier layout
- * (modules/<m>/app/ or modules/<m>/infra/) instead of application/ or infrastructure/.
- */
-export function usesLegacyLayerName(relPath) {
-  return /(^|\/)modules\/[^/]+\/(app|infra)\//.test(toPosix(relPath));
-}
 
 /**
  * The two legal ways for one module to reach another, both from its infrastructure to the other's public surface:

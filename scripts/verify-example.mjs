@@ -147,19 +147,14 @@ try {
   check('ca_scan: warns about the legacy layout', old.warnings.length === 1 && /previous layer-first layout/.test(old.warnings[0]), JSON.stringify(old.warnings));
   check('ca_scan: no health score for code the rules do not cover', old.summary.healthScore === null && old.summary.grade.startsWith('N/A'), old.summary.grade);
 
-  // Projects created before 2.0 use modules/<m>/app/ and modules/<m>/infra/adapters/: still enforced, and flagged
-  const pre2 = tmpProject('pre2'); temps.push(pre2);
-  write(pre2, `${M}/orders/domain/order.ts`, 'export class Order {}\n');
-  write(pre2, `${M}/orders/app/interactors/place-order.ts`, "import { Order } from '../../domain/order';\n");
-  write(pre2, `${M}/orders/infra/adapters/gateways/legal.ts`, "import { G } from '../../../../customers/app/ports/input/get-customer';\n");
-  write(pre2, `${M}/orders/infra/adapters/gateways/illegal.ts`, "import { C } from '../../../../customers/domain/customer';\n");
-  write(pre2, `${M}/customers/domain/customer.ts`, 'export class Customer {}\n');
-  write(pre2, `${M}/customers/app/ports/input/get-customer.ts`, 'export interface G {}\n');
-  const p2 = callTool(pre2, 'ca_scan');
-  const p2Got = p2.violations.map((v) => `${v.rule}:${v.file.split('/').pop()}`);
-  check('pre-2.0 names app/ and infra/adapters/ are still enforced (legal edge allowed, illegal one reported)',
-    same(p2Got, ['cross-module:illegal.ts']) && p2.summary.unclassifiedFiles === 0, p2Got.join(', '));
-  check('pre-2.0 names are flagged with a rename warning', p2.warnings.some((w) => /before 2\.0/.test(w)), JSON.stringify(p2.warnings));
+  // A layer folder with another name (modules/<m>/app/, modules/<m>/infra/) is not a layer: it is reported as outside the layout
+  const odd = tmpProject('odd-layer'); temps.push(odd);
+  write(odd, `${M}/orders/domain/order.ts`, 'export class Order {}\n');
+  write(odd, `${M}/orders/app/interactors/place-order.ts`, "import { Order } from '../../domain/order';\n");
+  write(odd, `${M}/orders/infra/gateways/order-gateway.ts`, "import { Order } from '../../domain/order';\n");
+  const oddScan = callTool(odd, 'ca_scan');
+  check('ca_scan: modules/<m>/app/ and modules/<m>/infra/ are outside the layout, not layers',
+    oddScan.summary.unclassifiedFiles === 2 && oddScan.warnings.some((w) => /outside any known layer/.test(w)), JSON.stringify(oddScan.warnings));
 
   // ── 4. scaffold ─────────────────────────────────────────────────────────────────────────
   console.log('\n[4] ca_scaffold is lean and safe');

@@ -254,15 +254,11 @@ tests/
 | **Layers** | Dependencies point inward: `infrastructure → application → domain`. `infrastructure` never imports `platform/` (the framework client is injected from `main/`). |
 | **Modules** | A module never imports another module's `domain/` or `infrastructure/`. Two legal crossings, both from `infrastructure/`: a call, `A/infrastructure → B/application/ports/input`, through a port owned by A; and a subscription, `B/infrastructure/subscribers → A/application/ports/published`, to an integration event that is plain data (`published-contract`). |
 
-Reserved names that cannot be module names: `shared`, `platform`, `main`, `domain`, `application`, `infrastructure`, `modules`, `bootstrap` and `composition` (aliases of `main`), plus `app`, `infra` and `adapters` (layer folders of versions before 2.0).
+Reserved names that cannot be module names: `shared`, `platform`, `main`, `domain`, `application`, `infrastructure`, `modules`, `bootstrap` and `composition` (aliases of `main`), and `cmd`. `app`, `infra` and `adapters` are not layer folders: a file in `modules/<m>/app/` is reported as outside the layout.
 
-### Migrating from the previous layout
+### Migrating from a layer-first layout
 
-Earlier versions generated `src/{entities,usecases,adapters,frameworks,main}/`. Run `/clean-architecture:migrate src/` to move to modules. Mapping: `entities → modules/<m>/domain`, `usecases → modules/<m>/application`, `adapters → modules/<m>/infrastructure`, `frameworks → platform`. File names are now kebab-case (`create-order`, `sql-order-repository`) instead of `ICreateOrderUseCase` / `OrderRepositoryImpl`; the class and interface names inside are unchanged.
-
-### Migrating from 1.x folder names
-
-Versions before 2.0 used `modules/<m>/app/` and `modules/<m>/infra/adapters/{controllers,presenters,gateways}/`. The rules still apply to those folders, and `ca_scan` warns about them. To rename: `app/` → `application/`, `infra/adapters/<x>/` → `infrastructure/<x>/` (one level less), the same in `tests/<m>/`, then fix the imports and the lint config (`/clean-architecture:migrate` does it).
+A project laid out by layer (`src/{entities,usecases,adapters,frameworks,main}/`) is reported by `ca_scan` and gets no score. Run `/clean-architecture:migrate src/` to move to modules. Mapping: `entities → modules/<m>/domain`, `usecases → modules/<m>/application`, `adapters → modules/<m>/infrastructure`, `frameworks → platform`. File names are now kebab-case (`create-order`, `sql-order-repository`) instead of `ICreateOrderUseCase` / `OrderRepositoryImpl`; the class and interface names inside are unchanged.
 
 ## License
 

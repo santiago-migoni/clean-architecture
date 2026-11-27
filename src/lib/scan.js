@@ -4,7 +4,7 @@
  */
 import { existsSync, readFileSync } from 'fs';
 import { join, relative } from 'path';
-import { componentOf, detectLayer, fileImports, findViolations, toPosix, usesLegacyLayerName } from './architecture.js';
+import { componentOf, detectLayer, fileImports, findViolations, toPosix } from './architecture.js';
 import { PROFILES, profileFor, unsupportedLanguageOf } from './languages/index.js';
 import { tableOwnership, walkSource } from './project.js';
 
@@ -34,7 +34,6 @@ export function scanProject(root) {
   const violations = [];
   let unclassified = 0;  // outside any known layer and NOT in an old layer folder
   let legacy = 0;        // in an old layer-first folder (classified or not)
-  let legacyNames = 0;   // in modules/<m>/app/ or modules/<m>/infra/ (classified, but renamed in 2.0)
   const languages = {};  // profile id → files checked
   const unsupported = {}; // language without a profile → files found (never checked)
   let unsupportedInLayers = 0;
@@ -60,7 +59,6 @@ export function scanProject(root) {
       outside[profile.id] = (outside[profile.id] || 0) + 1;
       if (outsideSample.length < 3) outsideSample.push(relative(root, file));
     }
-    if (usesLegacyLayerName(rel)) legacyNames++;
     for (const v of findViolations(file, srcDir, content, { tables })) {
       violations.push({ file: relative(root, file), ...v });
     }
@@ -86,13 +84,6 @@ export function scanProject(root) {
       `${legacy} file(s) are in the previous layer-first layout (src/entities, src/usecases, src/adapters, ` +
       'src/frameworks). They are NOT covered by the layer/module rules, so the health score is not reliable. ' +
       'Run /clean-architecture:migrate to move them into src/modules/<module>/{domain,application,infrastructure}.'
-    );
-  }
-  if (legacyNames > 0) {
-    warnings.push(
-      `${legacyNames} file(s) use the layer folder names of plugin versions before 2.0 (modules/<m>/app/, ` +
-      'modules/<m>/infra/adapters/). The rules still apply to them; run /clean-architecture:migrate to rename ' +
-      'app/ to application/ and infra/adapters/<x>/ to infrastructure/<x>/.'
     );
   }
   const supportedFiles = Object.values(languages).reduce((a, b) => a + b, 0);

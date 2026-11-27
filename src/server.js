@@ -123,8 +123,7 @@ const TOOLS = [
             'Module names to create under modules/ (e.g. ["orders", "customers"]), adapted to the language: ' +
             'kebab-case (TypeScript/JavaScript), snake_case (Python), one lowercase word (Go). ' +
             'Defaults to one module named after the domain, or "core". ' +
-            'Reserved: shared, platform, main, domain, application, infrastructure, modules, bootstrap, composition, ' +
-            'and app, infra, adapters (names of earlier layouts).',
+            'Reserved: shared, platform, main, domain, application, infrastructure, modules, bootstrap, composition, cmd.',
         },
       },
       required: ['rootPath'],
@@ -309,7 +308,7 @@ function handleMessage(msg) {
     ok(id, {
       protocolVersion: '2024-11-05',
       capabilities: { tools: {} },
-      serverInfo: { name: 'clean-architecture', version: '2.10.0' },
+      serverInfo: { name: 'clean-architecture', version: '1.0.0' },
     });
     return;
   }

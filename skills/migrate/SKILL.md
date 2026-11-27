@@ -73,13 +73,6 @@ class OrderService {
 ```
 Mapping (per module): `entities/<x>` → `modules/<m>/domain/`, `usecases/ports|interactors` → `modules/<m>/application/`, `adapters/*` → `modules/<m>/infrastructure/`, `frameworks/*` → `platform/`. File names become kebab-case. Start with Phase 0 (identify the modules), then move the files of one module at a time and fix imports; `ca_scan` reports files still in the old folders.
 
-### 6. Folder names of plugin versions before 2.0
-```
-// src/modules/<m>/app/...                                  → src/modules/<m>/application/...
-// src/modules/<m>/infra/adapters/{controllers,presenters,gateways}/ → src/modules/<m>/infrastructure/{controllers,presenters,gateways}/
-```
-Only a rename: the layers and the rules are the same, so skip the roadmap below. Per module: `git mv` the folders (also `tests/<m>/unit/app` and `tests/<m>/unit/infra/adapters/*`; the files of `tests/<m>/integration/infra/adapters/gateways/` move up to `tests/<m>/integration/`), then fix every import that points into them (relative imports out of `infrastructure/` lose one `../`), the paths in `main/`, and the lint config (`app` → `application`, `infra` → `infrastructure` in element patterns). Done when `ca_scan` shows no "before 2.0" warning and the typecheck, lint and tests pass.
-
 ## Migration Roadmap
 
 Every phase keeps the application working: the old code first delegates to the new piece and is deleted only when nothing calls it any more. **For before/after code of each phase in the project's language, read** [TypeScript / JavaScript](references/typescript.md), [Python](references/python.md) or [Go](references/go.md). Paths below are inside the module's folder under the language's code root (see "Language conventions" in the `rules` skill).
@@ -90,7 +83,7 @@ Every phase keeps the application working: the old code first delegates to the n
 
 Steps:
 1. List the business capabilities in the code (`orders`, `customers`, `billing`…). Group by *reason to change* (CCP), not by technical type: a module is what changes together.
-2. Name each module in kebab-case. Avoid the reserved names `shared`, `platform`, `main`, `domain`, `application`, `infrastructure`, `modules`, `bootstrap` and `composition` (aliases of `main`), plus `app`, `infra` and `adapters` (layer folders of versions before 2.0).
+2. Name each module in kebab-case. Avoid the reserved names `shared`, `platform`, `main`, `domain`, `application`, `infrastructure`, `modules`, `bootstrap`, `composition` (aliases of `main`) and `cmd`.
 3. Map every existing class/file to a module. Anything used by several modules and free of business policy (Money, Id, base errors) is a candidate for `shared/`.
 4. Find the places where one capability calls another. Each becomes a **cross-module port** (owned by the caller, implemented in the caller's `infrastructure`, calling the other module's input port) — decide them now.
 5. Order the migration: start with the module that is depended on the least.

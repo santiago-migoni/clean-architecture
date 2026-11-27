@@ -22,7 +22,7 @@ From Chapter 21:
 Check:
 - Does `modules/` reveal the **business domain** (e.g., `orders/`, `billing/`, `inventory/`) or does the top level reveal the **framework** (e.g., `controllers/`, `models/`, `routes/`)?
 - Does every module have clear `domain/`, `application/` and `infrastructure/` layers, with `shared/`, `platform/` and `main/` alongside?
-- Are module names domain terms (and none of the reserved names `shared`, `platform`, `main`, `domain`, `application`, `infrastructure`, `modules`, `bootstrap`, `composition`, `app`, `infra`, `adapters`)?
+- Are module names domain terms (and none of the reserved names `shared`, `platform`, `main`, `domain`, `application`, `infrastructure`, `modules`, `bootstrap`, `composition`, `cmd`)?
 - Is there legacy structure left (`entities/`, `usecases/`, `adapters/`, `frameworks/` at the top of `src/`)?
 - Is documentation in `docs/architecture/` (not inside `src/`), and are there empty or unused folders that add noise (YAGNI)?
 - Is the `main/` or composition root clearly identifiable and separate?
