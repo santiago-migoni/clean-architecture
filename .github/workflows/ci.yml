@@ -34,10 +34,27 @@ jobs:
 
       - name: Validate JSON manifests
         run: |
-          for f in .claude-plugin/plugin.json .claude-plugin/marketplace.json hooks/hooks.json .mcp.json package.json; do
+          for f in .claude-plugin/plugin.json .claude-plugin/marketplace.json hooks/hooks.json package.json; do
             node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$f"
             echo "ok $f"
           done
+
+      # The MCP server is declared inline in plugin.json (not in a root .mcp.json, which Claude Code would
+      # also load as this repository's project config, where CLAUDE_PLUGIN_ROOT does not exist).
+      - name: MCP server paths in plugin.json exist
+        run: |
+          node -e '
+            const fs = require("fs");
+            const { mcpServers = {} } = JSON.parse(fs.readFileSync(".claude-plugin/plugin.json", "utf8"));
+            if (!Object.keys(mcpServers).length) throw new Error("plugin.json declares no mcpServers");
+            for (const [name, s] of Object.entries(mcpServers))
+              for (const a of s.args || [])
+                if (a.includes("${CLAUDE_PLUGIN_ROOT}")) {
+                  const p = a.replace("${CLAUDE_PLUGIN_ROOT}", ".");
+                  if (!fs.existsSync(p)) throw new Error(`${name}: ${p} does not exist`);
+                  console.log(`ok ${name} -> ${p}`);
+                }
+          '
 
       # A scanner that reports nothing may simply be broken, so this checks BOTH directions: the example
       # must be clean, and planted violations must be found (plus legacy layout, scaffold and the hook).
