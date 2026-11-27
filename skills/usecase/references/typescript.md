@@ -1,6 +1,6 @@
 # Use case — TypeScript / JavaScript
 
-Files, inside `src/modules/<module>/application/`: `interactors/<use-case>.ts`, `ports/output/<port>.ts`, `ports/input/<use-case>.ts` (optional), `errors/<name>-error.ts`. kebab-case. Interfaces are prefixed `I` (`IOrderRepository`). The examples are the real files of `examples/shop`.
+Files, inside `src/modules/<module>/application/`: `interactors/<use-case>.ts`, `ports/output/<port>.ts`, `ports/input/<use-case>.ts` (optional), `errors/<name>-error.ts`. kebab-case. Interfaces are prefixed `I` (`IOrderRepository`). The examples are the real files of `examples/typescript`.
 
 ## Interactor — default flow (returns a response model)
 

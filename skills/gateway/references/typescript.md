@@ -1,6 +1,6 @@
 # Gateway — TypeScript / JavaScript
 
-Files: `src/modules/<module>/infrastructure/gateways/`: `sql-<entity>-repository.ts` (named after the technology), `<entity>-persistence-model.ts` beside it, `in-memory/<entity>-in-memory-repository.ts`, `migrations/NNN-<change>.sql`, and cross-module gateways such as `customer-lookup-gateway.ts`. The examples are the real files of `examples/shop` (`node:sqlite`); with an ORM or another driver the shape is the same. SQL itself: see the [SQL reference](sql.md).
+Files: `src/modules/<module>/infrastructure/gateways/`: `sql-<entity>-repository.ts` (named after the technology), `<entity>-persistence-model.ts` beside it, `in-memory/<entity>-in-memory-repository.ts`, `migrations/NNN-<change>.sql`, and cross-module gateways such as `customer-lookup-gateway.ts`. The examples are the real files of `examples/typescript` (`node:sqlite`); with an ORM or another driver the shape is the same. SQL itself: see the [SQL reference](sql.md).
 
 ## Persistence model and mapper
 

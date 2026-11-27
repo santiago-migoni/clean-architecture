@@ -1,6 +1,6 @@
 # Tests — TypeScript / JavaScript
 
-Layout: `tests/<module>/unit/{domain,application,infrastructure}/`, `tests/<module>/integration/` (flat: gateways against a real database), `tests/e2e/`. Test imports use the `@/` alias for `src/`, so they do not depend on directory depth. The examples come from `examples/shop` (Vitest).
+Layout: `tests/<module>/unit/{domain,application,infrastructure}/`, `tests/<module>/integration/` (flat: gateways against a real database), `tests/e2e/`. Test imports use the `@/` alias for `src/`, so they do not depend on directory depth. The examples come from `examples/typescript` (Vitest).
 
 The test of each piece is in that piece's skill reference: entity (`entity`), interactor (`usecase`), presenter (`presenter`), controller (`controller`), gateway integration test (`gateway`). This page holds what spans several pieces.
 

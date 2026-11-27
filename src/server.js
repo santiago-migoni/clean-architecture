@@ -241,7 +241,7 @@ function toolScaffold(args) {
 
 function toolLayerOf(args) {
   const safeFile = safePath(args.filePath);
-  // The file's own src/ (a nested project such as examples/shop has its own), else the cwd's.
+  // The file's own src/ (a nested project such as examples/typescript has its own), else the cwd's.
   const srcDir = srcDirForFile(safeFile) ?? srcDirOf(SAFE_ROOT);
   const rel = toPosix(relative(srcDir, safeFile));
   const layerDef = detectLayer(rel);

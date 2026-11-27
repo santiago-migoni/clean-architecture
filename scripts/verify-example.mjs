@@ -2,7 +2,7 @@
 /**
  * Verifies the plugin engine against the reference example, in BOTH directions:
  *
- *   positive  examples/shop is compliant  -> the scanner must report nothing
+ *   positive  examples/<language> are compliant  -> the scanner must report nothing
  *   negative  planted violations          -> the scanner must report exactly those
  *
  * A scanner that reports nothing may simply be broken (we hit this twice while building the example:
@@ -14,15 +14,16 @@
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkSnippets } from './check-snippets.mjs';
+import { PROFILES } from '../src/lib/languages/index.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER = join(ROOT, 'src/server.js');
 const HOOK = join(ROOT, 'src/hooks/dependency-check.js');
 const SESSION_HOOK = join(ROOT, 'src/hooks/session-start.js');
-const EXAMPLE = join(ROOT, 'examples/shop');
+const EXAMPLE = join(ROOT, 'examples/typescript');
 const FIXTURES = join(ROOT, 'fixtures');
 
 const failures = [];
@@ -70,7 +71,7 @@ const write = (root, rel, content) => {
 const temps = [];
 try {
   // ── 1. positive: the example is compliant ───────────────────────────────────────────────
-  console.log('\n[1] examples/shop is compliant');
+  console.log('\n[1] examples/typescript is compliant');
   const scan = callTool(EXAMPLE, 'ca_scan');
   check('ca_scan: no violations', scan.summary.violations === 0, JSON.stringify(scan.violations));
   check('ca_scan: no warnings', scan.warnings.length === 0, scan.warnings.join(' | '));
@@ -87,8 +88,8 @@ try {
   // main/compose/*.ts must NOT be read as members of a module (a real regression we shipped once)
   const metrics = callTool(EXAMPLE, 'ca_metrics');
   const components = metrics.metrics.map((m) => m.component);
-  check('ca_metrics: components are the modules plus platform and main',
-    same(components, ['main', 'modules/customers', 'modules/orders', 'platform']), components.join(', '));
+  check('ca_metrics: components are the modules plus shared, platform and main',
+    same(components, ['main', 'modules/customers', 'modules/orders', 'platform', 'shared']), components.join(', '));
 
   const clean = runHook(join(EXAMPLE, 'src/modules/orders/infrastructure/gateways/customer-lookup-gateway.ts'));
   check('hook: silent on the one legal cross-module import', clean.status === 0 && clean.stderr === '', clean.stderr);
@@ -136,7 +137,7 @@ try {
     ph.summary.violations === 0, JSON.stringify(ph.violations.map((v) => `${v.rule}:${v.file}`)));
   const phComponents = callTool(phantom, 'ca_metrics').metrics.map((m) => m.component);
   check('ca_metrics: no phantom components such as "modules/orders.ts"',
-    same(phComponents, ['main', 'modules/customers', 'modules/orders', 'platform']), phComponents.join(', '));
+    same(phComponents, ['main', 'modules/customers', 'modules/orders', 'platform', 'shared']), phComponents.join(', '));
 
   // ── 3. a legacy layout must be flagged, not scored as "clean" ──────────────────────────
   console.log('\n[3] the previous layer-first layout is flagged instead of scoring 100');
@@ -281,6 +282,7 @@ try {
   console.log('\n[5b] each language profile: its fixture is clean, and planted violations are found exactly');
   const LANGS = {
     typescript: {
+      dir: EXAMPLE,
       modules: 'src/modules',
       plant: {
         'orders/domain/planted-outward.ts': "import { PlaceOrderInteractor } from '../application/interactors/place-order';\n",
@@ -295,6 +297,7 @@ try {
         'dependency-rule:planted-platform.cjs', 'cross-module:planted-infra.jsx'],
     },
     python: {
+      dir: join(FIXTURES, 'python'),
       modules: 'src/shop/modules',
       plant: {
         'orders/domain/planted_outward.py': 'def late():\n    from ..application.interactors.place_order import PlaceOrderInteractor\n    return PlaceOrderInteractor\n',
@@ -308,6 +311,7 @@ try {
         'cross-module:planted_infra.py'],
     },
     go: {
+      dir: join(FIXTURES, 'go'),
       modules: 'internal/modules',
       plant: {
         'orders/domain/planted_outward.go':
@@ -322,6 +326,7 @@ try {
         'cross-module:planted_infra.go'],
     },
     sql: {
+      dir: join(FIXTURES, 'sql'),
       modules: 'src/modules',
       components: [], // SQL files are tables, not code: ca_metrics leaves them out
       minFiles: 6,
@@ -345,14 +350,16 @@ try {
         'table-ownership:planted_lookup.go', 'sql-placement:planted-query.ts'],
     },
   };
-  check('every language profile has a fixture', same(readdirSync(FIXTURES), Object.keys(LANGS)), readdirSync(FIXTURES).join(', '));
+  check('every language profile has a project it is verified against',
+    same(Object.keys(LANGS), PROFILES.map((p) => p.id)) && Object.values(LANGS).every((l) => existsSync(l.dir)),
+    Object.entries(LANGS).map(([k, l]) => `${k}=${l.dir}`).join(', '));
   for (const [lang, spec] of Object.entries(LANGS)) {
-    const fixture = join(FIXTURES, lang);
+    const fixture = spec.dir;
     const cleanScan = callTool(fixture, 'ca_scan');
     const wantComponents = spec.components ?? ['main', 'modules/customers', 'modules/orders', 'platform', 'shared'];
-    check(`${lang}: fixture scans clean (no violations, no warnings, every file classified, only ${lang})`,
+    check(`${lang}: ${relative(ROOT, fixture)} scans clean (no violations, no warnings, every file classified)`,
       cleanScan.summary.violations === 0 && cleanScan.warnings.length === 0 && cleanScan.summary.unclassifiedFiles === 0 &&
-      same(Object.keys(cleanScan.summary.languages), [lang]) && cleanScan.summary.filesScanned >= (spec.minFiles ?? 10),
+      cleanScan.summary.languages[lang] > 0 && cleanScan.summary.filesScanned >= (spec.minFiles ?? 10),
       JSON.stringify({ summary: cleanScan.summary, warnings: cleanScan.warnings, violations: cleanScan.violations }).slice(0, 400));
     const comps = callTool(fixture, 'ca_metrics').metrics;
     check(wantComponents.length ? `${lang}: components are ${wantComponents.join(', ')}, and the legal edge is counted` : `${lang}: no components (not code, left out of ca_metrics)`,
@@ -363,7 +370,8 @@ try {
     check(`${lang}: no cycles`, callTool(fixture, 'ca_cycles').adpCompliant === true);
 
     const planted = tmpProject(`lang-${lang}`); temps.push(planted);
-    cpSync(fixture, planted, { recursive: true });
+    // Copy the project without its installed dependencies (node_modules, a virtualenv): only the source matters.
+    cpSync(fixture, planted, { recursive: true, filter: (src) => !/[\\/](node_modules|\.venv|venv|__pycache__)$/.test(src) });
     for (const [rel, content] of Object.entries(spec.plant)) write(planted, `${spec.modules}/${rel}`, content);
     const ls = callTool(planted, 'ca_scan');
     const lsGot = ls.violations.map((v) => `${v.rule}:${v.file.split('/').pop()}`);
@@ -382,12 +390,12 @@ try {
       ['schema_migrations=platform', 'customers=customers', 'orders=orders', 'order_lines=orders']),
     JSON.stringify(owned));
   const shopTables = callTool(EXAMPLE, 'ca_scan').summary.tables;
-  check('examples/shop: tables created in TS code (platform) and in .sql migrations (modules) are both found',
+  check('examples/typescript: tables created in TS code (platform) and in .sql migrations (modules) are both found',
     shopTables.schema_migrations === 'platform' && shopTables.customers === 'customers' && shopTables.orders === 'orders', JSON.stringify(shopTables));
 
   // A language without a profile is reported and never scores 100: its imports were not checked.
   const other = tmpProject('unsupported'); temps.push(other);
-  cpSync(join(FIXTURES, 'typescript'), other, { recursive: true });
+  cpSync(join(EXAMPLE, 'src'), join(other, 'src'), { recursive: true });
   write(other, 'src/modules/orders/domain/Legacy.java', 'import com.acme.modules.customers.domain.Customer;\nclass Legacy {}\n');
   write(other, 'src/modules/orders/domain/Pricing.cs', 'using Acme.Modules.Customers.Domain;\nclass Pricing {}\n');
   const os = callTool(other, 'ca_scan');
@@ -458,7 +466,7 @@ try {
   const notReliable = cli(other);
   check('ca-scan: code in a language without a profile exits 2 (not reliable), not 0', notReliable.status === 2, `exit ${notReliable.status}`);
   const warned = tmpProject('cli-strict'); temps.push(warned);
-  cpSync(join(FIXTURES, 'typescript'), warned, { recursive: true });
+  cpSync(join(EXAMPLE, 'src'), join(warned, 'src'), { recursive: true });
   write(warned, 'src/tools/generate.ts', 'export {};\n'); // outside every layer: a warning, not a violation
   check('ca-scan: a warning alone exits 0, and 1 with --strict', cli(warned).status === 0 && cli(warned, '--strict').status === 1);
   // A project with no file in the layout was not checked at all: it must not pass as "A — Excellent".

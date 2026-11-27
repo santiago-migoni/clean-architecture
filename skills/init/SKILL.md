@@ -130,7 +130,7 @@ Both axes must be enforced:
 
 **Before setting it up, read the reference for the project's language** — it has the tested configuration and the setup files:
 
-- [TypeScript / JavaScript](references/typescript.md) — ESLint with `eslint-plugin-boundaries` (tested in `examples/shop`)
+- [TypeScript / JavaScript](references/typescript.md) — ESLint with `eslint-plugin-boundaries` (tested in `examples/typescript`)
 - [Python](references/python.md) — `pyproject.toml` and import-linter contracts (tested)
 - [Go](references/go.md) — `go.mod` and a go-arch-lint configuration per module (tested)
 

@@ -1,6 +1,6 @@
 # Controller — TypeScript / JavaScript
 
-Files: `src/modules/<module>/infrastructure/controllers/<name>-controller.ts`, with the HTTP request DTO beside it (`<name>-http-request.ts`). The examples use Express 5, from `examples/shop`. Route registration and the last-resort error handler live in `src/platform/web/`.
+Files: `src/modules/<module>/infrastructure/controllers/<name>-controller.ts`, with the HTTP request DTO beside it (`<name>-http-request.ts`). The examples use Express 5, from `examples/typescript`. Route registration and the last-resort error handler live in `src/platform/web/`.
 
 ## Default style — the controller maps the response model to HTTP
 

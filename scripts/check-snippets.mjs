@@ -9,7 +9,7 @@
  *   node scripts/check-snippets.mjs            # skips a language whose toolchain is missing
  *   node scripts/check-snippets.mjs --strict   # a missing toolchain is a failure (CI)
  *
- * TypeScript is loaded from node_modules here or in examples/shop (npm ci there first).
+ * TypeScript is loaded from node_modules here or in examples/typescript (npm ci there first).
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -21,7 +21,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const strict = process.argv.includes('--strict');
 
 function loadTypeScript() {
-  for (const base of [ROOT, join(ROOT, 'examples/shop')]) {
+  for (const base of [ROOT, join(ROOT, 'examples/typescript')]) {
     try { return createRequire(join(base, 'package.json'))('typescript'); } catch { /* next */ }
   }
   return null;

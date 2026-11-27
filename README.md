@@ -151,13 +151,13 @@ The hook and the MCP server share one rule set (`src/lib/architecture.js`), so t
 /clean-architecture:migrate src/services/
 ```
 
-## Example Project
+## Example Projects
 
-[`examples/shop`](examples/shop) is a runnable reference built by applying the skills: two modules (`orders`, `customers`), Express, SQLite, 57 tests and the architecture rules enforced by ESLint. It shows the optional pieces in use (an Input Port only where another module calls the use case, a Presenter only where output is formatted), the cross-module recipe, and the guards that a happy-path test misses.
+[`examples/`](examples) holds one reference application — two modules (`orders`, `customers`), HTTP and SQLite — written in each supported language. Every piece the skills describe appears once, where its trigger holds (an Input Port only where another module calls the use case, a Presenter only where output is formatted, a domain event, the shared kernel, the cross-module recipe), and the guards a happy-path test misses are tested. [`examples/README.md`](examples/README.md) lists every piece and why it is there.
 
-```bash
-cd examples/shop && npm ci && npm test && npm start
-```
+| Language | Project | Run |
+|---|---|---|
+| TypeScript | [`examples/typescript`](examples/typescript) — Express 5, `node:sqlite`, Vitest, ESLint boundaries | `cd examples/typescript && npm ci && npm test && npm start` |
 
 ## Continuous Integration
 

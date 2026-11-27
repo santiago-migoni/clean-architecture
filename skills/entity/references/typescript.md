@@ -1,6 +1,6 @@
 # Entity — TypeScript / JavaScript
 
-Files: `src/modules/<module>/domain/<entity>.ts`, kebab-case (`order.ts`, `order-line.ts`). Domain errors in `domain/errors/`, created with the first one. The example is `examples/shop/src/modules/orders/domain/order.ts`. In JavaScript, write the same code without the type annotations.
+Files: `src/modules/<module>/domain/<entity>.ts`, kebab-case (`order.ts`, `order-line.ts`). Domain errors in `domain/errors/`, created with the first one. The example is `examples/typescript/src/modules/orders/domain/order.ts`. In JavaScript, write the same code without the type annotations.
 
 ## Entity
 

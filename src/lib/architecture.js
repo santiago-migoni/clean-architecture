@@ -147,7 +147,7 @@ export function componentOf(relPath) {
 
 /**
  * The src/ directory a file belongs to: the nearest enclosing "src" folder (so a file in a nested
- * project such as examples/shop/src/... is classified against examples/shop/src, not ./src).
+ * project such as examples/typescript/src/... is classified against examples/typescript/src, not ./src).
  * Returns null when the file is not under a src/ folder.
  */
 export function srcDirForFile(file) {

@@ -1,6 +1,6 @@
 # Composition root — TypeScript / JavaScript
 
-Files: `src/main/index.ts` (a factory that builds the app), `src/main/server.ts` (the entry point that listens), `src/main/compose/<module>.ts` (one function per module), `src/main/index.test.ts` (test composition root). Several entry points: `src/main/<app>/index.ts`, all sharing `compose/`. The examples are the real files of `examples/shop` (Express 5, `node:sqlite`, manual DI).
+Files: `src/main/index.ts` (a factory that builds the app), `src/main/server.ts` (the entry point that listens), `src/main/compose/<module>.ts` (one function per module), `src/main/index.test.ts` (test composition root). Several entry points: `src/main/<app>/index.ts`, all sharing `compose/`. The examples are the real files of `examples/typescript` (Express 5, `node:sqlite`, manual DI).
 
 ## One function per module
 

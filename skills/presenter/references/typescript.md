@@ -1,6 +1,6 @@
 # Presenter — TypeScript / JavaScript
 
-Files: `src/modules/<module>/infrastructure/presenters/<name>-presenter.ts` with `<name>-view-model.ts` beside it; the humble route handler in `src/platform/web/<name>-route.ts`. The examples are the real files of `examples/shop` (Express 5).
+Files: `src/modules/<module>/infrastructure/presenters/<name>-presenter.ts` with `<name>-view-model.ts` beside it; the humble route handler in `src/platform/web/<name>-route.ts`. The examples are the real files of `examples/typescript` (Express 5).
 
 ## View model
 

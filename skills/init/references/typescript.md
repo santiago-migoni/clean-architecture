@@ -4,7 +4,7 @@ Layout: `src/modules/<module>/{domain,application,infrastructure}`, `src/shared/
 
 ## ESLint: both axes as lint errors
 
-`eslint.config.js` (flat config), the one `examples/shop` runs in CI. **Tested** against `eslint@9`, `typescript-eslint@8` and `eslint-plugin-boundaries@7`, which uses the `boundaries/dependencies` rule with `policies` (older versions used `boundaries/element-types` with a different syntax — check the installed major version before copying):
+`eslint.config.js` (flat config), the one `examples/typescript` runs in CI. **Tested** against `eslint@9`, `typescript-eslint@8` and `eslint-plugin-boundaries@7`, which uses the `boundaries/dependencies` rule with `policies` (older versions used `boundaries/element-types` with a different syntax — check the installed major version before copying):
 
 ```js
 // eslint.config.js — enforces the Dependency Rule (layers) and the Module Rule (modules).
@@ -75,7 +75,7 @@ Notes for the generated project:
 - The whole `src/modules/*/infrastructure` folder is the infrastructure layer, not just `infrastructure`.
 - After generating the config, verify it by temporarily adding a file that imports outward (for example a `domain/` file importing from `application/`) and checking that ESLint reports it, then delete it. A config that reports nothing may simply not be matching your folders.
 
-`scripts/check-linters.mjs` in the plugin proves this configuration in both directions on `examples/shop`: clean, and failing on planted violations of each kind.
+`scripts/check-linters.mjs` in the plugin proves this configuration in both directions on `examples/typescript`: clean, and failing on planted violations of each kind.
 
 ## In CI: ca-scan
 
