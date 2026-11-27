@@ -1,0 +1,46 @@
+[project]
+name = "shop"
+version = "1.0.0"
+description = "Reference project of the Clean Architecture plugin, in Python: orders + customers, FastAPI, SQLite."
+requires-python = ">=3.11"
+dependencies = ["fastapi==0.165.0", "uvicorn==0.54.0"]
+
+[project.optional-dependencies]
+dev = ["pytest==9.2.0", "httpx2==2.16.2", "import-linter==2.17"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["*.sql"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "--import-mode=importlib"
+
+# import-linter (2.x): both axes. Run with: PYTHONPATH=src lint-imports
+[tool.importlinter]
+root_package = "shop"
+
+[[tool.importlinter.contracts]]
+name = "Layers point inward inside every module"
+type = "layers"
+containers = ["shop.modules.orders", "shop.modules.customers"]
+layers = ["infrastructure", "application", "domain"]
+
+[[tool.importlinter.contracts]]
+name = "Modules never import platform or main (drivers are injected)"
+type = "forbidden"
+source_modules = ["shop.modules"]
+forbidden_modules = ["shop.platform", "shop.main"]
+
+[[tool.importlinter.contracts]]
+name = "Modules do not import each other, except another module's input port from infrastructure"
+type = "independence"
+modules = ["shop.modules.orders", "shop.modules.customers"]
+ignore_imports = ["shop.modules.*.infrastructure.** -> shop.modules.*.application.ports.input.**"]

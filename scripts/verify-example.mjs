@@ -297,7 +297,7 @@ try {
         'dependency-rule:planted-platform.cjs', 'cross-module:planted-infra.jsx'],
     },
     python: {
-      dir: join(FIXTURES, 'python'),
+      dir: join(ROOT, 'examples/python'),
       modules: 'src/shop/modules',
       plant: {
         'orders/domain/planted_outward.py': 'def late():\n    from ..application.interactors.place_order import PlaceOrderInteractor\n    return PlaceOrderInteractor\n',

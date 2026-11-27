@@ -5,7 +5,7 @@
  * naming every planted file. A configuration that reports nothing may simply match no folder.
  *
  *   ESLint + eslint-plugin-boundaries  examples/typescript/eslint.config.js   (npm ci in examples/typescript)
- *   import-linter                      fixtures/python/pyproject.toml   (pip install import-linter==2.17; Python >= 3.11)
+ *   import-linter                      examples/python/pyproject.toml   (pip install -e ".[dev]" there; Python >= 3.11)
  *   go-arch-lint                       fixtures/go/.go-arch-lint.yml    (go install github.com/fe3dback/go-arch-lint@v1.19.2; Go >= 1.26)
  *
  *   node scripts/check-linters.mjs            # skips a linter that is not installed
@@ -39,7 +39,7 @@ const LINTERS = [
   },
   {
     name: 'import-linter',
-    project: join(ROOT, 'fixtures/python'),
+    project: join(ROOT, 'examples/python'),
     command: () => ['lint-imports', ['--no-cache']],
     env: { PYTHONPATH: 'src' },
     available: () => !spawnSync('lint-imports', ['--help']).error,

@@ -158,6 +158,7 @@ The hook and the MCP server share one rule set (`src/lib/architecture.js`), so t
 | Language | Project | Run |
 |---|---|---|
 | TypeScript | [`examples/typescript`](examples/typescript) — Express 5, `node:sqlite`, Vitest, ESLint boundaries | `cd examples/typescript && npm ci && npm test && npm start` |
+| Python | [`examples/python`](examples/python) — FastAPI, `sqlite3`, pytest, import-linter | `cd examples/python && pip install -e ".[dev]" && pytest && python -m shop.main` |
 
 ## Continuous Integration
 

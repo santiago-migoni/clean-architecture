@@ -118,13 +118,17 @@ jobs:
           go test ./...
           go run ./cmd/api
 
+      # The Python example: its own tests (unit, integration, e2e) on its minimum Python, with its pinned
+      # dependencies (FastAPI, pytest, import-linter).
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
-      - name: Python fixture runs
-        working-directory: fixtures/python
-        run: PYTHONPATH=src python -m shop.main
+      - name: Python example installs and passes its tests
+        working-directory: examples/python
+        run: |
+          pip install -e ".[dev]"
+          pytest
 
       - name: SQL fixture applies and compiles on SQLite
         run: python fixtures/sql/check.py
@@ -141,20 +145,14 @@ jobs:
         run: node scripts/check-snippets.mjs --strict
 
       # The native linter configurations the skills recommend, proven in both directions.
-      # The fixtures were checked above on their MINIMUM versions (Python 3.10, Go 1.22); the linters
-      # themselves need newer runtimes: import-linter 2.16+ requires Python >= 3.11, and go-arch-lint
-      # v1.19.2 requires Go >= 1.26. They analyse code written for the older versions without trouble.
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
+      # import-linter came with the Python example's dev dependencies. The Go fixture was checked above on its
+      # minimum Go (1.22); go-arch-lint v1.19.2 needs Go >= 1.26 to install, and analyses older code fine.
       - uses: actions/setup-go@v5
         with:
           go-version: 'stable'
 
-      - name: Install import-linter and go-arch-lint (pinned)
+      - name: Install go-arch-lint (pinned)
         run: |
-          pip install import-linter==2.17
           go install github.com/fe3dback/go-arch-lint@v1.19.2
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
