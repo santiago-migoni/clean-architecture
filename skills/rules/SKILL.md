@@ -104,6 +104,7 @@ A module is a cohesive component (CCP/CRP): it changes and is deployed as a unit
   3. `A/domain` refers to B's entities **by id only** (`customerId`), never by importing them.
 - `shared/` is the only code modules may share. Keep it minimal, pure and free of business policy that belongs to a module.
 - Cycles between modules are forbidden (ADP).
+- **Each module owns its tables**: a table belongs to the module whose migrations create it. A module never queries, alters or references (foreign key) another module's tables — that is the database version of importing its `domain/`. It asks the other module through its input port, or keeps its own copy of the data it needs, and stores the other entity's id without a foreign key.
 
 ### 4. Domain (Entities)
 - Must contain only enterprise-wide business rules.
@@ -122,6 +123,7 @@ A module is a cohesive component (CCP/CRP): it changes and is deployed as a unit
 - **Controllers**: Convert framework input (HTTP request, CLI args) → use case input model.
 - **Presenters** (when the use case uses an Output Port): Implement the Output Port; convert use case output model → view model.
 - **Gateways**: Implement repository interfaces defined in `application/ports/output/`; translate between domain objects and DB rows.
+- **SQL lives only here and in `platform/db/`**: queries in `gateways/` (inline or in `gateways/queries/`), schema changes in `gateways/migrations/`. SQL in `domain/`, `application/`, `shared/` or `main/` is a violation.
 
 ### 7. Platform (Frameworks & Drivers)
 - Thin adapters that plug into the architecture: route registration, DB connection, third-party clients.
@@ -158,11 +160,12 @@ Always check:
 1. Does any import in an inner layer reference an outer layer path?
 2. Does any module import another module's `domain/` or `infrastructure/` (other than `infrastructure → application/ports/input`)?
 3. Do entities contain application or framework logic?
-4. Do use cases reference HTTP status codes, SQL, or ORMs?
+4. Do use cases reference HTTP status codes, SQL, or ORMs? Is all SQL in `infrastructure/` or `platform/db/`?
 5. Are port interfaces (repository, input, output) defined in the `application` layer of the module that owns them?
 6. Is `main/` the ONLY place where dependencies are wired together?
 7. Does each component have a single axis of change (SRP)?
 8. Are there cyclic dependencies between modules or layers?
+9. Does any module's SQL use a table that another module's migrations create?
 
 ## Available Skills
 

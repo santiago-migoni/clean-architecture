@@ -10,6 +10,8 @@
 import { readFileSync, existsSync } from 'fs';
 import { join, relative, isAbsolute } from 'path';
 import { ALLOWED_LAYERS, detectLayer, detectModule, findViolations, srcDirForFile, toPosix } from '../lib/architecture.js';
+import { profileFor } from '../lib/languages/index.js';
+import { tableOwnership, walkSource } from '../lib/project.js';
 
 // File path: CLAUDE_TOOL_FILE (manual runs and tests), else the PostToolUse JSON on stdin,
 // where Claude Code puts it in tool_input.file_path (top-level keys kept for older callers).
@@ -46,7 +48,10 @@ if (!layerDef) process.exit(0);
 let content;
 try { content = readFileSync(filePath, 'utf8'); } catch { process.exit(0); }
 
-const violations = findViolations(posixPath, srcDir, content);
+// Table ownership needs every module's migrations: walk the project only when this file has SQL.
+const hasSql = (profileFor(posixPath)?.embeddedSql?.(content) ?? []).length > 0;
+const tables = hasSql ? tableOwnership(srcDir, walkSource(srcDir)) : null;
+const violations = findViolations(posixPath, srcDir, content, { tables });
 
 if (violations.length > 0) {
   const mod = detectModule(rel);
@@ -59,7 +64,7 @@ if (violations.length > 0) {
       `(may only depend on: ${allowed.join(', ') || 'nothing'})`,
     '',
     ...violations.flatMap((v) => [
-      `   ✗ imports "${v.import}" — ${v.message}`,
+      `   ✗ ${v.what} — ${v.message}`,
       `     Fix: ${v.fix}`,
     ]),
     '',

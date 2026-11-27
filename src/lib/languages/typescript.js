@@ -9,6 +9,10 @@
 import { existsSync } from 'fs';
 import { dirname, join, relative, resolve } from 'path';
 import { toPosix } from '../paths.js';
+import { looksLikeSql } from './sql.js';
+import { stringLiterals } from './strings.js';
+
+const SYNTAX = { line: ['//'], block: true, quotes: ['"', "'", '`'] };
 
 const PATTERNS = [
   /\b(?:import|export)\s+(?:type\s+)?(?:[^'"`;]*?\s+from\s+)?['"]([^'"]+)['"]/g, // import x from '…' / export * from '…' / import '…'
@@ -35,6 +39,10 @@ export default {
     // "platform" alone is a package; "platform/web/server" with a src/platform folder is a baseUrl import.
     const [first, ...rest] = spec.split('/');
     return rest.length && !first.startsWith('@') && !first.includes(':') && existsSync(join(srcDir, first)) ? spec : null;
+  },
+
+  embeddedSql(content) {
+    return stringLiterals(content, SYNTAX).filter(looksLikeSql);
   },
 
   isAbstract(content) {

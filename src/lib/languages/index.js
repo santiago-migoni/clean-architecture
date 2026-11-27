@@ -10,14 +10,17 @@
  *   extractImports(content)              → import specifiers as written
  *   resolveImport(file, spec, srcDir)    → path relative to srcDir, or null when external
  *   isAbstract(content)                  → true for an interface / abstract type (ca_metrics)
+ *   embeddedSql(content)                 → SQL statements in the file (string literals; a .sql file is one)
  *   isNeutral?(relPath, content)         → true for files that belong to no layer (e.g. __init__.py)
+ *   metrics?                             → false when the files are not code (SQL): left out of ca_metrics
  */
 import { extname } from 'path';
 import typescript from './typescript.js';
 import python from './python.js';
 import go from './go.js';
+import sql from './sql.js';
 
-export const PROFILES = [typescript, python, go];
+export const PROFILES = [typescript, python, go, sql];
 
 const BY_EXTENSION = new Map(PROFILES.flatMap((p) => p.extensions.map((ext) => [ext, p])));
 

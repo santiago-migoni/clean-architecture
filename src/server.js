@@ -6,8 +6,8 @@
  */
 
 import { createInterface } from 'readline';
-import { readFileSync, existsSync, readdirSync, statSync, lstatSync, mkdirSync, writeFileSync, realpathSync } from 'fs';
-import { join, relative, extname, dirname, resolve, normalize, sep } from 'path';
+import { readFileSync, existsSync, mkdirSync, writeFileSync, realpathSync } from 'fs';
+import { join, relative, dirname, resolve, normalize, sep } from 'path';
 import { fileURLToPath } from 'url';
 import {
   ALLOWED_LAYERS,
@@ -21,7 +21,8 @@ import {
   toPosix,
   usesLegacyLayerName,
 } from './lib/architecture.js';
-import { PROFILES, UNSUPPORTED_LANGUAGES, profileFor, unsupportedLanguageOf } from './lib/languages/index.js';
+import { PROFILES, profileFor, unsupportedLanguageOf } from './lib/languages/index.js';
+import { tableOwnership, walkSource } from './lib/project.js';
 
 const SUPPORTED_NAMES = PROFILES.map((p) => p.name).join(', ');
 
@@ -59,6 +60,8 @@ const TOOLS = [
     description:
       'Scan a project directory for Clean Architecture Dependency Rule violations. ' +
       'Reports every file that imports from a layer it should not depend on, with severity levels. ' +
+      'Also checks SQL (.sql files and SQL in string literals): it may live only in infrastructure and ' +
+      "platform/db, and a module may use only the tables its own migrations create. " +
       `Languages: ${SUPPORTED_NAMES}; files in any other language are reported as not checked.`,
     inputSchema: {
       type: 'object',
@@ -187,27 +190,7 @@ function safePath(p) {
 
 // ── File system helpers ────────────────────────────────────────────────────
 
-// Every extension a profile owns, plus source code of languages without a profile (reported, not checked).
-const SOURCE_EXTENSIONS = new Set([...PROFILES.flatMap((p) => p.extensions), ...Object.keys(UNSUPPORTED_LANGUAGES)]);
-// Dependencies, virtual environments and build output: never the project's own source.
-const SKIP_DIRS = new Set(['node_modules', '__pycache__', 'venv', 'vendor', 'dist']);
-
-function walkSrc(dir, exts = SOURCE_EXTENSIONS) {
-  const files = [];
-  if (!existsSync(dir)) return files;
-  for (const entry of readdirSync(dir)) {
-    if (entry.startsWith('.') || SKIP_DIRS.has(entry)) continue;
-    const full = join(dir, entry);
-    const lstat = lstatSync(full);
-    if (lstat.isSymbolicLink()) continue; // never follow symlinks
-    if (lstat.isDirectory()) {
-      files.push(...walkSrc(full, exts));
-    } else if (exts.has(extname(full))) {
-      files.push(full);
-    }
-  }
-  return files;
-}
+const walkSrc = walkSource;
 
 // ── Tool: ca_scan ──────────────────────────────────────────────────────────
 
@@ -223,6 +206,12 @@ function toolScan(args) {
   const root = safePath(args.path);
   const srcDir = srcDirOf(root);
   const files = walkSrc(srcDir);
+  const contents = new Map();
+  const read = (f) => {
+    if (!contents.has(f)) contents.set(f, readFileSync(f, 'utf8'));
+    return contents.get(f);
+  };
+  const tables = tableOwnership(srcDir, files, read); // first pass: which module owns each table
 
   const violations = [];
   let unclassified = 0;  // outside any known layer and NOT in an old layer folder
@@ -242,11 +231,11 @@ function toolScan(args) {
     }
     languages[profile.id] = (languages[profile.id] || 0) + 1;
     let content;
-    try { content = readFileSync(file, 'utf8'); } catch { continue; }
+    try { content = read(file); } catch { continue; }
     if (LEGACY_TOP.test(rel)) legacy++;
     else if (!detectLayer(rel) && !profile.isNeutral?.(rel, content)) unclassified++;
     if (usesLegacyLayerName(rel)) legacyNames++;
-    for (const v of findViolations(file, srcDir, content)) {
+    for (const v of findViolations(file, srcDir, content, { tables })) {
       violations.push({ file: relative(root, file), ...v });
     }
   }
@@ -254,7 +243,7 @@ function toolScan(args) {
   const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0 };
   for (const v of violations) counts[v.severity]++;
 
-  const crossModule = violations.filter((v) => v.rule === 'cross-module').length;
+  const byRule = (...rules) => violations.filter((v) => rules.includes(v.rule)).length;
   const score = Math.max(0, 100 - counts.CRITICAL * 20 - counts.HIGH * 10 - counts.MEDIUM * 5);
 
   const warnings = [];
@@ -299,8 +288,10 @@ function toolScan(args) {
       languages,
       unclassifiedFiles: unclassified,
       violations: violations.length,
-      layerViolations: violations.length - crossModule,
-      crossModuleViolations: crossModule,
+      layerViolations: byRule('dependency-rule'),
+      crossModuleViolations: byRule('cross-module'),
+      sqlViolations: byRule('sql-placement', 'table-ownership'),
+      tables: Object.fromEntries([...tables].map(([t, owners]) => [t, [...owners].sort().join(', ')])),
       critical: counts.CRITICAL,
       high: counts.HIGH,
       medium: counts.MEDIUM,
@@ -327,6 +318,7 @@ function toolMetrics(args) {
   // Build component → files map
   const components = {};
   for (const file of files) {
+    if (profileFor(file)?.metrics === false) continue; // SQL: tables, not types or imports
     const comp = componentOf(toPosix(relative(srcDir, file)));
     if (!comp) continue;
     if (!components[comp]) components[comp] = { files: [], fanIn: 0, fanOut: 0, abstractClasses: 0 };
@@ -587,7 +579,9 @@ function toolLayerOf(args) {
     return { layer: layerDef.layer, module: mod, level: layerDef.level, importViolations: [] };
   }
 
-  const violations = findViolations(safeFile, srcDir, content).map((v) => ({
+  const tables = profile.embeddedSql?.(content).length ? tableOwnership(srcDir, walkSrc(srcDir)) : null;
+  const violations = findViolations(safeFile, srcDir, content, { tables }).map((v) => ({
+    what: v.what,
     import: v.import,
     importedLayer: v.importedLayer,
     importedModule: v.importedModule,
@@ -678,7 +672,7 @@ function handleMessage(msg) {
     ok(id, {
       protocolVersion: '2024-11-05',
       capabilities: { tools: {} },
-      serverInfo: { name: 'clean-architecture', version: '2.2.0' },
+      serverInfo: { name: 'clean-architecture', version: '2.3.0' },
     });
     return;
   }

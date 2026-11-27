@@ -276,19 +276,44 @@ try {
       want: ['dependency-rule:planted_outward.go', 'cross-module:planted_cross.go', 'dependency-rule:planted_platform.go',
         'cross-module:planted_infra.go'],
     },
+    sql: {
+      modules: 'src/modules',
+      components: [], // SQL files are tables, not code: ca_metrics leaves them out
+      minFiles: 6,
+      plant: {
+        'orders/domain/planted-placement.sql': 'SELECT id FROM orders;\n',
+        'orders/infrastructure/gateways/queries/planted-cross.sql':
+          'SELECT o.id, c.name FROM orders AS o JOIN customers AS c ON c.id = o.customer_id;\n',
+        'orders/infrastructure/gateways/migrations/002_planted_fk.sql': 'ALTER TABLE orders ADD COLUMN buyer_id TEXT REFERENCES customers (id);\n',
+        'customers/infrastructure/gateways/migrations/002_planted_duplicate.sql': 'CREATE TABLE order_lines (id TEXT PRIMARY KEY);\n',
+        // SQL embedded in each language's string syntax
+        'orders/infrastructure/gateways/planted_lookup.py': 'QUERY = """\n    SELECT name FROM customers WHERE id = ?\n"""\n',
+        'orders/infrastructure/gateways/planted_lookup.go': 'package gateways\n\nconst rename = `UPDATE customers SET name = ? WHERE id = ?`\n',
+        'orders/application/interactors/planted-query.ts': "export const open = `SELECT id FROM orders WHERE status = 'placed'`;\n",
+        // must NOT be reported: its own tables, SQL in comments, and prose that starts like SQL
+        'orders/infrastructure/gateways/planted-own.ts':
+          "// SELECT * FROM customers  (a comment, not a query)\nexport const q = 'SELECT id FROM orders o JOIN order_lines l ON l.order_id = o.id';\n",
+        'orders/domain/planted_prose.py': 'MESSAGE = "select a customer from the list"\nHINT = "Delete from cart failed"\n',
+      },
+      want: ['sql-placement:planted-placement.sql', 'table-ownership:planted-cross.sql', 'table-ownership:002_planted_fk.sql',
+        'table-ownership:002_planted_duplicate.sql', 'table-ownership:001_create_orders.sql', 'table-ownership:planted_lookup.py',
+        'table-ownership:planted_lookup.go', 'sql-placement:planted-query.ts'],
+    },
   };
   check('every language profile has a fixture', same(readdirSync(FIXTURES), Object.keys(LANGS)), readdirSync(FIXTURES).join(', '));
   for (const [lang, spec] of Object.entries(LANGS)) {
     const fixture = join(FIXTURES, lang);
     const cleanScan = callTool(fixture, 'ca_scan');
+    const wantComponents = spec.components ?? ['main', 'modules/customers', 'modules/orders', 'platform', 'shared'];
     check(`${lang}: fixture scans clean (no violations, no warnings, every file classified, only ${lang})`,
       cleanScan.summary.violations === 0 && cleanScan.warnings.length === 0 && cleanScan.summary.unclassifiedFiles === 0 &&
-      same(Object.keys(cleanScan.summary.languages), [lang]) && cleanScan.summary.filesScanned >= 10,
+      same(Object.keys(cleanScan.summary.languages), [lang]) && cleanScan.summary.filesScanned >= (spec.minFiles ?? 10),
       JSON.stringify({ summary: cleanScan.summary, warnings: cleanScan.warnings, violations: cleanScan.violations }).slice(0, 400));
     const comps = callTool(fixture, 'ca_metrics').metrics;
-    check(`${lang}: components are modules/customers, modules/orders, shared, platform and main, and the legal edge is counted`,
-      same(comps.map((m) => m.component), ['main', 'modules/customers', 'modules/orders', 'platform', 'shared']) &&
-      comps.find((m) => m.component === 'modules/customers').fanIn > 0 && comps.find((m) => m.component === 'shared').fanIn > 0,
+    check(wantComponents.length ? `${lang}: components are ${wantComponents.join(', ')}, and the legal edge is counted` : `${lang}: no components (not code, left out of ca_metrics)`,
+      same(comps.map((m) => m.component), wantComponents) &&
+      (wantComponents.length === 0 ||
+        (comps.find((m) => m.component === 'modules/customers').fanIn > 0 && comps.find((m) => m.component === 'shared').fanIn > 0)),
       comps.map((m) => `${m.component} in=${m.fanIn} out=${m.fanOut}`).join(' | '));
     check(`${lang}: no cycles`, callTool(fixture, 'ca_cycles').adpCompliant === true);
 
@@ -301,9 +326,19 @@ try {
       `got:  ${lsGot.sort().join(', ')}\n         want: ${[...spec.want].sort().join(', ')}`);
     const outwardFile = join(planted, spec.modules, Object.keys(spec.plant)[0]);
     const lh = runHookStdin(outwardFile, planted);
-    check(`${lang}: the hook warns on the planted outward import`, lh.status === 0 && lh.stderr.includes('ARCHITECTURE RULE VIOLATION'),
+    check(`${lang}: the hook warns on the first planted violation`, lh.status === 0 && lh.stderr.includes('ARCHITECTURE RULE VIOLATION'),
       lh.stderr || '(no output)');
   }
+
+  // Table ownership is inferred from the migrations, in .sql files and in code alike
+  const owned = callTool(join(FIXTURES, 'sql'), 'ca_scan').summary.tables;
+  check('sql: each table is owned by the module whose migrations create it (platform owns its bookkeeping)',
+    same(Object.entries(owned).map(([t, o]) => `${t}=${o}`),
+      ['schema_migrations=platform', 'customers=customers', 'orders=orders', 'order_lines=orders']),
+    JSON.stringify(owned));
+  const shopTables = callTool(EXAMPLE, 'ca_scan').summary.tables;
+  check('examples/shop: tables created in TS code (platform) and in .sql migrations (modules) are both found',
+    shopTables.schema_migrations === 'platform' && shopTables.customers === 'customers' && shopTables.orders === 'orders', JSON.stringify(shopTables));
 
   // A language without a profile is reported and never scores 100: its imports were not checked.
   const other = tmpProject('unsupported'); temps.push(other);

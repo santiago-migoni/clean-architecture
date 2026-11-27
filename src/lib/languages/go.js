@@ -8,6 +8,10 @@
 import { existsSync, readFileSync } from 'fs';
 import { dirname, join, relative } from 'path';
 import { toPosix } from '../paths.js';
+import { looksLikeSql } from './sql.js';
+import { stringLiterals } from './strings.js';
+
+const SYNTAX = { line: ['//'], block: true, quotes: ['"', '`', "'"], raw: ['`'] }; // ' is a rune: skipped like a string
 
 const SINGLE = /^[ \t]*import[ \t]+(?:[\w.]+[ \t]+)?"([^"]+)"/gm;
 const GROUP = /^[ \t]*import[ \t]*\(([\s\S]*?)\)/gm;
@@ -56,6 +60,10 @@ export default {
     if (!mod) return spec; // no go.mod: classify the path as written
     if (spec !== mod.module && !spec.startsWith(`${mod.module}/`)) return null;
     return toPosix(relative(srcDir, join(mod.dir, spec.slice(mod.module.length + 1))));
+  },
+
+  embeddedSql(content) {
+    return stringLiterals(content, SYNTAX).filter(looksLikeSql);
   },
 
   isAbstract(content) {

@@ -8,6 +8,10 @@
 import { existsSync } from 'fs';
 import { dirname, join, relative, resolve } from 'path';
 import { toPosix } from '../paths.js';
+import { looksLikeSql } from './sql.js';
+import { stringLiterals } from './strings.js';
+
+const SYNTAX = { line: ['#'], quotes: ['"', "'"], triple: true };
 
 const FROM = /^[ \t]*from[ \t]+(\.*[\w.]*)[ \t]+import\b/gm;
 const IMPORT = /^[ \t]*import[ \t]+([^\n#;]+)/gm;
@@ -45,6 +49,10 @@ export default {
   // A package marker (__init__.py) with no code of its own belongs to no layer and is not reported.
   isNeutral(relPath, content) {
     return /(^|\/)__init__\.py$/.test(relPath) && !/^[ \t]*(def|class|async def)\b/m.test(content);
+  },
+
+  embeddedSql(content) {
+    return stringLiterals(content, SYNTAX).filter(looksLikeSql);
   },
 
   isAbstract(content) {

@@ -28,6 +28,7 @@
 
 import { relative } from 'path';
 import { profileFor } from './languages/index.js';
+import { sqlTables } from './languages/sql.js';
 import { toPosix } from './paths.js';
 
 export { toPosix };
@@ -196,11 +197,95 @@ function severityFor(layer) {
   return 'MEDIUM';
 }
 
+// ── SQL ────────────────────────────────────────────────────────────────────
+
+/** Layers where SQL may live: the gateways and migrations of a module, and the database driver. */
+const SQL_LAYERS = new Set(['infrastructure', 'platform']);
+
+/** Owners of a table: exact name first, then by its last part ("sales.orders" → "orders" and back). */
+function ownersOf(tables, table) {
+  if (tables.has(table)) return tables.get(table);
+  const short = table.split('.').pop();
+  for (const [name, owners] of tables) if (name.split('.').pop() === short) return owners;
+  return null;
+}
+
 /**
- * Check one file's imports against both axes (layers and modules).
- * Returns [] for files that do not belong to a known layer.
+ * The SQL axis: where SQL may live, and which tables a module may use. `tables` is the project's
+ * table → owners map (tableOwnership in ./project.js); without it only the placement rule runs.
  */
-export function findViolations(file, srcDir, content) {
+function findSqlViolations(file, layerDef, mod, content, tables) {
+  const statements = profileFor(file)?.embeddedSql?.(content) ?? [];
+  if (statements.length === 0) return [];
+  const out = [];
+
+  if (!SQL_LAYERS.has(layerDef.layer)) {
+    out.push({
+      severity: severityFor(layerDef.layer),
+      rule: 'sql-placement',
+      layer: layerDef.layer,
+      module: mod,
+      import: null,
+      what: 'contains SQL',
+      message: `SQL in the ${layerDef.layer} layer: only infrastructure (gateways, migrations) and platform/db may know the database`,
+      fix:
+        'Put the query behind an output port: declare what the use case needs in application/ports/output and ' +
+        'implement it with SQL in infrastructure/gateways (schema changes in infrastructure/gateways/migrations).',
+    });
+  }
+
+  if (!mod || !tables) return out;
+  const reported = new Set();
+  for (const sql of statements) {
+    const { created, referenced } = sqlTables(sql);
+    for (const table of created) {
+      const owners = [...(ownersOf(tables, table) ?? [])].filter((o) => o !== 'platform');
+      if (owners.length > 1 && !reported.has(`created:${table}`)) {
+        reported.add(`created:${table}`);
+        out.push({
+          severity: 'HIGH',
+          rule: 'table-ownership',
+          layer: layerDef.layer,
+          module: mod,
+          import: null,
+          table,
+          what: `creates table "${table}"`,
+          message: `table "${table}" is created by more than one module (${owners.sort().join(', ')})`,
+          fix: "A table belongs to exactly one module: keep its CREATE TABLE in that module's migrations only.",
+        });
+      }
+    }
+    for (const table of referenced) {
+      const owners = ownersOf(tables, table);
+      if (!owners || owners.has(mod) || reported.has(table)) continue;
+      const other = [...owners].find((o) => o !== 'platform');
+      if (!other) continue;
+      reported.add(table);
+      out.push({
+        severity: 'HIGH',
+        rule: 'table-ownership',
+        layer: layerDef.layer,
+        module: mod,
+        import: null,
+        table,
+        importedModule: other,
+        what: `uses table "${table}"`,
+        message: `module "${mod}" uses table "${table}", which belongs to module "${other}"`,
+        fix:
+          `Never query, alter or reference (foreign key) another module's tables. Ask "${other}" through its ` +
+          `application/ports/input from a gateway in "${mod}", or keep in "${mod}" its own copy of the data it needs; ` +
+          'refer to the other entity by id, without a foreign key.',
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Check one file against every axis: layers and modules (imports), and SQL (placement and table
+ * ownership, when `ctx.tables` is given). Returns [] for files that do not belong to a known layer.
+ */
+export function findViolations(file, srcDir, content, ctx = {}) {
   const rel = toPosix(relative(srcDir, file));
   const layerDef = detectLayer(rel);
   if (!layerDef) return [];
@@ -223,6 +308,7 @@ export function findViolations(file, srcDir, content) {
         layer: layerDef.layer,
         module: mod,
         import: imp,
+        what: `imports "${imp}"`,
         importedLayer: importedLayer.layer,
         importedModule: impMod,
         message: `${layerDef.layer} must not depend on ${importedLayer.layer}`,
@@ -242,6 +328,7 @@ export function findViolations(file, srcDir, content) {
         layer: layerDef.layer,
         module: mod,
         import: imp,
+        what: `imports "${imp}"`,
         importedLayer: importedLayer ? importedLayer.layer : null,
         importedModule: impMod,
         message: `module "${mod}" must not import module "${impMod}" directly`,
@@ -253,5 +340,6 @@ export function findViolations(file, srcDir, content) {
     }
   }
 
+  out.push(...findSqlViolations(file, layerDef, mod, content, ctx.tables));
   return out;
 }

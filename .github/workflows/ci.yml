@@ -102,7 +102,7 @@ jobs:
 
   # Every language fixture must be real code: it builds and runs with its own toolchain.
   fixtures:
-    name: Fixtures (Go, Python)
+    name: Fixtures (Go, Python, SQL)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -126,3 +126,6 @@ jobs:
       - name: Python fixture runs
         working-directory: fixtures/python
         run: PYTHONPATH=src python -m shop.main
+
+      - name: SQL fixture applies and compiles on SQLite
+        run: python fixtures/sql/check.py

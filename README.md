@@ -92,6 +92,14 @@ The rules are the same in every language; what changes is how imports are writte
 | TypeScript / JavaScript | `.ts .tsx .mts .cts .js .jsx .mjs .cjs` | `import`/`export … from`, `import type`, side-effect `import`, `import()`, `require()` | it is relative, uses an alias (`@/`, `~/`, `src/`), or is a `baseUrl` path whose first folder exists under `src/` |
 | Python | `.py` | `import a, b as c`, `from … import`, relative imports, also indented (inside `try:` or a function) | it is relative, or its top-level package exists under `src/` (or the root) |
 | Go | `.go` | single and grouped `import`, with or without an alias (`x`, `_`, `.`) | it starts with the module path in the nearest `go.mod` |
+| SQL | `.sql`, and SQL in string literals of the languages above | tables: `FROM`, `JOIN`, `INTO`, `UPDATE`, `REFERENCES`, `ALTER`/`DROP`/`TRUNCATE`, `CREATE INDEX … ON` | the table is created by a module's migrations (that module owns it) |
+
+SQL has no imports: its dependencies are tables. Two rules apply to it, in `.sql` files and in queries embedded in code alike:
+
+- **SQL lives only in `infrastructure/` and `platform/db/`** (`sql-placement`).
+- **Each module uses only its own tables** (`table-ownership`): a table belongs to the module whose migrations create it, and querying, altering or adding a foreign key to another module's table is reported, as is a table created by two modules.
+
+Embedded SQL is read only from string literals (never comments) that start like a statement; a lower-case one also needs something only SQL has (`where`, `join`, `values`, `?`, `*`, a comma…), so a message such as `"select a customer from the list"` is not taken for a query.
 
 Source files in any other language (Java, Kotlin, C#, …) are **reported as not checked** and the project gets no health score, instead of a misleading 100.
 
@@ -145,7 +153,7 @@ cd examples/shop && npm ci && npm test && npm start
 |---|---|
 | **Plugin engine** | Syntax of the MCP server, hook and rules; the JSON manifests; and `npm run verify:example`, which checks the scanner **in both directions**: `examples/shop` and every language fixture must be clean, and planted violations (outward import, cross-module import, `infrastructure` → `platform`, a file directly under `infrastructure/`, a folder named `modules/` that is not business code, a legacy layout) must be found — in each language's own import syntax, while external packages named like a layer are ignored. A scanner that reports nothing may simply be broken, so a clean result alone proves nothing. |
 | **Example** (Node 22.13.0, 22, 24) | `npm ci` from the lockfile, `tsc`, ESLint with the architecture rules, and the 57 tests. The TypeScript fixture is typechecked with the same toolchain. |
-| **Fixtures** | Each language fixture builds and runs with its own toolchain: `go vet` and `go test` for Go, `python -m shop.main` for Python. A fixture that is not real code would test the scanner against imports nobody writes. |
+| **Fixtures** | Each language fixture builds and runs with its own toolchain: `go vet` and `go test` for Go, `python -m shop.main` for Python, and for SQL every migration applies on SQLite and every query compiles. A fixture that is not real code would test the scanner against imports nobody writes. |
 
 Run the engine check locally with `npm run verify:example`.
 
