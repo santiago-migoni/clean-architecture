@@ -192,7 +192,7 @@ class <Domain>RepositoryImpl(I<Domain>Repository):
 ### Step 4: Create an In-Memory Gateway for Testing (on demand)
 Create it the first time a use case test needs a repository — not before, and not as an empty `in-memory/` folder. Reuse it afterwards.
 
-File: `src/modules/<module>/infrastructure/gateways/in-memory/<domain>-in-memory-repository.<ext>`
+File: `src/modules/<module>/infrastructure/gateways/in-memory/<domain>-in-memory-repository.<ext>` (Python: `in_memory/<domain>_in_memory_repository.py`; Go: `internal/modules/<module>/infrastructure/gateways/inmemory/<domain>_repository.go`, package `inmemory`)
 
 ```typescript
 // Used in unit tests — no DB needed
@@ -222,7 +222,7 @@ export class <Domain>InMemoryRepository implements I<Domain>Repository {
 Schema migrations belong to the module that owns the tables: `src/modules/<module>/infrastructure/gateways/migrations/`. Only the connection setup and the runner that executes every module's migrations live in `src/platform/db/` and are invoked from `src/main/`.
 
 ### Step 5: Create Gateway Integration Tests
-File: `tests/<module>/integration/<domain>-repository-impl.test.<ext>`
+File: `tests/<module>/integration/<domain>-repository-impl.test.<ext>` (Go: `<domain>_repository_test.go` beside the gateway, with `//go:build integration`)
 - Use a real (test) database connection.
 - Test round-trip: save → findById returns correct domain entity.
 - Test the mapper: verify domain fields map correctly to/from DB columns.

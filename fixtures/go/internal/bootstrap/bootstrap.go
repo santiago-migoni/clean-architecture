@@ -1,24 +1,25 @@
 // Package bootstrap is the composition root: the only place that wires modules and layers.
+// Every module has packages with the same names, so each import is aliased <module><package>.
 package bootstrap
 
 import (
-	"example.com/shop/internal/modules/customers/application/interactors"
-	"example.com/shop/internal/modules/customers/domain"
-	customersmem "example.com/shop/internal/modules/customers/infrastructure/gateways/inmemory"
-	orderinteractors "example.com/shop/internal/modules/orders/application/interactors"
-	ordergateways "example.com/shop/internal/modules/orders/infrastructure/gateways"
-	ordersmem "example.com/shop/internal/modules/orders/infrastructure/gateways/inmemory"
+	customersinteractors "example.com/shop/internal/modules/customers/application/interactors"
+	customersdomain "example.com/shop/internal/modules/customers/domain"
+	customersinmemory "example.com/shop/internal/modules/customers/infrastructure/gateways/inmemory"
+	ordersinteractors "example.com/shop/internal/modules/orders/application/interactors"
+	ordersgateways "example.com/shop/internal/modules/orders/infrastructure/gateways"
+	ordersinmemory "example.com/shop/internal/modules/orders/infrastructure/gateways/inmemory"
 	"example.com/shop/internal/platform/clock"
 )
 
 type App struct {
-	PlaceOrder *orderinteractors.PlaceOrder
+	PlaceOrder *ordersinteractors.PlaceOrder
 }
 
 func New() App {
-	customers := customersmem.NewCustomerRepository(domain.Customer{ID: "c-1", Name: "Ada"})
-	getCustomer := interactors.NewGetCustomer(customers)
-	lookup := ordergateways.NewCustomerLookupGateway(getCustomer)
-	orders := ordersmem.NewOrderRepository()
-	return App{PlaceOrder: orderinteractors.NewPlaceOrder(orders, lookup, clock.System{})}
+	customers := customersinmemory.NewCustomerRepository(customersdomain.Customer{ID: "c-1", Name: "Ada"})
+	getCustomer := customersinteractors.NewGetCustomer(customers)
+	lookup := ordersgateways.NewCustomerLookupGateway(getCustomer)
+	orders := ordersinmemory.NewOrderRepository()
+	return App{PlaceOrder: ordersinteractors.NewPlaceOrder(orders, lookup, clock.System{})}
 }

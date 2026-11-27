@@ -38,7 +38,7 @@ An entity should contain:
 
 ### Step 3: Generate the Entity File
 
-Place the file at: `src/modules/<module>/domain/<entity-name>.<ext>` (kebab-case file name).
+Place the file at: `src/modules/<module>/domain/<entity-name>.<ext>` (file and folder names follow "Language conventions" in the `rules` skill: kebab-case in TypeScript, snake_case in Python and Go; in Go the path is `internal/modules/<module>/domain/<entity_name>.go`).
 
 References to entities of **other modules** are by id only (`customerId: string`). Never import another module's `domain/`.
 

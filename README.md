@@ -212,6 +212,7 @@ tests/
 
 - **Tests by module** (`tests/<module>/...`): removing or extracting a module means deleting `src/modules/<m>` and `tests/<m>`.
 - **Docs only in `docs/architecture/`**, never inside `src/`.
+- **Names follow the language**: kebab-case in TypeScript, snake_case in Python and Go. Go has no `src/` (`internal/modules/<m>/`, wiring in `internal/bootstrap/`, entry points in `cmd/<app>/`) and keeps its tests beside the code (`_test.go`, `//go:build integration` for gateways against a real DB). See "Language conventions" in the `rules` skill.
 - **One entry point** → `src/main/index`; several (api, worker, cli) → `src/main/<app>/index`. A monorepo (`apps/`, `packages/`) only for separately deployed artifacts.
 - **Migrations live with their module** (`infrastructure/gateways/migrations/`); the connection and runner live in `platform/db/`.
 - **Optional pieces:** an Input Port exists when another module or a second entry point calls the use case; an Output Port + Presenter exists when output formatting is non-trivial. Otherwise the interactor returns a response model and the controller maps it to HTTP.

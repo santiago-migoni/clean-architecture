@@ -178,6 +178,25 @@ try {
     typeof sibling === 'string' && /outside the working directory/.test(sibling) && !existsSync(`${scaf}-sibling`), String(sibling).slice(0, 160));
   check('scaffold sanitises path-traversal module names', !outside && (typeof escaped !== 'string' || !/etc\//.test(JSON.stringify(escaped.created))), JSON.stringify(escaped).slice(0, 160));
 
+  // Go follows its own layout: no src/, modules under internal/modules/, wiring in internal/bootstrap/,
+  // the entry point in cmd/<app>/, and module folders as one lowercase word.
+  const goScaf = tmpProject('scaffold-go'); temps.push(goScaf);
+  writeFileSync(join(goScaf, 'go.mod'), 'module example.com/shop\n\ngo 1.22\n');
+  const goOut = callTool(goScaf, 'ca_scaffold', { rootPath: goScaf, language: 'go', domain: 'Shop', modules: ['orders', 'order-history'] });
+  const goDirs = goOut.created.filter((c) => c.endsWith('/')).sort();
+  check('scaffold (go): cmd/<app>/, internal/bootstrap/ and internal/modules/<m>/ with one-word module names, no src/',
+    same(goDirs, ['cmd/shop/', 'docs/architecture/', 'internal/bootstrap/',
+      ...['orders', 'orderhistory'].flatMap((m) => ['domain', 'application', 'infrastructure'].map((l) => `internal/modules/${m}/${l}/`))])
+      && !existsSync(join(goScaf, 'src')), goDirs.join(', '));
+  check('scaffold (go): cmd/<app>/main.go imports bootstrap through the go.mod module path',
+    readFileSync(join(goScaf, 'cmd/shop/main.go'), 'utf8').includes('"example.com/shop/internal/bootstrap"'));
+  const goScan = callTool(goScaf, 'ca_scan');
+  check('scaffold (go): the result scans clean and every file is classified',
+    goScan.violations.length === 0 && goScan.summary.unclassifiedFiles === 0, JSON.stringify(goScan.summary));
+  const goBuild = spawnSync('go', ['vet', './...'], { cwd: goScaf, encoding: 'utf8' });
+  if (goBuild.error) console.log('  skip  scaffold (go): go is not installed, the generated code was not compiled');
+  else check('scaffold (go): the generated code passes go vet', goBuild.status === 0, goBuild.stderr);
+
   // ── 5. classification is positional and resolves every import form ─────────────────────
   console.log('\n[5] layers are classified by position, and barrel / package imports are resolved');
   const pos = tmpProject('positional'); temps.push(pos);

@@ -52,7 +52,7 @@ Main composes one module at a time, then connects them:
 
 ### Step 2: Create the Main Files
 
-One entry point → `src/main/index.<ext>`. Several (api, worker, cli) → one folder per entry point, all sharing the `compose/<m>.<ext>` functions: `src/main/api/index.<ext>`, `src/main/worker/index.<ext>`.
+One entry point → `src/main/index.<ext>`. Several (api, worker, cli) → one folder per entry point, all sharing the `compose/<m>.<ext>` functions: `src/main/api/index.<ext>`, `src/main/worker/index.<ext>`. In Go the wiring lives in `internal/bootstrap/` and every entry point is a thin `cmd/<app>/main.go` that calls it.
 
 ```
 src/main/

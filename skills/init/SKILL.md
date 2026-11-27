@@ -12,7 +12,7 @@ The plugin uses a **feature-first** layout: business capabilities are **modules*
 ## Your Task
 
 1. **Detect the language and framework** from the project context (check package.json, go.mod, pom.xml, Pipfile, etc.). If none exists, infer from the user's description.
-2. **Identify the modules** from the description. Each module is a business capability (`orders`, `customers`, `billing`), named in kebab-case. The architecture must scream the domain, not the framework (Screaming Architecture principle). If the user names only one capability, create one module; if the description is vague, ask for the module names rather than inventing a generic one.
+2. **Identify the modules** from the description. Each module is a business capability (`orders`, `customers`, `billing`), named as the language's conventions say (kebab-case in TypeScript, snake_case in Python, one lowercase word in Go — see "Language conventions" in the `rules` skill). The architecture must scream the domain, not the framework (Screaming Architecture principle). If the user names only one capability, create one module; if the description is vague, ask for the module names rather than inventing a generic one.
 3. **Create the lean directory structure** below: `domain/`, `application/` and `infrastructure/` per module, plus `main/` and `docs/architecture/`. Do NOT create empty folders for things that do not exist yet.
    When the `ca_scaffold` MCP tool is available, use it for this step: call it with `rootPath` (absolute project root), `language`, `domain` and `modules`. It creates exactly this structure (with the `.gitkeep` stubs, `src/main/index.<ext>` and a generic `ARCHITECTURE.md`), rejects reserved module names and never overwrites existing files. Create the folders by hand only when the tool is unavailable, following the same structure.
 4. **Generate a minimal base set of files** for the first module: an entity, a repository interface and an interactor stub.
@@ -58,7 +58,26 @@ tests/<module>/integration/                                         # flat: gate
 tests/e2e/
 ```
 
-File names are kebab-case (snake_case in Python).
+File names are kebab-case (snake_case in Python and Go).
+
+### Go
+
+Go has no `src/`, keeps its tests beside the code and splits the composition root in two. `ca_scaffold` with `language: "go"` creates:
+
+```
+<project-root>/
+├── go.mod                                      # create it with `go mod init <module-path>` if missing
+├── cmd/<app>/main.go                           # entry point: calls bootstrap, runs the app
+├── internal/
+│   ├── bootstrap/bootstrap.go                  # composition root — the only place dependencies are wired
+│   └── modules/<module>/                       # one lowercase word: orders, orderhistory
+│       ├── domain/
+│       ├── application/
+│       └── infrastructure/
+└── docs/architecture/ARCHITECTURE.md
+```
+
+On demand, as in the other languages: `internal/shared/`, `internal/platform/<driver>/`, `application/ports/{input,output}/`, `application/interactors/`, `infrastructure/gateways/{inmemory,migrations}/`. Tests are `<file>_test.go` in the same package; gateway tests against a real database carry `//go:build integration` and run with `go test -tags integration ./...`. Imports of same-named packages from several modules are aliased `<module><package>` (`ordersinteractors`).
 
 ## Files to Generate (for the first module `<module>`)
 
@@ -81,6 +100,7 @@ Keep it minimal — three files plus the composition root.
 
 ### 5. Composition root
 - `src/main/index.<ext>` — comment explaining that it is the only file allowed to instantiate concrete classes. If the project will have several entry points (api, worker, cli), use `src/main/<app>/index.<ext>`.
+- Go: `internal/bootstrap/bootstrap.go` wires everything and returns the app; each `cmd/<app>/main.go` only calls it and runs.
 
 ### 6. Rule enforcement
 Both axes must be enforced:
@@ -92,7 +112,7 @@ By language:
 - **TypeScript/JavaScript**: `eslint.config.js` with `eslint-plugin-boundaries` (element types `shared`, `domain`, `input-port`, `application`, `infrastructure`, `platform`, `main`, each module-scoped one with a `module` capture) — see the tested example below.
 - **Python**: `import-linter` contracts (a `layers` contract per module plus a `forbidden` contract between modules).
 - **Java/Kotlin**: ArchUnit layered-architecture and package-slice tests.
-- **Go**: `go-cleanarch` plus `internal/` packages per module.
+- **Go**: the compiler's `internal/` rule keeps other repositories out, but not one module out of another. Run `ca_scan` in CI (it reads Go imports through the module path in `go.mod` and checks both axes); add `go-arch-lint` for the layer axis if the team wants a Go-native linter. `go-arch-lint` cannot express "same module only", so the Module Rule stays with `ca_scan`.
 - **C#**: NDepend or architecture tests.
 
 Example for TypeScript — `eslint.config.js` (flat config). **Tested** against `eslint@9`, `typescript-eslint@8` and `eslint-plugin-boundaries@7`, which uses the `boundaries/dependencies` rule with `policies` (older versions used `boundaries/element-types` with a different syntax — check the installed major version before copying):

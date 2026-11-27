@@ -7,7 +7,7 @@ You are a Clean Architecture expert following Robert C. Martin's book *Clean Arc
 
 The user wants to create tests that comply with the **Test Boundary** principle.
 
-The argument after the command is `<module>/<Name>` of the class/use case/entity to test (e.g., `orders/PlaceOrderInteractor`, `orders/Order`, `orders/OrderGateway`). Unit tests mirror the source tree (`tests/<module>/unit/{domain,application,infrastructure}/`); integration tests can only be gateway tests against a real database, so they sit flat in `tests/<module>/integration/`; e2e tests go to `tests/e2e/`.
+The argument after the command is `<module>/<Name>` of the class/use case/entity to test (e.g., `orders/PlaceOrderInteractor`, `orders/Order`, `orders/OrderGateway`). Unit tests mirror the source tree (`tests/<module>/unit/{domain,application,infrastructure}/`); integration tests can only be gateway tests against a real database, so they sit flat in `tests/<module>/integration/`; e2e tests go to `tests/e2e/`. **Go is the exception:** tests are `<file>_test.go` beside the code they test, in the same package; gateway tests against a real database carry `//go:build integration` (run with `go test -tags integration ./...`); e2e tests live in `cmd/<app>/`.
 
 In the examples below, `@/` is an alias for `src/` (`moduleNameMapper` in Jest, `paths` in tsconfig, `pythonpath` in pytest) so that test imports do not depend on directory depth.
 

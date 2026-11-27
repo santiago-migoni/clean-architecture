@@ -38,13 +38,28 @@ The plugin uses a **feature-first** layout: the code is grouped into **modules**
 **`.gitkeep` files** exist only so that git keeps an otherwise-empty folder. The scaffold writes one into each of `domain/`, `application/` and `infrastructure/`: **delete a folder's `.gitkeep` in the same change that adds its first real file.** A `.gitkeep` next to other files is leftover noise.
 
 **Macro decisions.**
-- Tests are grouped by module (`tests/<module>/{unit,integration}`) so that removing or extracting a module means deleting `src/modules/<m>` and `tests/<m>`. `unit/` mirrors the module's folders; `integration/` is flat, because only gateways are tested against a real database (use case tests never touch it). `tests/e2e/` is shared.
+- Tests are grouped by module (`tests/<module>/{unit,integration}`) so that removing or extracting a module means deleting `src/modules/<m>` and `tests/<m>`. `unit/` mirrors the module's folders; `integration/` is flat, because only gateways are tested against a real database (use case tests never touch it). `tests/e2e/` is shared. (Go keeps its tests beside the code: see Language conventions.)
 - A class's companion types live **beside it**, named by suffix, not in a subfolder: `place-order-http-request` next to its controller, `place-order-view-model` next to its presenter, `order-persistence-model` next to its gateway. Subfolders are kept only for a different kind of thing: `gateways/in-memory/` (non-production implementations) and `gateways/migrations/` (SQL, not code).
 - Documentation lives only in `docs/architecture/`.
 - One entry point → `src/main/index`. Several (api, worker, cli) → `src/main/<app>/index`, all sharing the modules. A monorepo (`apps/`, `packages/`) is justified only for separately deployed artifacts.
 - Database migrations live with their module (`infrastructure/gateways/migrations/`); the connection and the runner live in `platform/db/`.
 
-File names are kebab-case (snake_case in Python): `create-order`, `order-repository`, `sql-order-repository`.
+File names are kebab-case: `create-order`, `order-repository`, `sql-order-repository`, unless the language's conventions below say otherwise.
+
+### Language conventions
+
+The layers, the folders that name them (`modules/<m>/{domain,application,infrastructure}`, `application/ports/{input,output}`, `shared/`, `platform/`) and both rules are the same in every language. Only names, tests and the entry point follow the language:
+
+| | TypeScript / JavaScript | Python | Go |
+|---|---|---|---|
+| Code root | `src/` | `src/<package>/` | `internal/` (no `src/`) |
+| Module folder | kebab-case (`order-history`) | snake_case (`order_history`) | one lowercase word (`orderhistory`) |
+| File names | kebab-case (`place-order.ts`) | snake_case (`place_order.py`) | snake_case (`place_order.go`) |
+| Non-production gateways | `gateways/in-memory/` | `gateways/in_memory/` | `gateways/inmemory/` |
+| Composition root | `src/main/index.ts` | `src/<package>/main/__main__.py` | `internal/bootstrap/` (wiring) + `cmd/<app>/main.go` (entry point) |
+| Tests | `tests/<m>/{unit,integration}/`, `tests/e2e/` | same as TypeScript | `_test.go` beside the code; gateway tests against a real DB carry `//go:build integration`; e2e in `cmd/<app>/` |
+
+**Go.** The module path in `go.mod` is the import root: `<module-path>/internal/modules/<m>/domain`. Keep the `modules/` segment: it is what tells a module from `internal/shared`, `internal/platform` or `internal/bootstrap`. Every module has packages with the same names (`domain`, `interactors`, `output`, `inmemory`), so code that imports several of them, usually only `bootstrap`, aliases each import as `<module><package>`: `ordersinteractors`, `customersinmemory`. Under `infrastructure/`, a subpackage may be named after its technology (`infrastructure/postgres/`, `infrastructure/httpapi/`) instead of `gateways/` or `controllers/`: the whole `infrastructure/` folder is one layer. Each output port gets its own file in `application/ports/output/`.
 
 ## Non-Negotiable Rules
 
