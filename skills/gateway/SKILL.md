@@ -1,13 +1,13 @@
 ---
 name: gateway
-description: "This skill should be used when the user asks to \"create a gateway\", \"implement a repository\", \"add a data mapper\", \"add an in-memory repository\", \"add a database migration for a module\", or \"reach another module through its input port\" from src/modules/<module>/infrastructure/gateways/ (The Database is a Detail)."
+description: "This skill should be used when the user asks to \"create a gateway\", \"implement a repository\", \"add a data mapper\", \"add an in-memory repository\", \"add a database migration for a module\", or \"reach another module through its input port\" from a module's infrastructure/gateways/ (The Database is a Detail)."
 argument-hint: "<module>/<Name>"
 ---
 You are a Clean Architecture expert following Robert C. Martin's book *Clean Architecture: A Craftsman's Guide to Software Structure and Design*.
 
 The user wants to create or review a **Gateway** (also called Repository or Data Mapper) — the adapter that connects the application to the database or external services.
 
-The argument after the command is `<module>/<Name>` (e.g., `orders/OrderRepository`, `billing/PaymentGateway`, `customers/EmailGateway`). The module selects the folder under `src/modules/`. If the project has a single module the prefix may be omitted.
+The argument after the command is `<module>/<Name>` (e.g., `orders/OrderRepository`, `billing/PaymentGateway`, `customers/EmailGateway`). The module selects the folder under `modules/`. If the project has a single module the prefix may be omitted.
 
 ## What is a Gateway?
 
@@ -15,8 +15,8 @@ From the book (Chapter 22 — The Clean Architecture):
 > "The database is a detail. The web is a detail. These things are on the outer layers, not the inner ones."
 
 A Gateway:
-- Lives in the **Interface Adapters** layer (`src/modules/<module>/infrastructure/gateways/`).
-- **Implements** a Repository/Gateway interface defined in the **application** layer of the same module (`src/modules/<module>/application/ports/output/`).
+- Lives in the **Interface Adapters** layer (the module's `infrastructure/gateways/`).
+- **Implements** a Repository/Gateway interface defined in the **application** layer of the same module (`application/ports/output/`).
 - Translates between **Domain Entities** (inner layer) and **Database rows / external API responses** (outer layer).
 - Hides all knowledge of the database schema, ORM, or external API format from the use cases.
 - The use case **never knows** whether data comes from SQL, NoSQL, a REST API, or an in-memory store.
@@ -30,7 +30,7 @@ This is a central theme of the book. The architecture must not be coupled to:
 
 The interface defined in `application/ports/output/` is the **contract**; the gateway is the **implementation detail**.
 
-The gateway may import third-party libraries (an ORM, an HTTP client SDK), but it MUST NOT import this project's `platform/` folder: the connection/client object is created in `platform/db` (or `platform/external`) and **injected from `main/`** through the constructor.
+The gateway may import third-party libraries (an ORM, an HTTP client SDK), but it MUST NOT import this project's `platform/` folder: the connection/client object is created in `platform/db` (or `platform/external`) and **injected from the composition root** through the constructor.
 
 ## Data Flow
 
@@ -38,233 +38,73 @@ The gateway may import third-party libraries (an ORM, an HTTP client SDK), but i
 Interactor (application/interactors/)
   → I<Domain>Repository (interface in application/ports/output/)
   ← <Domain>RepositoryImpl (gateway in infrastructure/gateways/)
-       → ORM client / DB connection (created in platform/db/, injected by main/)
+       → ORM client / DB connection (created in platform/db/, injected by the composition root)
          → Database
 ```
 
 ## Your Task
 
+**Before writing code, read the reference for the project's language**, and the SQL one when the gateway uses a relational database. They have complete examples of every step below (persistence model, SQL gateway, in-memory gateway, cross-module gateway, integration test) for the `customers` and `orders` modules:
+
+- [TypeScript / JavaScript](references/typescript.md)
+- [Python](references/python.md)
+- [Go](references/go.md)
+- [SQL](references/sql.md) — migrations, table ownership, upserts, query files
+
+For another language, apply the same structure with its idioms. Names follow "Language conventions" in the `rules` skill.
+
 ### Step 1: Verify the Repository Interface
-The interface should already exist (created during `/clean-architecture:usecase`). Check `src/modules/<module>/application/ports/output/<domain>-repository.<ext>`.
-
-If it does not exist, create it now in the module's APPLICATION layer:
-```typescript
-// src/modules/<module>/application/ports/output/<domain>-repository.ts
-// This interface belongs to the APPLICATION layer — NOT the infrastructure layer.
-// The use case defines what it needs; the gateway satisfies it.
-
-import { <Entity>, <EntityId> } from '../../../domain/<entity-name>';
-
-export interface I<Domain>Repository {
-  findById(id: <EntityId>): Promise<<Entity> | null>;
-  findAll(): Promise<<Entity>[]>;
-  save(entity: <Entity>): Promise<void>;
-  delete(id: <EntityId>): Promise<void>;
-  // Only add methods that at least one use case actually needs
-}
-```
+The interface should already exist (created during `/clean-architecture:usecase`) in the module's `application/ports/output/`. If it does not, create it there now — in the APPLICATION layer, never in infrastructure — with only the methods this module's use cases call.
 
 ### Step 2: Create the Data Mapper / Persistence Model
-Keep the DB schema separate from the domain entity (they can evolve independently):
+Keep the database row shape separate from the domain entity, beside the gateway (they evolve independently). Map rows to entities with the entity's **reconstitution** path (invariants re-checked, no creation-time effects) and entities to rows field by field.
 
-File: `src/modules/<module>/infrastructure/gateways/<domain>-persistence-model.<ext>`
-```typescript
-// src/modules/<module>/infrastructure/gateways/<domain>-persistence-model.ts
-// This is the ORM/DB schema model — lives in the infrastructure layer only
-// The domain never knows about this
-
-import { <Entity> } from '../../../../domain/<entity-name>';
-
-export interface <Domain>Row {  // or: @Entity() class for ORM
-  id: string;
-  // ... db column names (may differ from domain field names)
-  created_at: Date;  // snake_case for DB vs camelCase for domain
-  updated_at: Date;
-}
-
-// Mapper functions — translate between layers
-export function toDomain(row: <Domain>Row): <Entity> {
-  return <Entity>.reconstitute({
-    id: row.id,
-    // ... map db fields → domain fields
-    createdAt: row.created_at,
-  });
-}
-
-export function toPersistence(entity: <Entity>, now: Date): <Domain>Row {
-  return {
-    id: entity.id,
-    // ... map domain fields → db fields
-    // NEVER `new Date()` here: every save (an upsert) would overwrite the original creation time.
-    // The entity keeps it (set once, from a clock port injected into the use case that creates it).
-    created_at: entity.createdAt,
-    updated_at: now, // the gateway receives the time (e.g. from a clock injected by main/)
-  };
-}
-```
-If the domain does not track the creation time, drop `created_at` from the row instead: let the DB fill it (`created_at ... DEFAULT CURRENT_TIMESTAMP`) and leave it out of the upsert's `DO UPDATE SET` list, so an update never touches it.
+If the domain does not track the creation time, leave `created_at` out of the row: let the database fill it (`DEFAULT CURRENT_TIMESTAMP`) and keep it out of the upsert's update list, so an update never touches it.
 
 ### Step 3: Create the Gateway Implementation
-
-File: `src/modules/<module>/infrastructure/gateways/<domain>-repository-impl.<ext>`  (name it after the technology when several exist, e.g. `sql-<domain>-repository.<ext>`)
-
-#### TypeScript (TypeORM example):
-```typescript
-// src/modules/<module>/infrastructure/gateways/<domain>-repository-impl.ts
-// Layer: infrastructure (Interface Adapters)
-// Implements: I<Domain>Repository (from this module's application layer)
-// May import from: this module's application/ports/output/, this module's domain/, src/shared/, third-party ORMs
-// May NOT import from: platform/, main/, or another module (see the cross-module gateway below)
-// The ORM repository is injected from main/ — it is created in platform/db/
-
-import { Repository } from 'typeorm'; // third-party ORM import is OK in infrastructure
-import { I<Domain>Repository } from '../../../application/ports/output/<domain>-repository';
-import { <Entity>, <EntityId> } from '../../../domain/<entity-name>';
-import { <Domain>Row, toDomain, toPersistence } from './<domain>-persistence-model';
-
-export class <Domain>RepositoryImpl implements I<Domain>Repository {
-  constructor(
-    private readonly ormRepo: Repository<<Domain>Row>,
-    private readonly now: () => Date, // clock injected by main/ (fixed in tests)
-  ) {}
-
-  async findById(id: <EntityId>): Promise<<Entity> | null> {
-    const row = await this.ormRepo.findOne({ where: { id } });
-    if (!row) return null;
-    return toDomain(row);
-  }
-
-  async findAll(): Promise<<Entity>[]> {
-    const rows = await this.ormRepo.find();
-    return rows.map(toDomain);
-  }
-
-  async save(entity: <Entity>): Promise<void> {
-    const row = toPersistence(entity, this.now());
-    await this.ormRepo.save(row);
-  }
-
-  async delete(id: <EntityId>): Promise<void> {
-    await this.ormRepo.delete(id);
-  }
-}
-```
-
-#### Python (SQLAlchemy example):
-```python
-# src/modules/<module>/infrastructure/gateways/<domain>_repository_impl.py
-from datetime import datetime
-from typing import Callable
-from sqlalchemy.orm import Session  # the session is created in platform/db and injected by main
-from ....application.ports.output.<domain>_repository import I<Domain>Repository
-from ....domain.<entity_name> import <Entity>, <EntityId>
-from .persistence.<domain>_persistence_model import <Domain>Row, to_domain, to_persistence
-
-class <Domain>RepositoryImpl(I<Domain>Repository):
-    def __init__(self, session: Session, now: Callable[[], datetime]):
-        self._session = session
-        self._now = now  # clock injected by main (fixed in tests)
-
-    def find_by_id(self, id: <EntityId>) -> <Entity> | None:
-        row = self._session.query(<Domain>Row).filter_by(id=id).first()
-        return to_domain(row) if row else None
-
-    def find_all(self) -> list[<Entity>]:
-        rows = self._session.query(<Domain>Row).all()
-        return [to_domain(r) for r in rows]
-
-    def save(self, entity: <Entity>) -> None:
-        row = to_persistence(entity, self._now())  # created_at comes from the entity, never from now()
-        self._session.merge(row)
-        self._session.commit()
-
-    def delete(self, id: <EntityId>) -> None:
-        self._session.query(<Domain>Row).filter_by(id=id).delete()
-        self._session.commit()
-```
+In the module's `infrastructure/gateways/`, named after the technology when several exist (`sql-customer-repository`). The connection, pool or ORM session is a constructor parameter: created in `platform/db/`, injected by the composition root.
 
 ### Persistence rules learned the hard way (SQL)
-- **Upsert by id, never `INSERT OR REPLACE`.** In SQLite (and `REPLACE INTO` in MySQL) a conflict on *any* unique constraint deletes the other row: saving a second customer with an existing email silently destroyed the first one. Use `INSERT ... ON CONFLICT(id) DO UPDATE SET ...` (`ON DUPLICATE KEY UPDATE` in MySQL, `session.merge` in SQLAlchemy) so a different row with the same unique value raises a constraint error.
-- **Translate that error, do not let the driver's leak.** Declare the failure on the port's contract (`/** @throws EmailAlreadyRegisteredError */` on `save`, the error lives in `application/errors/`) and have the gateway convert the unique-constraint violation into it. The gateway still enforces no business rule — it only reports a persistence fact in the application's vocabulary.
+- **Upsert by id, never `INSERT OR REPLACE`.** In SQLite (and `REPLACE INTO` in MySQL) a conflict on *any* unique constraint deletes the other row: saving a second customer with an existing email silently destroyed the first one. Use `INSERT ... ON CONFLICT(id) DO UPDATE SET ...` so a different row with the same unique value raises a constraint error.
+- **Translate that error, do not let the driver's leak.** Declare the failure on the port's contract (`save` may fail with `EmailAlreadyRegisteredError`, an application error) and have the gateway convert the unique-constraint violation into it. The gateway still enforces no business rule — it reports a persistence fact in the application's vocabulary.
 - **The in-memory repository must honour the same contract** (same error for the same conflict), otherwise use case tests pass against a repository that behaves differently from production.
-- No foreign key between tables of different modules: modules never share tables.
+- **Each module owns its tables.** No query, `ALTER` or foreign key on another module's tables; `ca_scan` reports it (`table-ownership`).
 
 ### Step 4: Create an In-Memory Gateway for Testing (on demand)
-Create it the first time a use case test needs a repository — not before, and not as an empty `in-memory/` folder. Reuse it afterwards.
-
-File: `src/modules/<module>/infrastructure/gateways/in-memory/<domain>-in-memory-repository.<ext>` (Python: `in_memory/<domain>_in_memory_repository.py`; Go: `internal/modules/<module>/infrastructure/gateways/inmemory/<domain>_repository.go`, package `inmemory`)
-
-```typescript
-// Used in unit tests — no DB needed
-// Imports (from this file): '../../../../application/ports/output/<domain>-repository' and '../../../../domain/<entity-name>'
-export class <Domain>InMemoryRepository implements I<Domain>Repository {
-  private store = new Map<<EntityId>, <Entity>>();
-
-  async findById(id: <EntityId>): Promise<<Entity> | null> {
-    return this.store.get(id) ?? null;
-  }
-
-  async findAll(): Promise<<Entity>[]> {
-    return Array.from(this.store.values());
-  }
-
-  async save(entity: <Entity>): Promise<void> {
-    this.store.set(entity.id, entity);
-  }
-
-  async delete(id: <EntityId>): Promise<void> {
-    this.store.delete(id);
-  }
-}
-```
+Create it the first time a use case test needs a repository — not before, and not as an empty folder. Reuse it afterwards. It lives in `infrastructure/gateways/in-memory/` (`in_memory/` in Python, package `inmemory` in Go).
 
 ### Migrations
-Schema migrations belong to the module that owns the tables: `src/modules/<module>/infrastructure/gateways/migrations/`. Only the connection setup and the runner that executes every module's migrations live in `src/platform/db/` and are invoked from `src/main/`.
+Schema migrations belong to the module that owns the tables: `infrastructure/gateways/migrations/`. Only the connection setup and the runner that executes every module's migrations live in `platform/db/`, invoked from the composition root.
 
 ### Step 5: Create Gateway Integration Tests
-File: `tests/<module>/integration/<domain>-repository-impl.test.<ext>` (Go: `<domain>_repository_test.go` beside the gateway, with `//go:build integration`)
-- Use a real (test) database connection.
-- Test round-trip: save → findById returns correct domain entity.
-- Test the mapper: verify domain fields map correctly to/from DB columns.
-- Test not-found: findById returns null for missing ID.
+Against a real (test) database — in TypeScript and Python in `tests/<module>/integration/`, in Go beside the gateway behind `//go:build integration`:
+- Round-trip: save → find returns the same domain entity.
+- The mapper: domain fields map correctly to and from columns.
+- Not found: find returns nothing for a missing id.
+- The conflict: a different row with the same unique value fails with the port's error, and the first row survives.
 
 ### Step 6: Gateway that reaches ANOTHER module (cross-module recipe)
 When the use case needs something owned by another module (e.g. `orders` must check that a customer exists):
 
-1. The calling module declares a port in its own vocabulary: `src/modules/orders/application/ports/output/customer-lookup.<ext>`.
-2. The gateway implementing it lives in the **calling** module's infrastructure and calls the other module's **input port**:
-
-```typescript
-// src/modules/orders/infrastructure/gateways/customer-lookup-gateway.ts
-// The ONLY kind of cross-module import allowed: infrastructure → another module's application/ports/input/
-import { ICustomerLookup } from '../../../application/ports/output/customer-lookup';
-import { IGetCustomerUseCase } from '../../../../customers/application/ports/input/get-customer';
-
-export class CustomerLookupGateway implements ICustomerLookup {
-  constructor(private readonly getCustomer: IGetCustomerUseCase) {} // injected by main/
-
-  async exists(customerId: string): Promise<boolean> {
-    // translate between the two modules' models here (anti-corruption layer)
-    return false;
-  }
-}
-```
-3. `src/main/` injects the other module's interactor (as its input port) into this gateway.
-4. Never import `customers/domain/` or `customers/infrastructure/`; the calling module's domain stores only `customerId`.
+1. The calling module declares a port in its own vocabulary in `application/ports/output/` (`CustomerLookup`).
+2. The gateway implementing it lives in the **calling** module's `infrastructure/gateways/` and calls the other module's **input port** — the only cross-module import allowed.
+3. The composition root injects the other module's interactor (as its input port) into this gateway.
+4. Never import `customers/domain/` or `customers/infrastructure/`, and never read the `customers` tables; the calling module's domain stores only `customerId`.
 
 ## Validation Checklist
 
-- [ ] Repository interface lives in `src/modules/<module>/application/ports/output/` (NOT in infrastructure).
-- [ ] Gateway implementation lives in `src/modules/<module>/infrastructure/gateways/`.
-- [ ] The gateway does not import `platform/`, `main/`, or another module — except another module's `application/ports/input/` in a cross-module gateway.
-- [ ] ORM/DB-specific code (TypeORM decorators, SQLAlchemy models) is ONLY in the gateway/persistence files.
+- [ ] Repository interface lives in the module's `application/ports/output/` (NOT in infrastructure).
+- [ ] Gateway implementation lives in the module's `infrastructure/gateways/`.
+- [ ] The gateway does not import `platform/`, the composition root, or another module — except another module's `application/ports/input/` in a cross-module gateway.
+- [ ] ORM/DB-specific code (ORM models and decorators, driver calls, SQL) is ONLY in the gateway and persistence files.
 - [ ] The use case interactor imports only the interface — never the implementation.
-- [ ] The DB connection / ORM client is injected from `main/`, never imported from `platform/`.
+- [ ] The DB connection / ORM client is injected from the composition root, never imported from `platform/`.
 - [ ] `save` is an upsert by id (no `REPLACE`); a unique-constraint violation is translated into the error declared by the port; a test proves that the pre-existing row survives the conflict.
 - [ ] Data mapper correctly translates domain ↔ persistence (field names, types, nullability).
 - [ ] An in-memory implementation exists once a use case test needs one (created on demand).
 - [ ] Migrations for this module's tables live in `infrastructure/gateways/migrations/`; the connection and the migration runner live in `platform/db/`.
 - [ ] The gateway does NOT enforce business rules — it just stores/retrieves data.
+- [ ] The module's SQL uses only the tables its own migrations create.
 
 ## SRP Check
 - The gateway changes when the **persistence technology or schema** changes.

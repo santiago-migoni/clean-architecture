@@ -7,7 +7,7 @@ You are a Clean Architecture expert following Robert C. Martin's book *Clean Arc
 
 The user wants to analyze **component cohesion and coupling** across the codebase.
 
-The argument after the command is an optional path to focus on. If no argument, analyze all components in `src/`.
+The argument after the command is an optional path to focus on. If no argument, analyze all components under the code root.
 
 ## What is a Component?
 
@@ -79,7 +79,7 @@ These three principles govern **relationships between components**:
 ## Your Task
 
 ### Step 1: Identify Components
-Map the project's components. In the feature-first layout every folder under `src/modules/` is a component (its `domain/`, `application/` and `infrastructure/` layers are sub-components), alongside `shared/`, `platform/` and `main/`:
+Map the project's components. In the feature-first layout every folder under `modules/` is a component (its `domain/`, `application/` and `infrastructure/` layers are sub-components), alongside `shared/`, `platform/` and `main/`:
 
 ```
 Component Map:
@@ -117,8 +117,8 @@ CYCLE DETECTED:
   <ComponentA> → <ComponentB> → <ComponentA>
 
   Files involved:
-    <ComponentA>/foo.ts imports from <ComponentB>/bar.ts
-    <ComponentB>/bar.ts imports from <ComponentA>/baz.ts
+    <ComponentA>/foo imports from <ComponentB>/bar
+    <ComponentB>/bar imports from <ComponentA>/baz
 
   Fix options:
     Option 1: Extract the shared dependency into a new component.

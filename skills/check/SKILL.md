@@ -73,48 +73,34 @@ through a port owned by A (declared in `A/application/ports/output/`, implemente
 
 ### Step 1: Read the Project Structure
 
-Resolve every path **relative to `src/`** (never match on the absolute path — a project living under `/application/` must not be misclassified), then identify the layer and module **by position**: the top-level folder under `src/` (or, inside `modules/<name>/`, the folder right after the module name) decides the layer. A folder with a layer-like name deeper in the path does not: `src/main/application/` is Main, and `src/modules/orders/domain/shared/` is still `orders`' domain.
+Resolve every path **relative to the code root** — `src/` in TypeScript, `src/<package>/` in Python, the module root in Go (`internal/`, `cmd/`) — never on the absolute path (a project living under `/application/` must not be misclassified). Then identify the layer and module **by position**: the top-level folder under the code root (or, inside `modules/<name>/`, the folder right after the module name) decides the layer. A folder with a layer-like name deeper in the path does not: `main/application/` is Main, and `modules/orders/domain/shared/` is still `orders`' domain.
 
 - `modules/<name>/domain/` → layer `domain`, module `<name>`
 - `modules/<name>/application/` → layer `application`, module `<name>`
 - `modules/<name>/infrastructure/` → layer `infrastructure`, module `<name>` — the **whole** `infrastructure/` folder, not only `infrastructure/`: a file placed directly under `infrastructure/` must not escape the rules
 - `shared/` → shared kernel
 - `platform/` → layer `platform`
-- `main/` (or `bootstrap/`, `composition/`) → Main (Composition Root)
-- Any other top-level folder under `src/` that is not one of the above is a **structure finding**: it is either a legacy layer (`entities/`, `usecases/`, `adapters/`, `frameworks/`) awaiting `/clean-architecture:migrate`, or code that does not belong to any module.
+- `main/` (or `bootstrap/`, `composition/`, and Go's `cmd/`) → Main (Composition Root)
+- Any other top-level folder under the code root that is not one of the above is a **structure finding**: it is either a legacy layer (`entities/`, `usecases/`, `adapters/`, `frameworks/`) awaiting `/clean-architecture:migrate`, or code that does not belong to any module.
 
 ### Step 2: Extract All Import Statements
 
 For each file, extract all import/require statements and determine:
 - Which layer and module is the importing file in?
-- Which layer and module is the imported file in? (resolve relative imports against the importing file; treat `@/…` aliases as `src/…`)
+- Which layer and module is the imported file in? (resolve relative imports against the importing file; treat `@/…` aliases as `src/…`; a Python absolute import or a Go import is project code only when it starts with the project's own package or `go.mod` module path)
 - Is the import direction inward (allowed) or outward (violation)?
 - Does it cross a module boundary, and if so is it `infrastructure → application/ports/input`?
 
-#### TypeScript/JavaScript patterns to scan:
-```
-import { ... } from '...'
-import * as ... from '...'
-const ... = require('...')
-export { ... } from '...'
-```
+Import forms per language (the same ones `ca_scan` reads):
 
-#### Python patterns to scan:
-```
-from ... import ...
-import ...
-```
-(resolve relative dots against the file's package)
+| Language | Forms |
+|---|---|
+| TypeScript / JavaScript | `import … from '…'`, `import type`, `export … from '…'`, side-effect `import '…'`, `import('…')`, `require('…')` — in `.ts .tsx .mts .cts .js .jsx .mjs .cjs` |
+| Python | `from … import …` (relative dots resolved against the file's package), `import a, b as c`, also indented inside `try:` or a function |
+| Go | `import "…"` and grouped `import ( … )`, with or without an alias |
+| SQL | no imports: its dependencies are **tables** (Step 4b) |
 
-#### Java patterns to scan:
-```
-import com.example.modules.<module>.<layer>...;
-```
-
-#### Go patterns to scan:
-```
-import "<module>/<package>"
-```
+Files in other languages cannot be checked: report them as not verified rather than as clean.
 
 ### Step 3: Classify Each Import
 
@@ -129,23 +115,29 @@ For each import, classify as:
 Beyond import direction, check for:
 
 1. **Concrete class instantiation in inner layers** (`new SqlOrderRepository()` in an interactor).
-2. **Framework-specific types in inner layers** (Express `Request`, Spring `@Autowired` on entities, SQLAlchemy `Column` in `domain/`).
-3. **ORMs in the domain** (Hibernate `@Entity`, TypeORM `@Entity()` on domain entities).
+2. **Framework-specific types in inner layers** (Express `Request`, FastAPI `Request`, `*http.Request` in a use case, SQLAlchemy `Column` in `domain/`).
+3. **ORMs in the domain** (TypeORM `@Entity()`, a SQLAlchemy declarative base, GORM tags on domain structs).
 4. **HTTP status codes in use cases** (`res.status(404)` inside an interactor).
-5. **Environment variables accessed in inner layers** (`process.env.DB_URL` in `domain/` or `application/`).
+5. **Environment variables accessed in inner layers** (`process.env`, `os.environ`, `os.Getenv` in `domain/` or `application/`).
 6. **Logging framework calls in the domain** (`console.log`, `logger.info` with external loggers).
-7. **Date.now() or random number generation in business rules** (should be injected as a port).
+7. **The clock or randomness in business rules** (`Date.now()`, `datetime.now()`, `time.Now()`, `uuid4()`): inject them as a port or a function.
 8. **Port interfaces defined in the wrong layer** (repository interface in `infrastructure/` instead of `application/ports/output/`), or in the wrong module.
 9. **Entities of another module held by reference** (an `Order` holding a `Customer` instead of `customerId`).
-10. **Instantiation outside `main/`** — `platform/` or adapters calling `new` on interactors or gateways.
+10. **Construction outside the composition root** — `platform/` or adapters constructing interactors or gateways.
 11. **Module cycles** — use `ca_cycles` when available.
+
+### Step 4b: SQL
+
+SQL is found in `.sql` files and in string literals of code that start like a statement.
+- **`sql-placement`** — SQL anywhere but `infrastructure/` and `platform/db/` (a query string in an interactor, a `.sql` file in `domain/`). Severity of the layer it is in.
+- **`table-ownership`** — a table belongs to the module whose migrations create it. A module that queries, alters or adds a foreign key to another module's table, or two modules creating the same table, is HIGH: it couples the modules through the database exactly as an import would.
 
 ### Step 5: Report All Violations
 
 For each violation:
 ```
 ARCHITECTURE RULE VIOLATION
-  Rule: dependency-rule | cross-module
+  Rule: dependency-rule | cross-module | sql-placement | table-ownership
   Severity: CRITICAL | HIGH | MEDIUM
   File: <path>:<line>
   Module: <module>

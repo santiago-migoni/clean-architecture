@@ -10,6 +10,8 @@ The plugin uses a **feature-first** layout: the code is grouped into **modules**
 
 ## Project Layout
 
+Shown with the TypeScript code root (`src/`); Python and Go place the same tree as "Language conventions" below says.
+
 ```
 <project-root>/
 ├── src/
@@ -41,7 +43,7 @@ The plugin uses a **feature-first** layout: the code is grouped into **modules**
 - Tests are grouped by module (`tests/<module>/{unit,integration}`) so that removing or extracting a module means deleting `src/modules/<m>` and `tests/<m>`. `unit/` mirrors the module's folders; `integration/` is flat, because only gateways are tested against a real database (use case tests never touch it). `tests/e2e/` is shared. (Go keeps its tests beside the code: see Language conventions.)
 - A class's companion types live **beside it**, named by suffix, not in a subfolder: `place-order-http-request` next to its controller, `place-order-view-model` next to its presenter, `order-persistence-model` next to its gateway. Subfolders are kept only for a different kind of thing: `gateways/in-memory/` (non-production implementations) and `gateways/migrations/` (SQL, not code).
 - Documentation lives only in `docs/architecture/`.
-- One entry point → `src/main/index`. Several (api, worker, cli) → `src/main/<app>/index`, all sharing the modules. A monorepo (`apps/`, `packages/`) is justified only for separately deployed artifacts.
+- One entry point → one composition root (`src/main/index` in TypeScript). Several (api, worker, cli) → one per entry point (`src/main/<app>/index`, `main/<app>/__main__.py`, `cmd/<app>/main.go`), all sharing the modules. A monorepo (`apps/`, `packages/`) is justified only for separately deployed artifacts.
 - Database migrations live with their module (`infrastructure/gateways/migrations/`); the connection and the runner live in `platform/db/`.
 
 File names are kebab-case: `create-order`, `order-repository`, `sql-order-repository`, unless the language's conventions below say otherwise.
@@ -87,12 +89,12 @@ domain  ←  application  ←  infrastructure  ←  platform
 
 | Layer | Folder | Contains | May depend on |
 |---|---|---|---|
-| domain | `src/modules/<m>/domain/` | Enterprise business rules, entities, value objects | `shared` only |
-| application | `src/modules/<m>/application/` | Application business rules, interactors, input/output ports | `domain`, `shared` |
-| infrastructure | `src/modules/<m>/infrastructure/` | Controllers, Presenters, Gateways | `application`, `domain`, `shared` |
-| shared | `src/shared/` | Shared kernel: `Money`, `Id`, base errors | Nothing |
-| platform | `src/platform/` | Web, DB, external tools | All inner layers |
-| main | `src/main/` | Composition root, wiring | Everything |
+| domain | `modules/<m>/domain/` | Enterprise business rules, entities, value objects | `shared` only |
+| application | `modules/<m>/application/` | Application business rules, interactors, input/output ports | `domain`, `shared` |
+| infrastructure | `modules/<m>/infrastructure/` | Controllers, Presenters, Gateways | `application`, `domain`, `shared` |
+| shared | `shared/` | Shared kernel: `Money`, `Id`, base errors | Nothing |
+| platform | `platform/` | Web, DB, external tools | All inner layers |
+| main | `main/` (Go: `bootstrap/` + `cmd/`) | Composition root, wiring | Everything |
 
 ### 3. The Module Rule (axis 2 — modules)
 A module is a cohesive component (CCP/CRP): it changes and is deployed as a unit.
@@ -139,7 +141,7 @@ Always apply:
 - **DIP**: Depend on abstractions, not concretions.
 
 ### 9. Screaming Architecture
-`src/modules/` MUST scream the domain (`orders`, `customers`, `billing`), NOT the framework (not `rails/`, `django/`, `spring/`, not `controllers/` at the top level).
+`modules/` MUST scream the domain (`orders`, `customers`, `billing`), NOT the framework (not `rails/`, `django/`, `spring/`, not `controllers/` at the top level).
 Reserved names that may not be used as a module name: `shared`, `platform`, `main`, `domain`, `application`, `infrastructure`, `modules`, `bootstrap` and `composition` (aliases of `main`), plus `app`, `infra` and `adapters` (layer folders of versions before 2.0).
 
 ### 10. Humble Object Pattern
@@ -169,7 +171,7 @@ Always check:
 
 ## Available Skills
 
-Where a skill takes `<module>/<Name>`, the module prefix selects the folder under `src/modules/`. If the project has a single module it may be omitted.
+Where a skill takes `<module>/<Name>`, the module prefix selects the folder under `modules/`. If the project has a single module it may be omitted.
 
 - `/clean-architecture:rules` — These rules (load before writing or reviewing code)
 - `/clean-architecture:init [description]` — Scaffold project

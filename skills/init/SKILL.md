@@ -102,23 +102,24 @@ Every folder is a package: its `__init__.py` takes the place of the `.gitkeep` a
 
 Keep it minimal — three files plus the composition root.
 
-### 1. Entity (`src/modules/<module>/domain/<entity>.<ext>`)
-- Header comment: enterprise business rules; imports at most from `src/shared/`.
-- Never imports from `application/`, `infrastructure/`, `platform/`, `main/` or any other module.
+### 1. Entity (in the module's `domain/`)
+- Header comment: enterprise business rules; imports at most from `shared/`.
+- Never imports from `application/`, `infrastructure/`, `platform/`, the composition root or any other module. See the `entity` skill and its language references.
 
-### 2. Repository interface (`src/modules/<module>/application/ports/output/<entity>-repository.<ext>`)
+### 2. Repository interface (in the module's `application/ports/output/`)
 - Lives in the `application` layer (not in `infrastructure`), following DIP.
 
-### 3. Interactor stub (`src/modules/<module>/application/interactors/<use-case>.<ext>`)
+### 3. Interactor stub (in the module's `application/interactors/`)
 - Depends on the repository interface; `execute(request)` returns a response model.
-- Add an **Input Port** (`application/ports/input/<use-case>.<ext>`) only if another module or a second entry point will call it.
+- Add an **Input Port** (`application/ports/input/`) only if another module or a second entry point will call it.
 - Add an **Output Port + Presenter** only if output formatting is non-trivial (see the `usecase` and `presenter` skills).
 
 ### 4. Domain extras — on demand
 `events/`, `errors/` and `services/` inside `domain/` are created when the first domain event, domain error or domain service exists. Do not scaffold them.
 
 ### 5. Composition root
-- `src/main/index.<ext>` — comment explaining that it is the only file allowed to instantiate concrete classes. If the project will have several entry points (api, worker, cli), use `src/main/<app>/index.<ext>`.
+- TypeScript/JavaScript: `src/main/index` — comment explaining that it is the only file allowed to construct concrete classes. With several entry points (api, worker, cli), `src/main/<app>/index`.
+- Python: `src/<package>/main/__main__.py`, run with `python -m <package>.main`.
 - Go: `internal/bootstrap/bootstrap.go` wires everything and returns the app; each `cmd/<app>/main.go` only calls it and runs.
 
 ### 6. Rule enforcement
@@ -127,83 +128,13 @@ Both axes must be enforced:
 - **Axis 1 — layers** (`infrastructure → application → domain`, `infrastructure ↛ platform`).
 - **Axis 2 — modules** (no cross-module imports except `A/infrastructure → B/application/ports/input`).
 
-By language:
-- **TypeScript/JavaScript**: `eslint.config.js` with `eslint-plugin-boundaries` (element types `shared`, `domain`, `input-port`, `application`, `infrastructure`, `platform`, `main`, each module-scoped one with a `module` capture) — see the tested example below.
-- **Python**: `import-linter` contracts (a `layers` contract per module plus a `forbidden` contract between modules).
-- **Java/Kotlin**: ArchUnit layered-architecture and package-slice tests.
-- **Go**: the compiler's `internal/` rule keeps other repositories out, but not one module out of another. Run `ca_scan` in CI (it reads Go imports through the module path in `go.mod` and checks both axes); add `go-arch-lint` for the layer axis if the team wants a Go-native linter. `go-arch-lint` cannot express "same module only", so the Module Rule stays with `ca_scan`.
-- **C#**: NDepend or architecture tests.
+**Before setting it up, read the reference for the project's language** — it has the tested configuration and the setup files:
 
-Example for TypeScript — `eslint.config.js` (flat config). **Tested** against `eslint@9`, `typescript-eslint@8` and `eslint-plugin-boundaries@7`, which uses the `boundaries/dependencies` rule with `policies` (older versions used `boundaries/element-types` with a different syntax — check the installed major version before copying):
+- [TypeScript / JavaScript](references/typescript.md) — ESLint with `eslint-plugin-boundaries` (tested in `examples/shop`)
+- [Python](references/python.md) — `pyproject.toml` and import-linter contracts
+- [Go](references/go.md) — `go.mod`, and why the Module Rule needs `ca_scan`
 
-```js
-// eslint.config.js — enforces the Dependency Rule (layers) and the Module Rule (modules).
-// Written for eslint-plugin-boundaries v7 (`boundaries/dependencies` + policies).
-import tseslint from 'typescript-eslint';
-import boundaries from 'eslint-plugin-boundaries';
-
-// Same module as the importing file
-const same = (type) => ({
-  element: { type, captured: { module: '{{ from.element.captured.module }}' } },
-});
-// Any file of that type
-const any = (type) => ({ element: { type } });
-
-// from → [allowed targets]
-const rule = (from, ...targets) =>
-  targets.map((to) => ({ from: { element: { type: from } }, allow: { to } }));
-
-export default [
-  { files: ['src/**/*.ts'], languageOptions: { parser: tseslint.parser } },
-  {
-    files: ['src/**/*.ts'],
-    plugins: { boundaries },
-    settings: {
-      'import/resolver': { typescript: { project: './tsconfig.json' } },
-      'boundaries/include': ['src/**/*'],
-      // Order matters: the first matching descriptor wins, so `input-port` precedes `application`.
-      'boundaries/elements': [
-        { type: 'shared',         pattern: 'src/shared',                            partialMatch: false },
-        { type: 'domain',         pattern: 'src/modules/*/domain',                  partialMatch: false, capture: ['module'] },
-        { type: 'input-port',     pattern: 'src/modules/*/application/ports/input', partialMatch: false, capture: ['module'] },
-        { type: 'application',    pattern: 'src/modules/*/application',             partialMatch: false, capture: ['module'] },
-        { type: 'infrastructure', pattern: 'src/modules/*/infrastructure',          partialMatch: false, capture: ['module'] },
-        { type: 'platform',       pattern: 'src/platform',                          partialMatch: false },
-        { type: 'main',           pattern: 'src/main',                              partialMatch: false },
-      ],
-    },
-    rules: {
-      'boundaries/dependencies': [2, {
-        default: 'disallow',
-        policies: [
-          // Layers — inward only, and only inside the SAME module
-          ...rule('domain',      { element: { type: 'shared' } }, same('domain')),
-          ...rule('application', { element: { type: 'shared' } }, same('domain'), same('application'), same('input-port')),
-          ...rule('input-port',  { element: { type: 'shared' } }, same('domain'), same('application'), same('input-port')),
-          ...rule('infrastructure', { element: { type: 'shared' } }, same('domain'), same('application'), same('input-port'),
-                            same('infrastructure'),
-                            // The ONE legal cross-module edge: infrastructure → another module's application/ports/input
-                            any('input-port')),
-          ...rule('platform', any('shared'), any('domain'), any('application'), any('input-port'), any('infrastructure'),
-                  any('platform')),
-          ...rule('main', any('shared'), any('domain'), any('application'), any('input-port'), any('infrastructure'),
-                  any('platform'), any('main')),
-        ],
-      }],
-    },
-  },
-];
-```
-
-Install: `npm i -D eslint typescript typescript-eslint eslint-plugin-boundaries eslint-import-resolver-typescript` (do **not** add `@eslint/js` pinned to a different ESLint major — it fails with `ERESOLVE`).
-
-Notes for the generated project:
-- `tsconfig.json`: use `"paths": { "@/*": ["./src/*"] }` **without `baseUrl`** (deprecated in TypeScript 6 and an error without `ignoreDeprecations`).
-- `tsconfig.json`: TypeScript 6 no longer includes `@types/*` automatically — if the code uses Node built-ins (`node:fs`, `node:sqlite`, `node:crypto`), install `@types/node` and set `"types": ["node"]`.
-- Do not name a folder under `src/main/` `modules/`: use `src/main/compose/`. `src/modules/` is the business code, and the same name in two places confuses people.
-- The `input-port` element must come **before** `application` in `boundaries/elements`: the first matching descriptor wins, and `application/ports/input` is the only place another module may reach.
-- The whole `src/modules/*/infrastructure` folder is the infrastructure layer, not just `infrastructure`.
-- After generating the config, verify it by temporarily adding a file that imports outward (for example a `domain/` file importing from `application/`) and checking that ESLint reports it, then delete it. A config that reports nothing may simply not be matching your folders.
+`ca_scan` checks both axes in every supported language (TypeScript/JavaScript, Python, Go) and SQL placement and table ownership on top; a native linter gives faster feedback in the editor. After setting up a linter, verify it: add a file that imports outward (a `domain/` file importing from `application/`), check that the linter reports it, then delete it. A configuration that reports nothing may simply not be matching your folders.
 
 ### 7. Architecture README (`docs/architecture/ARCHITECTURE.md`)
 The scaffold only writes a **generic stub**: once the modules exist, rewrite it so it describes THIS project (its modules, which optional pieces each use case has and why, the cross-module links, the decisions taken) instead of leaving the template text. Explain the layout, both rules, the optional pieces (input port, output port + presenter), the cross-module recipe (port owned by the caller, implemented in its `infrastructure`, calling the other module's input port), where tests, docs and migrations live, and how to add a new module or feature.

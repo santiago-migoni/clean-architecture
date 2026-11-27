@@ -16,6 +16,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { checkSnippets } from './check-snippets.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER = join(ROOT, 'src/server.js');
@@ -439,6 +440,22 @@ try {
       new RegExp(`^name: ${name}$`, 'm').test(fm) && /^description: "This skill should be used .{40,}"$/m.test(fm),
       fm ? fm.split('\n')[0] : '(no frontmatter)');
   }
+
+  // ── 9. skills are language-neutral; code lives in per-language references that parse ─────
+  console.log('\n[9] SKILL.md files carry no code; references cover every language and parse');
+  const CODE_LANGS = /^```(typescript|ts|tsx|javascript|js|python|py|go|golang|java|kotlin|csharp|cs|rust|ruby|php|sql)\s*$/m;
+  const REF_LANGS = ['typescript', 'python', 'go'];
+  for (const name of readdirSync(SKILLS).sort()) {
+    const md = readFileSync(join(SKILLS, name, 'SKILL.md'), 'utf8');
+    check(`skills/${name}: no code block in SKILL.md`, !CODE_LANGS.test(md), CODE_LANGS.exec(md)?.[0]);
+    const refs = join(SKILLS, name, 'references');
+    if (!existsSync(refs)) continue;
+    const missing = REF_LANGS.filter((l) => !existsSync(join(refs, `${l}.md`)) || !md.includes(`references/${l}.md`));
+    check(`skills/${name}: references for ${REF_LANGS.join(', ')} exist and SKILL.md links them`, missing.length === 0, missing.join(', '));
+  }
+  const snippets = checkSnippets();
+  check(`every code block in the references parses (${snippets.checked} checked)`, snippets.failures.length === 0, snippets.failures.join('\n         '));
+  if (snippets.skipped.length) console.log(`  skip  no parser for ${snippets.skipped.join(', ')} here (CI runs scripts/check-snippets.mjs --strict)`);
 } finally {
   for (const dir of temps) rmSync(dir, { recursive: true, force: true });
 }

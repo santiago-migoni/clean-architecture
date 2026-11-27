@@ -12,8 +12,8 @@ Analyze the codebase and generate multiple diagram types to visualize the archit
 
 ### Step 1: Scan the Codebase
 
-Read all files in `src/` to build a model of:
-- All modules (`src/modules/<module>/`) and, inside each, its layers: `domain/`, `application/`, `infrastructure/`; plus `shared/`, `platform/`, `main/`.
+Read all files under the code root (`src/`, or `internal/` and `cmd/` in Go) to build a model of:
+- All modules (`modules/<module>/`) and, inside each, its layers: `domain/`, `application/`, `infrastructure/`; plus `shared/`, `platform/`, `main/`.
 - All entities and their relationships (references to other modules' entities are by id).
 - All use cases and their input/output ports.
 - All adapters (controllers, presenters, gateways).

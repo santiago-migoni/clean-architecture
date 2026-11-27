@@ -20,7 +20,7 @@ From Chapter 21:
 > "The architecture of a software system is the shape given to that system by those who build it. The purpose of that shape is to facilitate the development, deployment, operation, and maintenance of the software system contained within it."
 
 Check:
-- Does `src/modules/` reveal the **business domain** (e.g., `orders/`, `billing/`, `inventory/`) or does the top level reveal the **framework** (e.g., `controllers/`, `models/`, `routes/`)?
+- Does `modules/` reveal the **business domain** (e.g., `orders/`, `billing/`, `inventory/`) or does the top level reveal the **framework** (e.g., `controllers/`, `models/`, `routes/`)?
 - Does every module have clear `domain/`, `application/` and `infrastructure/` layers, with `shared/`, `platform/` and `main/` alongside?
 - Are module names domain terms (and none of the reserved names `shared`, `platform`, `main`, `domain`, `application`, `infrastructure`, `modules`, `bootstrap`, `composition`, `app`, `infra`, `adapters`)?
 - Is there legacy structure left (`entities/`, `usecases/`, `adapters/`, `frameworks/` at the top of `src/`)?
@@ -47,7 +47,7 @@ Score: 0-25 points (most critical section)
 
 ## Section 3: Entity Quality
 
-For each entity in `src/modules/*/domain/`:
+For each entity in `modules/*/domain/`:
 - Does it contain **only** enterprise business rules?
 - Is it **framework-independent**?
 - Does it enforce its own invariants (validation in constructor/factory)?
@@ -113,7 +113,7 @@ Score: 0-10 points
 
 ## Section 7: Component Principles
 
-Perform component analysis (same as `/clean-architecture:components`). The components are each module under `src/modules/`, plus `shared`, `platform` and `main`:
+Perform component analysis (same as `/clean-architecture:components`). The components are each module under `modules/`, plus `shared`, `platform` and `main`:
 - ADP: Cycles in the component dependency graph.
 - SDP: Stable components depending on volatile ones.
 - SAP: Stable concrete components (Zone of Pain) or useless abstractions.
@@ -142,7 +142,7 @@ Score: 0-5 points
 
 ## Section 9: Main Component / Composition Root
 
-Check `src/main/`:
+Check the composition root (`main/`, or `bootstrap/` + `cmd/` in Go):
 - Is this the **only** place where concrete classes are instantiated?
 - Is this the **only** place where dependencies are wired (DI without a framework, or DI framework wiring only here)?
 - Does it follow the **plugin pattern** (main wires plugins into the stable core)?
@@ -231,7 +231,7 @@ List 3-5 changes that can be made immediately for maximum architectural improvem
 If significant restructuring is needed, provide a phased migration plan:
 - Phase 1: Add interfaces at violation points (non-breaking)
 - Phase 2: Move concrete implementations to outer layers
-- Phase 3: Reorganize the folder structure into `src/modules/<module>/{domain,application,infrastructure}` (see `/clean-architecture:migrate`)
+- Phase 3: Reorganize the folder structure into `modules/<module>/{domain,application,infrastructure}` under the language's code root (see `/clean-architecture:migrate`)
 - Phase 4: Add linting rules to prevent regressions
 
 ## Output

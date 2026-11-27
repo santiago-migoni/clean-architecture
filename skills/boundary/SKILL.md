@@ -52,89 +52,51 @@ Determine:
 
 ### Step 2: Define Boundary Interfaces
 
-For each boundary crossing, create interface files in the **inner** layer:
-
-```
-src/modules/<module>/
-└── application/
-    └── ports/
-        ├── input/          ← Boundary interfaces the outer layer calls IN
-        └── output/         ← Boundary interfaces the outer layer must implement
-```
+For each boundary crossing, the interfaces live in the **inner** layer, in the module's `application/ports/`:
+- `input/` — what the outer layer (or another module) calls IN;
+- `output/` — what the outer layer must implement (repositories, payment providers, notifiers, clocks).
 
 ### Step 3: Implement the Full Boundary (if applicable)
 
-**Input Side** (outer layer calls inner layer):
-```typescript
-// Inner layer defines the interface
-// src/modules/<module>/application/ports/input/<boundary-name>.ts
-export interface I<BoundaryName>InputPort {
-  execute(request: <BoundaryName>Request): Promise<void>;
-}
-```
+The inner side declares the port in its own vocabulary; an adapter in `infrastructure/` implements it and translates to the outside format (an SDK, an HTTP API, a queue). The outside client is created in `platform/` and injected by the composition root; business outcomes the provider reports (a declined card) become values or typed errors in the module's vocabulary, anything else propagates.
 
-**Output Side** (inner layer calls outer layer — DIP required):
-```typescript
-// Inner layer defines what it needs
-// src/modules/<module>/application/ports/output/<boundary-name>.ts
-export interface I<BoundaryName>OutputPort {
-  send(data: <BoundaryName>Response): void;
-}
-```
+**Before writing code, read the reference for the project's language** — a full boundary to a payment provider and a partial boundary, for the `billing` module:
 
-The outer layer (`infrastructure`) implements these interfaces:
-```typescript
-// Outer layer satisfies the contract
-// src/modules/<module>/infrastructure/<type>/<boundary-name>-adapter.ts
-import { I<BoundaryName>OutputPort } from '../../../application/ports/output/<boundary-name>';
+- [TypeScript / JavaScript](references/typescript.md)
+- [Python](references/python.md)
+- [Go](references/go.md)
 
-export class <BoundaryName>Adapter implements I<BoundaryName>OutputPort {
-  send(data: <BoundaryName>Response): void {
-    // Translate to framework-specific format
-  }
-}
-```
+Use case ports and the cross-module gateway are in the `usecase` and `gateway` references.
 
 ### Step 4: Module Boundary (Between High-Level Components)
 
-In this layout every module under `src/modules/` is a component, and the line between two modules is a boundary. Example with `billing` and `inventory`:
+In this layout every module under `modules/` is a component, and the line between two modules is a boundary. Example with `billing` and `inventory`:
 
 ```
-src/modules/
+modules/
 ├── billing/
 │   ├── domain/
 │   ├── application/
 │   │   └── ports/
 │   │       └── output/
-│   │           └── inventory-query.ts          ← billing defines what it needs (port owned by billing)
+│   │           └── inventory-query             ← billing defines what it needs (port owned by billing)
 │   └── infrastructure/
 │       └── gateways/
-│           └── inventory-query-gateway.ts      ← implements it, calling inventory's INPUT port
+│           └── inventory-query-gateway     ← implements it, calling inventory's INPUT port
 └── inventory/
     ├── domain/
     ├── application/
     │   └── ports/
     │       └── input/
-    │           └── check-stock.ts              ← the only inventory file billing's infrastructure may import
+    │           └── check-stock                 ← the only inventory file billing's infrastructure may import
     └── infrastructure/
 ```
 
-The `billing` module does NOT import `inventory`'s `domain/` or `infrastructure/`. The port is owned by the **caller** (`billing`), its implementation lives in the caller's `infrastructure`, and that gateway calls only `inventory/application/ports/input/`. `src/main/` injects inventory's interactor into the gateway. Data crossing the boundary is plain data, and `billing`'s domain refers to inventory items by id only.
+The `billing` module does NOT import `inventory`'s `domain/` or `infrastructure/`. The port is owned by the **caller** (`billing`), its implementation lives in the caller's `infrastructure`, and that gateway calls only `inventory/application/ports/input/`. The composition root injects inventory's interactor into the gateway. Data crossing the boundary is plain data, and `billing`'s domain refers to inventory items by id only.
 
 ### Step 5: Partial Boundary (Strategy)
 
-When a full boundary is overkill but you want to preserve the option:
-
-```typescript
-// Keep the interface in place but co-locate impl in the same package
-// Mark it clearly so future teams can split it
-
-// src/modules/<module>/application/ports/output/<name>-service.ts
-/** @partial-boundary — may be extracted to a separate deployable in future */
-export interface I<Name>Service {
-  process(data: <Name>Data): Promise<<Name>Result>;
-}
-```
+When a full boundary is overkill but you want to preserve the option: keep the interface in `application/ports/output/` and a single implementation in the same module, and mark the interface as a partial boundary in its doc comment so a future team can split it out without touching the callers. (Example in the language references.)
 
 ### Step 6: Document the Boundary Decision
 

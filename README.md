@@ -103,6 +103,8 @@ Embedded SQL is read only from string literals (never comments) that start like 
 
 Source files in any other language (Java, Kotlin, C#, …) are **reported as not checked** and the project gets no health score, instead of a misleading 100.
 
+The skills are language-neutral: each `SKILL.md` holds the workflow and the checklist, and the code is in `skills/<skill>/references/{typescript,python,go}.md` (plus `sql.md` for the gateway), one complete example per language on the same `orders`/`customers` domain. Claude reads only the reference for the project's language. Every code block there must parse with its language's own parser (`node scripts/check-snippets.mjs`, run in CI with `--strict`), so the examples use concrete names, never placeholders.
+
 Each profile has a fixture in [`fixtures/<language>/`](fixtures): a small project that builds and runs with its own toolchain, and that `verify:example` scans clean and then with planted violations. Adding a language means adding a profile, its fixture and its checks — the rules themselves do not change.
 
 ## Hooks
