@@ -105,7 +105,7 @@ Source files in any other language (Java, Kotlin, C#, …) are **reported as not
 
 The skills are language-neutral: each `SKILL.md` holds the workflow and the checklist, and the code is in `skills/<skill>/references/{typescript,python,go}.md` (plus `sql.md` for the gateway), one complete example per language on the same `orders`/`customers` domain. Claude reads only the reference for the project's language. Every code block there must parse with its language's own parser (`node scripts/check-snippets.mjs`, run in CI with `--strict`), so the examples use concrete names, never placeholders.
 
-Each profile has a fixture in [`fixtures/<language>/`](fixtures): a small project that builds and runs with its own toolchain, and that `verify:example` scans clean and then with planted violations. Adding a language means adding a profile, its fixture and its checks — the rules themselves do not change.
+Each profile is verified against its example in [`examples/<language>/`](examples) (SQL against the Go example, whose queries and migrations are `.sql` files): a real application with its own tests, which `verify:example` scans clean and then with planted violations. Adding a language means adding a profile, its example and its checks — the rules themselves do not change.
 
 ## Command line: `ca-scan`
 
@@ -167,10 +167,10 @@ The hook and the MCP server share one rule set (`src/lib/architecture.js`), so t
 
 | Job | What it guards |
 |---|---|
-| **Plugin engine** | Syntax of the MCP server, hook and rules; the JSON manifests; and `npm run verify:example`, which checks the scanner **in both directions**: `examples/shop` and every language fixture must be clean, and planted violations (outward import, cross-module import, `infrastructure` → `platform`, a file directly under `infrastructure/`, a folder named `modules/` that is not business code, a legacy layout) must be found — in each language's own import syntax, while external packages named like a layer are ignored. A scanner that reports nothing may simply be broken, so a clean result alone proves nothing. |
-| **Example** (Node 22.13.0, 22, 24) | `npm ci` from the lockfile, `tsc`, ESLint with the architecture rules, and the 57 tests. The TypeScript fixture is typechecked with the same toolchain. |
+| **Plugin engine** | Syntax of the MCP server, hook and rules; the JSON manifests; and `npm run verify:example`, which checks the scanner **in both directions**: every example (`examples/typescript`, `examples/python`, `examples/go`) must be clean, and planted violations (outward import, cross-module import, `infrastructure` → `platform`, a file directly under `infrastructure/`, a folder named `modules/` that is not business code, a legacy layout) must be found — in each language's own import syntax, while external packages named like a layer are ignored. A scanner that reports nothing may simply be broken, so a clean result alone proves nothing. |
+| **Example** (Node 22.13.0, 22, 24) | `examples/typescript`: `npm ci` from the lockfile, `tsc`, ESLint with the architecture rules, and its 60 tests. |
 | **Linters** | `scripts/check-linters.mjs --strict`: the ESLint, import-linter and go-arch-lint configurations the skills recommend pass on their clean project and fail on planted violations of each kind, naming every planted file. |
-| **Fixtures** | Each language fixture builds and runs with its own toolchain: `go vet` and `go test` for Go, `python -m shop.main` for Python, and for SQL every migration applies on SQLite and every query compiles. A fixture that is not real code would test the scanner against imports nobody writes. |
+| **Examples (Python, Go)** | `examples/go` builds, vets and passes its tests with and without the `integration` tag (Go 1.26); `examples/python` installs and passes its tests (Python 3.11). |
 
 Run the engine check locally with `npm run verify:example`.
 

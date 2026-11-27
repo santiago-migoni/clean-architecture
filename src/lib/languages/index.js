@@ -3,7 +3,7 @@
  * the imports in a file, and how to turn an import into a path that can be classified by layer and
  * module. The rules themselves (layers, modules) stay language-neutral in ../architecture.js.
  *
- * Adding a language = adding a profile here, its fixture under fixtures/<id>/, and its checks in
+ * Adding a language = adding a profile here, its example under examples/<id>/, and its checks in
  * scripts/verify-example.mjs.
  *
  *   id, name, extensions

@@ -1,5 +1,7 @@
 # Tests — Go
 
+The complete, tested version of this code is [`examples/go`](../../../examples/go): the same application in every language.
+
 Tests are `<file>_test.go` beside the code, in the same package (or `<package>_test` to test only the exported API). Gateway tests against a real database carry `//go:build integration`. HTTP e2e tests live in `cmd/<app>/` or `internal/bootstrap/`, using `httptest`.
 
 ```text
@@ -111,8 +113,7 @@ import (
 )
 
 func TestPlaceOrderForAnUnknownCustomerIs404(t *testing.T) {
-	handler, _ := NewForTest()
-	server := httptest.NewServer(handler)
+	server := httptest.NewServer(NewForTest().Handler)
 	defer server.Close()
 
 	res, err := http.Post(server.URL+"/orders", "application/json",
@@ -126,9 +127,8 @@ func TestPlaceOrderForAnUnknownCustomerIs404(t *testing.T) {
 }
 
 func TestMalformedJSONIs400(t *testing.T) {
-	handler, _ := NewForTest()
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/orders", strings.NewReader(`{`)))
+	NewForTest().Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/orders", strings.NewReader(`{`)))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400, got %d", rec.Code)
 	}

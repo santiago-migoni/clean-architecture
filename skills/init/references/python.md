@@ -8,7 +8,7 @@ Layout: `src/<package>/modules/<module>/{domain,application,infrastructure}`, `s
 [project]
 name = "shop"
 version = "0.1.0"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -26,7 +26,7 @@ testpaths = ["tests"]
 
 ## Both axes with import-linter
 
-Tested with import-linter 2.17 on the plugin's Python fixture, in both directions (clean, and failing on planted violations of each kind). One `layers` contract covers every module through `containers`; a `forbidden` contract keeps the drivers out; an `independence` contract keeps modules apart, with the single legal edge ignored.
+Tested with import-linter 2.17 on [`examples/python`](../../../examples/python), in both directions (clean, and failing on planted violations of each kind). One `layers` contract covers every module through `containers`; a `forbidden` contract keeps the drivers out; an `independence` contract keeps modules apart, with the single legal edge ignored.
 
 ```toml
 [tool.importlinter]

@@ -1,5 +1,7 @@
 # Presenter — Python
 
+The complete, tested version of this code is [`examples/python`](../../../examples/python): the same application in every language.
+
 Files: `src/<package>/modules/<module>/infrastructure/presenters/<name>_presenter.py` with `<name>_view_model.py` beside it; the humble route in `src/<package>/platform/web/`. The presenter satisfies the Output Port `Protocol` structurally.
 
 ## View model

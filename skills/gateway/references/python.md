@@ -1,5 +1,7 @@
 # Gateway — Python
 
+The complete, tested version of this code is [`examples/python`](../../../examples/python): the same application in every language.
+
 Files: `src/<package>/modules/<module>/infrastructure/gateways/`: `sql_<entity>_repository.py` (named after the technology), `<entity>_persistence_model.py` beside it, `in_memory/<entity>_in_memory_repository.py`, `migrations/NNN_<change>.sql`, and cross-module gateways such as `customer_lookup_gateway.py`. The examples use the standard library's `sqlite3`; with SQLAlchemy or another driver the shape is the same (the ORM models live here, never in `domain/`). SQL itself: see the [SQL reference](sql.md).
 
 ## Persistence model and mapper

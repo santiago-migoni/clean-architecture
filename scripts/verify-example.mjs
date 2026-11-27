@@ -274,11 +274,11 @@ try {
     lo.module === 'orders' && lo.dependencyRuleCompliant === false && lo.importViolations.some((v) => v.rule === 'cross-module'),
     JSON.stringify(lo).slice(0, 200));
 
-  // ── 5b. every language profile, against its fixture ───────────────────────────────────
+  // ── 5b. every language profile, against its example ───────────────────────────────────
   // examples/<lang> is the reference application in that language (it builds and passes its own tests in CI).
   // It must scan clean; then the same four kinds of violation are planted with that language's
   // import syntax, plus imports that must NOT be reported (external packages named like a layer).
-  console.log('\n[5b] each language profile: its fixture is clean, and planted violations are found exactly');
+  console.log('\n[5b] each language profile: its example is clean, and planted violations are found exactly');
   const LANGS = {
     typescript: {
       dir: EXAMPLE,

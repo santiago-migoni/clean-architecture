@@ -14,7 +14,7 @@ The module path is the import root: `example.com/shop/internal/modules/orders/do
 
 The compiler forbids import cycles and `internal/` keeps other repositories out, but nothing stops one module from importing another module's `domain/`. Two ways to enforce the rules:
 
-**go-arch-lint**, configured per module: one component per layer of each module, and the single legal cross-module edge listed explicitly. Tested with go-arch-lint v1.19.2 on the plugin's Go fixture, in both directions (clean, and failing on planted violations of each kind):
+**go-arch-lint**, configured per module: one component per layer of each module, and the single legal cross-module edge listed explicitly. Tested with go-arch-lint v1.19.2 on [`examples/go`](../../../examples/go), in both directions (clean, and failing on planted violations of each kind):
 
 ```yaml
 # go-arch-lint (v1.19, config v3): both axes, declared per module.
@@ -30,24 +30,25 @@ allow:
   # (infrastructure passed to application) as a violation: that injection IS the Dependency
   # Inversion this architecture relies on. Imports are what the rules constrain.
   deepScan: false
+  depOnAnyVendor: true
 
 components:
-  shared:                  { in: shared/** }
-  platform:                { in: platform/** }
-  bootstrap:               { in: bootstrap/** }
+  shared:                   { in: shared/** }
+  platform:                 { in: platform/** }
+  bootstrap:                { in: bootstrap/** }
 
-  customers-domain:        { in: modules/customers/domain/** }
-  customers-input:         { in: modules/customers/application/ports/input/** }
-  customers-application:   { in: modules/customers/application/** }
+  customers-domain:         { in: modules/customers/domain/** }
+  customers-input:          { in: modules/customers/application/ports/input/** }
+  customers-application:    { in: modules/customers/application/** }
   customers-infrastructure: { in: modules/customers/infrastructure/** }
 
-  orders-domain:           { in: modules/orders/domain/** }
-  orders-application:      { in: modules/orders/application/** }
-  orders-infrastructure:   { in: modules/orders/infrastructure/** }
+  orders-domain:            { in: modules/orders/domain/** }
+  orders-application:       { in: modules/orders/application/** }
+  orders-infrastructure:    { in: modules/orders/infrastructure/** }
 
 deps:
   platform:
-    mayDependOn: [shared]
+    mayDependOn: [shared, orders-infrastructure]  # the web view reads the orders presenter
   bootstrap:
     anyProjectDeps: true
 
@@ -58,17 +59,17 @@ deps:
   customers-application:
     mayDependOn: [customers-application, customers-input, customers-domain, shared]
   customers-infrastructure:
-    mayDependOn: [customers-application, customers-input, customers-domain, shared]
+    mayDependOn: [customers-infrastructure, customers-application, customers-input, customers-domain, shared]
 
   orders-domain:
-    mayDependOn: [shared]
+    mayDependOn: [orders-domain, shared]
   orders-application:
     mayDependOn: [orders-application, orders-domain, shared]
   orders-infrastructure:
-    mayDependOn: [orders-application, orders-domain, shared, customers-input]
+    mayDependOn: [orders-infrastructure, orders-application, orders-domain, shared, customers-input]
 ```
 
-Installing go-arch-lint v1.19.2 (`go install github.com/fe3dback/go-arch-lint@v1.19.2`) needs Go 1.26 or newer; it still checks a module that declares an older `go` version. Keep `deepScan: false`: it would report the composition root injecting implementations into use cases, which is the Dependency Inversion itself. Add a component for `application/ports/input/**` only once the folder exists (a glob that matches nothing is an error), and list every new module.
+Installing go-arch-lint v1.19.2 (`go install github.com/fe3dback/go-arch-lint@v1.19.2`) needs Go 1.26 or newer; it still checks a module that declares an older `go` version. List each component in its own `mayDependOn` (imports between packages of one layer), allow vendor dependencies (`depOnAnyVendor`), and keep `deepScan: false`: it would report the composition root injecting implementations into use cases, which is the Dependency Inversion itself. Add a component for `application/ports/input/**` only once the folder exists (a glob that matches nothing is an error), and list every new module.
 
 **ca-scan** (below) needs no per-module configuration and also checks SQL and cycles.
 

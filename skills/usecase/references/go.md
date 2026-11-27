@@ -1,5 +1,7 @@
 # Use case — Go
 
+The complete, tested version of this code is [`examples/go`](../../../examples/go): the same application in every language.
+
 Packages, inside `internal/modules/<module>/application/`: `interactors` (one file per use case, plus the module's application errors), `ports/output` (one file per port), `ports/input` (optional). Ports are interfaces in the package of the code that USES them; implementations satisfy them implicitly. Every method that may do I/O takes a `context.Context` first.
 
 ## Interactor — default flow (returns a response model)
@@ -156,7 +158,11 @@ type PlaceOrderOutput interface {
 
 With it, `Execute` returns only unexpected errors: it calls `PresentError` for `domain.ErrInvalidOrder` and `*CustomerNotFoundError`, and `Present` on success.
 
-## Test — no database, the other module faked through this module's port
+## Test — no database, local fakes for every port
+
+In Go the test sits beside the interactor and is checked with its layer: it must not import the in-memory gateways
+(that would be `application → infrastructure`). Small fakes in the test file are the idiomatic answer anyway, and
+the other module is faked through this module's own port.
 
 ```go
 // internal/modules/orders/application/interactors/place_order_test.go
@@ -167,29 +173,37 @@ import (
 	"errors"
 	"testing"
 
-	ordersinmemory "example.com/shop/internal/modules/orders/infrastructure/gateways/inmemory"
+	"example.com/shop/internal/modules/orders/domain"
 )
 
-type stubCustomers map[string]bool
+type fakeOrders struct{ saved []*domain.Order }
 
-func (s stubCustomers) Exists(_ context.Context, id string) (bool, error) { return s[id], nil }
+func (f *fakeOrders) FindByID(context.Context, string) (*domain.Order, error) { return nil, nil }
+func (f *fakeOrders) Save(_ context.Context, o *domain.Order) error {
+	f.saved = append(f.saved, o)
+	return nil
+}
+
+type fakeCustomers map[string]bool
+
+func (f fakeCustomers) Exists(_ context.Context, id string) (bool, error) { return f[id], nil }
 
 var request = PlaceOrderRequest{CustomerID: "c-1", Lines: []PlaceOrderLine{{ProductID: "p-1", Quantity: 2, UnitPriceCents: 1000}}}
 
 func TestPlaceOrderForAnExistingCustomer(t *testing.T) {
-	uc := NewPlaceOrder(ordersinmemory.NewOrderRepository(), stubCustomers{"c-1": true}, func() string { return "o-1" })
-	res, err := uc.Execute(context.Background(), request)
-	if err != nil || res.OrderID != "o-1" || res.TotalCents != 2000 {
+	orders := &fakeOrders{}
+	res, err := NewPlaceOrder(orders, fakeCustomers{"c-1": true}, func() string { return "o-1" }).Execute(context.Background(), request)
+	if err != nil || res.OrderID != "o-1" || res.TotalCents != 2000 || len(orders.saved) != 1 {
 		t.Fatalf("got %+v, %v", res, err)
 	}
 }
 
-func TestPlaceOrderForAnUnknownCustomer(t *testing.T) {
-	orders := ordersinmemory.NewOrderRepository()
-	_, err := NewPlaceOrder(orders, stubCustomers{}, func() string { return "o-1" }).Execute(context.Background(), request)
+func TestPlaceOrderForAnUnknownCustomerStoresNothing(t *testing.T) {
+	orders := &fakeOrders{}
+	_, err := NewPlaceOrder(orders, fakeCustomers{}, func() string { return "o-1" }).Execute(context.Background(), request)
 	var notFound *CustomerNotFoundError
-	if !errors.As(err, &notFound) {
-		t.Fatalf("want CustomerNotFoundError, got %v", err)
+	if !errors.As(err, &notFound) || len(orders.saved) != 0 {
+		t.Fatalf("want CustomerNotFoundError and nothing stored, got %v", err)
 	}
 }
 ```

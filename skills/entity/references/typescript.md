@@ -71,15 +71,25 @@ export class Order {
 
 ## Domain error
 
+Each module declares its own error; the shared kernel holds their common base, so outer layers can catch any broken
+business rule with one type.
+
+```typescript
+// src/shared/domain-error.ts — shared kernel: imports nothing, holds no module's policy
+export abstract class DomainError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = new.target.name;
+  }
+}
+```
+
 ```typescript
 // src/modules/orders/domain/errors/invalid-order-error.ts
 // A rule of the Order aggregate was violated. Thrown by the entity, mapped by the outer layers by type.
-export class InvalidOrderError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'InvalidOrderError';
-  }
-}
+import { DomainError } from '../../../../shared/domain-error';
+
+export class InvalidOrderError extends DomainError {}
 ```
 
 ## Value object

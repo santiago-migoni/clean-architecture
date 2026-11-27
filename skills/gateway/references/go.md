@@ -1,5 +1,7 @@
 # Gateway — Go
 
+The complete, tested version of this code is [`examples/go`](../../../examples/go): the same application in every language.
+
 Packages under `internal/modules/<module>/infrastructure/`: `gateways` (or a technology-named package such as `postgres`), `gateways/inmemory`, and the SQL migrations in `gateways/migrations/`. The examples use `database/sql`; the driver is registered in `internal/platform/db/` and the `*sql.DB` is injected by `internal/bootstrap`. SQL itself: see the [SQL reference](sql.md).
 
 ## SQL gateway with its row mapping

@@ -1,5 +1,7 @@
 # Presenter — Go
 
+The complete, tested version of this code is [`examples/go`](../../../examples/go): the same application in every language.
+
 Files: `internal/modules/<module>/infrastructure/presenters/<name>.go` (package `presenters`), view model beside it; the humble handler in `internal/platform/web/`. The presenter satisfies the Output Port interface implicitly; `var _ output.PlaceOrderOutput = (*PlaceOrder)(nil)` makes the compiler check it.
 
 ## View model and presenter — the testable half

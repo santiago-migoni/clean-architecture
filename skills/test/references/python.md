@@ -1,5 +1,7 @@
 # Tests — Python
 
+The complete, tested version of this code is [`examples/python`](../../../examples/python): the same application in every language.
+
 Layout: `tests/<module>/unit/{domain,application,infrastructure}/`, `tests/<module>/integration/` (flat: gateways against a real database), `tests/e2e/`, run with pytest. Files are `test_<name>.py`.
 
 The test of each piece is in that piece's skill reference: entity (`entity`), interactor (`usecase`), presenter (`presenter`), controller (`controller`), gateway integration test (`gateway`). This page holds what spans several pieces.

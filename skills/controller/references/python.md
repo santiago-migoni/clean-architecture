@@ -1,5 +1,7 @@
 # Controller — Python
 
+The complete, tested version of this code is [`examples/python`](../../../examples/python): the same application in every language.
+
 Files: `src/<package>/modules/<module>/infrastructure/controllers/<name>_controller.py`. The controller receives plain delivery data (a parsed JSON body, CLI arguments) and returns a status and a body, so it is testable without the web framework; the framework route that calls it lives in `src/<package>/platform/web/`. The examples use FastAPI for that route; any framework works the same way.
 
 ## Default style — the controller maps the response model to an HTTP answer

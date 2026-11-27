@@ -1,5 +1,7 @@
 # Composition root — Python
 
+The complete, tested version of this code is [`examples/python`](../../../examples/python): the same application in every language.
+
 Files: `src/<package>/main/__main__.py` (entry point: `python -m <package>.main`), `src/<package>/main/app.py` (a factory that builds the app), `src/<package>/main/compose/<module>.py` (one function per module), and the test composition root `src/<package>/main/testing.py` (importable by every test, never by production code). Several entry points: `src/<package>/main/<app>/__main__.py`, sharing `compose/`. The examples use FastAPI and `sqlite3` with manual DI.
 
 ## One function per module

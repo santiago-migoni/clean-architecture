@@ -1,5 +1,7 @@
 # Composition root — Go
 
+The complete, tested version of this code is [`examples/go`](../../../examples/go): the same application in every language.
+
 Packages: `internal/bootstrap` (the wiring: one file per module plus `bootstrap.go`) and one `cmd/<app>/main.go` per entry point (api, worker, cli), each only calling bootstrap and running. Same-named packages of different modules are imported with a `<module><package>` alias.
 
 ## One function per module
@@ -126,14 +128,20 @@ import (
 	"example.com/shop/internal/platform/web"
 )
 
+// TestApp exposes what tests assert on, next to the handler.
+type TestApp struct {
+	Handler   http.Handler
+	Customers *customersinmemory.CustomerRepository
+}
+
 // NewForTest wires the same use cases on in-memory gateways, with deterministic ids.
-func NewForTest() (http.Handler, *customersinmemory.CustomerRepository) {
+func NewForTest() TestApp {
 	n := 0
 	newID := func() string { n++; return fmt.Sprintf("id-%d", n) }
 	customers := customersinmemory.NewCustomerRepository()
 	getCustomer := customersinteractors.NewGetCustomer(customers)
 	placeOrder := ordersinteractors.NewPlaceOrder(ordersinmemory.NewOrderRepository(), ordersgateways.NewCustomerLookupGateway(getCustomer), newID)
-	return web.NewMux(web.Handlers{PlaceOrder: orderscontrollers.NewPlaceOrder(placeOrder)}), customers
+	return TestApp{Handler: web.NewMux(web.Handlers{PlaceOrder: orderscontrollers.NewPlaceOrder(placeOrder)}), Customers: customers}
 }
 ```
 

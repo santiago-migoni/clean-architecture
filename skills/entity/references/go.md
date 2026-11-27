@@ -1,5 +1,7 @@
 # Entity — Go
 
+The complete, tested version of this code is [`examples/go`](../../../examples/go): the same application in every language.
+
 Files: `internal/modules/<module>/domain/<entity>.go`, snake_case (`order.go`, `order_line.go`), package `domain`. Domain errors are sentinel values or error types in the same package. Tests are `_test.go` beside the code.
 
 ## Entity

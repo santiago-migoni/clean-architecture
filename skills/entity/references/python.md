@@ -1,5 +1,7 @@
 # Entity — Python
 
+The complete, tested version of this code is [`examples/python`](../../../examples/python): the same application in every language.
+
 Files: `src/<package>/modules/<module>/domain/<entity>.py`, snake_case (`order.py`, `order_line.py`). Domain errors in `domain/errors.py` (or `domain/errors/` once there are several). Dataclasses keep entities plain; `frozen=True` for value objects.
 
 ## Entity

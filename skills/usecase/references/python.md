@@ -1,5 +1,7 @@
 # Use case — Python
 
+The complete, tested version of this code is [`examples/python`](../../../examples/python): the same application in every language.
+
 Files, inside `src/<package>/modules/<module>/application/`: `interactors/<use_case>.py`, `ports/output/<port>.py`, `ports/input/<use_case>.py` (optional), `errors.py`. snake_case. Ports are `typing.Protocol`s: the gateway satisfies them structurally, without importing them. Request and response models are frozen dataclasses with primitive fields.
 
 ## Interactor — default flow (returns a response model)

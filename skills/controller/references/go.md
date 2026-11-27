@@ -1,5 +1,7 @@
 # Controller — Go
 
+The complete, tested version of this code is [`examples/go`](../../../examples/go): the same application in every language.
+
 Files: `internal/modules/<module>/infrastructure/controllers/<name>.go` (package `controllers`), or a subpackage named after the technology (`infrastructure/httpapi/`). `net/http` is the framework here: the controller is an `http.Handler`, so it is tested with `httptest` and registered on a mux in `internal/platform/web/`.
 
 ## Default style — the controller maps the response model to HTTP
