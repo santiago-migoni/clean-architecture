@@ -83,9 +83,23 @@ The plugin ships an MCP server (`src/server.js`) that gives Claude real file-sys
 | `ca_layer_of` | Identifies which layer and module a file belongs to and checks its imports for compliance |
 | `ca_cycles` | Detects cyclic dependencies between components — modules, `shared`, `platform`, `main` (ADP check) |
 
+## Languages
+
+The rules are the same in every language; what changes is how imports are written. The engine reads them through a **language profile** (`src/lib/languages/`):
+
+| Language | Files | Imports understood | An import is project code when… |
+|---|---|---|---|
+| TypeScript / JavaScript | `.ts .tsx .mts .cts .js .jsx .mjs .cjs` | `import`/`export … from`, `import type`, side-effect `import`, `import()`, `require()` | it is relative, uses an alias (`@/`, `~/`, `src/`), or is a `baseUrl` path whose first folder exists under `src/` |
+| Python | `.py` | `import a, b as c`, `from … import`, relative imports, also indented (inside `try:` or a function) | it is relative, or its top-level package exists under `src/` (or the root) |
+| Go | `.go` | single and grouped `import`, with or without an alias (`x`, `_`, `.`) | it starts with the module path in the nearest `go.mod` |
+
+Source files in any other language (Java, Kotlin, C#, …) are **reported as not checked** and the project gets no health score, instead of a misleading 100.
+
+Each profile has a fixture in [`fixtures/<language>/`](fixtures): a small project that builds and runs with its own toolchain, and that `verify:example` scans clean and then with planted violations. Adding a language means adding a profile, its fixture and its checks — the rules themselves do not change.
+
 ## Hooks
 
-**SessionStart.** A plugin's `CLAUDE.md` is never loaded into the projects that install it, so the rules ship as the `rules` skill. When a session starts in a project that has a `modules/` folder (under `src/`, `application/` or the root), this hook tells Claude to load `clean-architecture:rules` before writing or reviewing code. Any other project gets no Clean Architecture context at all.
+**SessionStart.** A plugin's `CLAUDE.md` is never loaded into the projects that install it, so the rules ship as the `rules` skill. When a session starts in a project that has a `modules/` folder (under `src/`, `app/` or the root), this hook tells Claude to load `clean-architecture:rules` before writing or reviewing code. Any other project gets no Clean Architecture context at all.
 
 **PostToolUse (real time).** The plugin registers a **PostToolUse hook** that fires after every file edit. If the file you just wrote violates the Dependency Rule or the Module Rule, you'll see a warning inline in Claude Code immediately:
 
@@ -117,7 +131,7 @@ The hook and the MCP server share one rule set (`src/lib/architecture.js`), so t
 
 ## Example Project
 
-[`examples/shop`](examples/shop) is a runnable reference built by applying the skills: two modules (`orders`, `customers`), Express, SQLite, 52 tests and the architecture rules enforced by ESLint. It shows the optional pieces in use (an Input Port only where another module calls the use case, a Presenter only where output is formatted), the cross-module recipe, and the guards that a happy-path test misses.
+[`examples/shop`](examples/shop) is a runnable reference built by applying the skills: two modules (`orders`, `customers`), Express, SQLite, 57 tests and the architecture rules enforced by ESLint. It shows the optional pieces in use (an Input Port only where another module calls the use case, a Presenter only where output is formatted), the cross-module recipe, and the guards that a happy-path test misses.
 
 ```bash
 cd examples/shop && npm ci && npm test && npm start
@@ -129,8 +143,9 @@ cd examples/shop && npm ci && npm test && npm start
 
 | Job | What it guards |
 |---|---|
-| **Plugin engine** | Syntax of the MCP server, hook and rules; the JSON manifests; and `npm run verify:example`, which checks the scanner **in both directions**: `examples/shop` must be clean, and planted violations (outward import, cross-module import, `infrastructure` → `platform`, a file directly under `infrastructure/`, a folder named `modules/` that is not business code, a legacy layout) must be found. A scanner that reports nothing may simply be broken, so a clean result alone proves nothing. |
-| **Example** (Node 22.13.0, 22, 24) | `npm ci` from the lockfile, `tsc`, ESLint with the architecture rules, and the 52 tests. |
+| **Plugin engine** | Syntax of the MCP server, hook and rules; the JSON manifests; and `npm run verify:example`, which checks the scanner **in both directions**: `examples/shop` and every language fixture must be clean, and planted violations (outward import, cross-module import, `infrastructure` → `platform`, a file directly under `infrastructure/`, a folder named `modules/` that is not business code, a legacy layout) must be found — in each language's own import syntax, while external packages named like a layer are ignored. A scanner that reports nothing may simply be broken, so a clean result alone proves nothing. |
+| **Example** (Node 22.13.0, 22, 24) | `npm ci` from the lockfile, `tsc`, ESLint with the architecture rules, and the 57 tests. The TypeScript fixture is typechecked with the same toolchain. |
+| **Fixtures** | Each language fixture builds and runs with its own toolchain: `go vet` and `go test` for Go, `python -m shop.main` for Python. A fixture that is not real code would test the scanner against imports nobody writes. |
 
 Run the engine check locally with `npm run verify:example`.
 

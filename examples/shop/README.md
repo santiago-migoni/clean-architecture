@@ -10,7 +10,7 @@ Express 5 · SQLite (`node:sqlite`, built in) · TypeScript · Vitest · ESLint 
 cd examples/shop
 npm ci
 npm run typecheck && npm run lint   # tsc + architecture rules enforced as lint errors
-npm test                            # 52 tests (29 unit tests need no DB and no port)
+npm test                            # 57 tests (33 unit tests need no DB and no port)
 npm start                           # http://localhost:3000  (PORT and DB_PATH are optional)
 ```
 

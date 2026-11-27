@@ -29,6 +29,8 @@ jobs:
         run: |
           node --check src/server.js
           node --check src/lib/architecture.js
+          node --check src/lib/paths.js
+          for f in src/lib/languages/*.js; do node --check "$f"; done
           node --check src/hooks/dependency-check.js
           node --check src/hooks/session-start.js
           node --check scripts/verify-example.mjs
@@ -94,3 +96,33 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Typecheck the TypeScript fixture (with this toolchain)
+        run: npx tsc -p ../../fixtures/typescript/tsconfig.json --typeRoots ./node_modules/@types --types node
+
+  # Every language fixture must be real code: it builds and runs with its own toolchain.
+  fixtures:
+    name: Fixtures (Go, Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Go fixture builds, vets and passes its tests
+        working-directory: fixtures/go
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go test ./...
+          go run ./cmd/api
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Python fixture runs
+        working-directory: fixtures/python
+        run: PYTHONPATH=src python -m shop.main

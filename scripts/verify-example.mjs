@@ -22,6 +22,7 @@ const SERVER = join(ROOT, 'src/server.js');
 const HOOK = join(ROOT, 'src/hooks/dependency-check.js');
 const SESSION_HOOK = join(ROOT, 'src/hooks/session-start.js');
 const EXAMPLE = join(ROOT, 'examples/shop');
+const FIXTURES = join(ROOT, 'fixtures');
 
 const failures = [];
 const check = (name, ok, detail = '') => {
@@ -185,12 +186,10 @@ try {
   write(pos, `${M}/orders/application/barrel-cross.ts`, "import { C } from '../../customers/domain';\n");
   write(pos, `${M}/orders/application/alias-cross.ts`, "import { C } from '@/modules/customers';\n");
   write(pos, 'src/shop/modules/orders/application/py_cross.py', 'from shop.modules.customers.domain.customer import Customer\n');
-  write(pos, 'src/main/java/com/acme/modules/orders/application/JavaCross.java', 'import com.acme.modules.customers.domain.Customer;\n');
-  // must NOT be reported: main/<app>/ is main (even when named like a layer), a nested shared/ folder
-  // stays in its module's layer, and the legal cross-module edge also works for Java packages
+  // must NOT be reported: main/<app>/ is main (even when named like a layer), and a nested shared/ folder
+  // stays in its module's layer
   write(pos, 'src/main/application/index.ts', "import { createDbConnection } from '../../platform/db/connection';\n");
   write(pos, `${M}/orders/domain/shared/money.ts`, "import { Order } from '../order';\n");
-  write(pos, 'src/main/java/com/acme/modules/orders/infrastructure/JavaLegal.java', 'import com.acme.modules.customers.application.ports.input.GetCustomer;\n');
   const ps = callTool(pos, 'ca_scan');
   const psGot = ps.violations.map((v) => `${v.rule}:${v.file.split('/').pop()}`);
   const psWant = [
@@ -198,9 +197,8 @@ try {
     'cross-module:barrel-cross.ts',
     'cross-module:alias-cross.ts',
     'cross-module:py_cross.py',
-    'cross-module:JavaCross.java',
   ];
-  check('ca_scan: barrel, alias, Python and Java imports are checked; main/<app>/ and nested shared/ are not misread',
+  check('ca_scan: barrel, alias and Python package imports are checked; main/<app>/ and nested shared/ are not misread',
     same(psGot, psWant), `got:  ${psGot.sort().join(', ')}\n         want: ${psWant.sort().join(', ')}`);
 
   // ca_layer_of on a file of a NESTED project must use that project's src/, not the cwd's
@@ -211,6 +209,94 @@ try {
   check('ca_layer_of: a nested project is classified against its own src/ (module found, violation reported)',
     lo.module === 'orders' && lo.dependencyRuleCompliant === false && lo.importViolations.some((v) => v.rule === 'cross-module'),
     JSON.stringify(lo).slice(0, 200));
+
+  // ── 5b. every language profile, against its fixture ───────────────────────────────────
+  // fixtures/<lang> is a small real project (it builds, runs or typechecks with its own toolchain).
+  // It must scan clean; then the same four kinds of violation are planted with that language's
+  // import syntax, plus imports that must NOT be reported (external packages named like a layer).
+  console.log('\n[5b] each language profile: its fixture is clean, and planted violations are found exactly');
+  const LANGS = {
+    typescript: {
+      modules: 'src/modules',
+      plant: {
+        'orders/domain/planted-outward.ts': "import { PlaceOrderInteractor } from '../application/interactors/place-order';\n",
+        'orders/domain/planted-dynamic.tsx': "export const load = () => import('../infrastructure/gateways/customer-lookup-gateway');\n",
+        'orders/application/interactors/planted-cross.mts': "import type { Customer } from '@/modules/customers/domain/customer';\n",
+        'orders/infrastructure/gateways/planted-platform.cjs': "const { startServer } = require('../../../../platform/web/server.mjs');\n",
+        'orders/infrastructure/gateways/planted-infra.jsx':
+          "export { CustomerInMemoryRepository } from '../../../customers/infrastructure/gateways/in-memory/customer-in-memory-repository';\n",
+        'orders/domain/planted-packages.ts': "import platform from 'platform';\nimport { z } from 'zod';\nimport { readFile } from 'node:fs';\n",
+      },
+      want: ['dependency-rule:planted-outward.ts', 'dependency-rule:planted-dynamic.tsx', 'cross-module:planted-cross.mts',
+        'dependency-rule:planted-platform.cjs', 'cross-module:planted-infra.jsx'],
+    },
+    python: {
+      modules: 'src/shop/modules',
+      plant: {
+        'orders/domain/planted_outward.py': 'def late():\n    from ..application.interactors.place_order import PlaceOrderInteractor\n    return PlaceOrderInteractor\n',
+        'orders/application/interactors/planted_cross.py': 'import os, shop.modules.customers.domain.customer as customer\n',
+        'orders/infrastructure/gateways/planted_platform.py': 'from shop.platform.db.connection import connect\n',
+        'orders/infrastructure/gateways/planted_infra.py':
+          'try:\n    from ....customers.infrastructure.gateways.in_memory import customer_in_memory_repository\nexcept ImportError:\n    pass\n',
+        'orders/domain/planted_stdlib.py': 'import platform, json\nfrom typing import Protocol\n',
+      },
+      want: ['dependency-rule:planted_outward.py', 'cross-module:planted_cross.py', 'dependency-rule:planted_platform.py',
+        'cross-module:planted_infra.py'],
+    },
+    go: {
+      modules: 'internal/modules',
+      plant: {
+        'orders/domain/planted_outward.go':
+          'package domain\n\nimport (\n\t"fmt"\n\n\tic "example.com/shop/internal/modules/orders/application/interactors"\n)\n',
+        'orders/application/interactors/planted_cross.go': 'package interactors\n\nimport "example.com/shop/internal/modules/customers/domain"\n',
+        'orders/infrastructure/gateways/planted_platform.go': 'package gateways\n\nimport _ "example.com/shop/internal/platform/clock"\n',
+        'orders/infrastructure/gateways/planted_infra.go':
+          'package gateways\n\nimport (\n\tmem "example.com/shop/internal/modules/customers/infrastructure/gateways/inmemory"\n)\n',
+        'orders/domain/planted_external.go': 'package domain\n\nimport "github.com/other/lib/modules/customers/domain"\n',
+      },
+      want: ['dependency-rule:planted_outward.go', 'cross-module:planted_cross.go', 'dependency-rule:planted_platform.go',
+        'cross-module:planted_infra.go'],
+    },
+  };
+  check('every language profile has a fixture', same(readdirSync(FIXTURES), Object.keys(LANGS)), readdirSync(FIXTURES).join(', '));
+  for (const [lang, spec] of Object.entries(LANGS)) {
+    const fixture = join(FIXTURES, lang);
+    const cleanScan = callTool(fixture, 'ca_scan');
+    check(`${lang}: fixture scans clean (no violations, no warnings, every file classified, only ${lang})`,
+      cleanScan.summary.violations === 0 && cleanScan.warnings.length === 0 && cleanScan.summary.unclassifiedFiles === 0 &&
+      same(Object.keys(cleanScan.summary.languages), [lang]) && cleanScan.summary.filesScanned >= 10,
+      JSON.stringify({ summary: cleanScan.summary, warnings: cleanScan.warnings, violations: cleanScan.violations }).slice(0, 400));
+    const comps = callTool(fixture, 'ca_metrics').metrics;
+    check(`${lang}: components are modules/customers, modules/orders, shared, platform and main, and the legal edge is counted`,
+      same(comps.map((m) => m.component), ['main', 'modules/customers', 'modules/orders', 'platform', 'shared']) &&
+      comps.find((m) => m.component === 'modules/customers').fanIn > 0 && comps.find((m) => m.component === 'shared').fanIn > 0,
+      comps.map((m) => `${m.component} in=${m.fanIn} out=${m.fanOut}`).join(' | '));
+    check(`${lang}: no cycles`, callTool(fixture, 'ca_cycles').adpCompliant === true);
+
+    const planted = tmpProject(`lang-${lang}`); temps.push(planted);
+    cpSync(fixture, planted, { recursive: true });
+    for (const [rel, content] of Object.entries(spec.plant)) write(planted, `${spec.modules}/${rel}`, content);
+    const ls = callTool(planted, 'ca_scan');
+    const lsGot = ls.violations.map((v) => `${v.rule}:${v.file.split('/').pop()}`);
+    check(`${lang}: finds exactly the planted violations (external packages named like a layer are ignored)`, same(lsGot, spec.want),
+      `got:  ${lsGot.sort().join(', ')}\n         want: ${[...spec.want].sort().join(', ')}`);
+    const outwardFile = join(planted, spec.modules, Object.keys(spec.plant)[0]);
+    const lh = runHookStdin(outwardFile, planted);
+    check(`${lang}: the hook warns on the planted outward import`, lh.status === 0 && lh.stderr.includes('ARCHITECTURE RULE VIOLATION'),
+      lh.stderr || '(no output)');
+  }
+
+  // A language without a profile is reported and never scores 100: its imports were not checked.
+  const other = tmpProject('unsupported'); temps.push(other);
+  cpSync(join(FIXTURES, 'typescript'), other, { recursive: true });
+  write(other, 'src/modules/orders/domain/Legacy.java', 'import com.acme.modules.customers.domain.Customer;\nclass Legacy {}\n');
+  write(other, 'src/modules/orders/domain/Pricing.cs', 'using Acme.Modules.Customers.Domain;\nclass Pricing {}\n');
+  const os = callTool(other, 'ca_scan');
+  check('unsupported languages (Java, C#) are reported as not checked, and the project gets no health score',
+    os.warnings.some((w) => /not verified/i.test(w) && /Java: 1/.test(w) && /C#: 1/.test(w)) &&
+    os.summary.healthScore === null && os.summary.grade.startsWith('N/A'), JSON.stringify({ w: os.warnings, s: os.summary }).slice(0, 300));
+  const lj = callTool(other, 'ca_layer_of', { filePath: join(other, 'src/modules/orders/domain/Legacy.java') });
+  check('ca_layer_of: a file without a profile says it was not checked', lj.language === 'Java' && /not supported/.test(lj.message), JSON.stringify(lj));
 
   // ── 6. the hook, driven the way Claude Code drives it ───────────────────────────────────
   console.log('\n[6] the PostToolUse hook reads Claude Code\'s stdin JSON and covers projects without src/');

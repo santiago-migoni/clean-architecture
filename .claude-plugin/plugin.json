@@ -1,7 +1,7 @@
 {
   "name": "clean-architecture",
   "description": "Full Clean Architecture plugin based on Uncle Bob's book — all layers, SOLID, component principles, Dependency Rule, Humble Object, and more.",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "author": {
     "name": "Santiago Migoni",
     "url": "https://github.com/santiago-migoni"

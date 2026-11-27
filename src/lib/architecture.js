@@ -21,9 +21,16 @@
  * Detection always runs on a path RELATIVE to src/, never on the absolute path,
  * so a project that happens to live under /app/ is not misclassified, and it is
  * positional: a layer is the folder at its place in the layout (see classifyPath).
+ *
+ * The rules are language-neutral. Everything that depends on the language (which files, how imports
+ * are written, how an import maps to a folder) lives in the profiles under ./languages/.
  */
 
-import { dirname, resolve, relative } from 'path';
+import { relative } from 'path';
+import { profileFor } from './languages/index.js';
+import { toPosix } from './paths.js';
+
+export { toPosix };
 
 // ── Layers ─────────────────────────────────────────────────────────────────
 
@@ -43,6 +50,7 @@ const TOP_LEVEL = {
   main: 'main',
   bootstrap: 'main',
   composition: 'main',
+  cmd: 'main', // Go: cmd/<app>/main.go
 };
 
 // Layer folder directly under modules/<module>/. The whole infrastructure/ folder is the interface
@@ -65,16 +73,12 @@ export const ALLOWED_LAYERS = {
 
 /** Folder names that would be ambiguous as a module name. */
 export const RESERVED_MODULE_NAMES = new Set([
-  'shared', 'platform', 'main', 'domain', 'application', 'infrastructure', 'modules', 'bootstrap', 'composition',
+  'shared', 'platform', 'main', 'domain', 'application', 'infrastructure', 'modules', 'bootstrap', 'composition', 'cmd',
   // names of earlier layouts, still classified as layers
   'app', 'infra', 'adapters',
 ]);
 
 // ── Path helpers ───────────────────────────────────────────────────────────
-
-export function toPosix(p) {
-  return p.replace(/\\/g, '/');
-}
 
 function norm(p) {
   return '/' + toPosix(p).replace(/^\.?\//, '');
@@ -87,16 +91,19 @@ function classifyAt(segs, i) {
   const top = segs[i];
   if (top === 'modules') {
     const mod = segs[i + 1];
-    if (!mod) return null;
+    // A module is a folder: modules/__init__.py or modules/index.ts is not a module called "__init__.py".
+    if (!mod || mod.includes('.')) return null;
     const layer = MODULE_LAYER[segs[i + 2]] ?? LEGACY_MODULE_LAYER[segs[i + 2]];
     return { layer: layer ? LAYERS[layer] : null, module: mod };
   }
-  if (TOP_LEVEL[top] && segs.length > i + 1) return { layer: LAYERS[TOP_LEVEL[top]], module: null };
+  // The folder itself counts (a Go or Python import names a package folder, not a file). Profiles
+  // return null for external imports, so a package that is merely named "platform" never gets here.
+  if (TOP_LEVEL[top]) return { layer: LAYERS[TOP_LEVEL[top]], module: null };
   return null;
 }
 
 /**
- * Classify a path relative to src/ (or an import specifier converted with importToSrcRelative)
+ * Classify a path relative to src/ (or an import resolved by a language profile)
  * by POSITION, never by a folder name found anywhere in the path:
  *   - src/main/application/index.ts is main (not application), src/modules/orders/domain/shared/x.ts is domain (not shared);
  *   - src/main/compose/modules/x or src/platform/modules/x is not a module.
@@ -148,57 +155,17 @@ export function srcDirForFile(file) {
   return idx === -1 ? null : p.slice(0, idx + '/src'.length);
 }
 
-// ── Import extraction ──────────────────────────────────────────────────────
-
-const IMPORT_REGEXES = [
-  // JS/TS: import ... from '...'
-  /(?:import|export)\s+(?:[^'"]*\s+from\s+)?['"]([^'"]+)['"]/g,
-  // JS/TS: require('...')
-  /require\(\s*['"]([^'"]+)['"]\s*\)/g,
-  // Python: from ... import / import ...
-  /^(?:from\s+([\w./]+)\s+import|import\s+([\w./]+))/gm,
-  // Java/Kotlin: import ...;
-  /^import\s+([\w.]+);/gm,
-  // Go: import "..."
-  /import\s+"([^"]+)"/g,
-];
-
-export function extractImports(content) {
-  const imports = [];
-  for (const regex of IMPORT_REGEXES) {
-    let m;
-    const re = new RegExp(regex.source, regex.flags);
-    while ((m = re.exec(content)) !== null) {
-      const imp = m[1] || m[2];
-      if (imp) imports.push(imp);
-    }
-  }
-  return [...new Set(imports)];
-}
+// ── Imports ────────────────────────────────────────────────────────────────
 
 /**
- * Turn an import specifier into a path relative to srcDir so that it can be
- * classified (layer + module) exactly like a file path.
+ * The imports of one file, each resolved by the file's language profile to a path relative to srcDir
+ * (`rel`), so it can be classified exactly like a file path. `rel` is null for an external import
+ * (standard library, installed package). A file with no profile has no imports here.
  */
-export function importToSrcRelative(file, imp, srcDir) {
-  // Python relative imports: ".", "..", "...pkg.mod"
-  const py = /^(\.+)([\w.]*)$/.exec(imp);
-  if (py) {
-    const [, dots, rest] = py;
-    let base = dirname(file);
-    for (let i = 1; i < dots.length; i++) base = dirname(base);
-    return toPosix(relative(srcDir, resolve(base, rest.replace(/\./g, '/'))));
-  }
-  // JS/TS relative paths
-  if (imp.startsWith('.')) {
-    return toPosix(relative(srcDir, resolve(dirname(file), imp)));
-  }
-  // Dotted module paths (Python absolute / Java / Kotlin)
-  if (!imp.includes('/') && imp.includes('.')) {
-    return imp.replace(/\./g, '/');
-  }
-  // Aliases ('@/modules/orders/domain/order') and packages are classified as written.
-  return imp;
+export function fileImports(file, srcDir, content) {
+  const profile = profileFor(file);
+  if (!profile) return [];
+  return profile.extractImports(content).map((spec) => ({ spec, rel: profile.resolveImport(file, spec, srcDir) }));
 }
 
 // ── Rules ──────────────────────────────────────────────────────────────────
@@ -242,8 +209,8 @@ export function findViolations(file, srcDir, content) {
   const allowedLayers = ALLOWED_LAYERS[layerDef.layer] || [];
   const out = [];
 
-  for (const imp of extractImports(content)) {
-    const impRel = importToSrcRelative(file, imp, srcDir);
+  for (const { spec: imp, rel: impRel } of fileImports(file, srcDir, content)) {
+    if (impRel === null) continue; // external
     const { layer: importedLayer, module: impMod } = classifyPath(impRel);
     // A module's root (e.g. a barrel '@/modules/customers') has no layer but still belongs to a module.
     if (!importedLayer && !impMod) continue;

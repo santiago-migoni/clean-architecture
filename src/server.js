@@ -15,13 +15,15 @@ import {
   componentOf,
   detectLayer,
   detectModule,
-  extractImports,
+  fileImports,
   findViolations,
-  importToSrcRelative,
   srcDirForFile,
   toPosix,
   usesLegacyLayerName,
 } from './lib/architecture.js';
+import { PROFILES, UNSUPPORTED_LANGUAGES, profileFor, unsupportedLanguageOf } from './lib/languages/index.js';
+
+const SUPPORTED_NAMES = PROFILES.map((p) => p.name).join(', ');
 
 const rl = createInterface({ input: process.stdin, terminal: false });
 
@@ -56,7 +58,8 @@ const TOOLS = [
     name: 'ca_scan',
     description:
       'Scan a project directory for Clean Architecture Dependency Rule violations. ' +
-      'Reports every file that imports from a layer it should not depend on, with severity levels.',
+      'Reports every file that imports from a layer it should not depend on, with severity levels. ' +
+      `Languages: ${SUPPORTED_NAMES}; files in any other language are reported as not checked.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -183,17 +186,22 @@ function safePath(p) {
 
 // ── File system helpers ────────────────────────────────────────────────────
 
-function walkSrc(dir, exts = ['.ts', '.js', '.py', '.java', '.go', '.cs', '.kt']) {
+// Every extension a profile owns, plus source code of languages without a profile (reported, not checked).
+const SOURCE_EXTENSIONS = new Set([...PROFILES.flatMap((p) => p.extensions), ...Object.keys(UNSUPPORTED_LANGUAGES)]);
+// Dependencies, virtual environments and build output: never the project's own source.
+const SKIP_DIRS = new Set(['node_modules', '__pycache__', 'venv', 'vendor', 'dist']);
+
+function walkSrc(dir, exts = SOURCE_EXTENSIONS) {
   const files = [];
   if (!existsSync(dir)) return files;
   for (const entry of readdirSync(dir)) {
-    if (entry.startsWith('.') || entry === 'node_modules' || entry === '__pycache__') continue;
+    if (entry.startsWith('.') || SKIP_DIRS.has(entry)) continue;
     const full = join(dir, entry);
     const lstat = lstatSync(full);
     if (lstat.isSymbolicLink()) continue; // never follow symlinks
     if (lstat.isDirectory()) {
       files.push(...walkSrc(full, exts));
-    } else if (exts.includes(extname(full))) {
+    } else if (exts.has(extname(full))) {
       files.push(full);
     }
   }
@@ -219,13 +227,24 @@ function toolScan(args) {
   let unclassified = 0;  // outside any known layer and NOT in an old layer folder
   let legacy = 0;        // in an old layer-first folder (classified or not)
   let legacyNames = 0;   // in modules/<m>/app/ or modules/<m>/infra/ (classified, but renamed in 2.0)
+  const languages = {};  // profile id → files checked
+  const unsupported = {}; // language without a profile → files found (never checked)
+  let unsupportedInLayers = 0;
   for (const file of files) {
     const rel = toPosix(relative(srcDir, file));
-    if (LEGACY_TOP.test(rel)) legacy++;
-    else if (!detectLayer(rel)) unclassified++;
-    if (usesLegacyLayerName(rel)) legacyNames++;
+    const profile = profileFor(file);
+    if (!profile) {
+      const lang = unsupportedLanguageOf(file);
+      unsupported[lang] = (unsupported[lang] || 0) + 1;
+      if (detectLayer(rel)) unsupportedInLayers++;
+      continue;
+    }
+    languages[profile.id] = (languages[profile.id] || 0) + 1;
     let content;
     try { content = readFileSync(file, 'utf8'); } catch { continue; }
+    if (LEGACY_TOP.test(rel)) legacy++;
+    else if (!detectLayer(rel) && !profile.isNeutral?.(rel, content)) unclassified++;
+    if (usesLegacyLayerName(rel)) legacyNames++;
     for (const v of findViolations(file, srcDir, content)) {
       violations.push({ file: relative(root, file), ...v });
     }
@@ -238,6 +257,14 @@ function toolScan(args) {
   const score = Math.max(0, 100 - counts.CRITICAL * 20 - counts.HIGH * 10 - counts.MEDIUM * 5);
 
   const warnings = [];
+  const unsupportedTotal = Object.values(unsupported).reduce((a, b) => a + b, 0);
+  if (unsupportedTotal > 0) {
+    const list = Object.entries(unsupported).map(([lang, n]) => `${lang}: ${n}`).join(', ');
+    warnings.push(
+      `${unsupportedTotal} file(s) are in languages the plugin cannot check yet (${list}). ` +
+      `Their imports were NOT verified. Supported: ${SUPPORTED_NAMES}.`
+    );
+  }
   if (legacy > 0) {
     warnings.push(
       `${legacy} file(s) are in the previous layer-first layout (src/entities, src/usecases, src/adapters, ` +
@@ -259,10 +286,16 @@ function toolScan(args) {
     );
   }
 
+  // A score computed while part of the architecture is not covered by the rules would be misleading.
+  const notCovered =
+    legacy > 0 ? 'N/A — legacy layout detected, run /clean-architecture:migrate' :
+    unsupportedInLayers > 0 ? 'N/A — code in languages the plugin cannot check yet' : null;
+
   return {
     warnings,
     summary: {
       filesScanned: files.length,
+      languages,
       unclassifiedFiles: unclassified,
       violations: violations.length,
       layerViolations: violations.length - crossModule,
@@ -270,10 +303,9 @@ function toolScan(args) {
       critical: counts.CRITICAL,
       high: counts.HIGH,
       medium: counts.MEDIUM,
-      // A score computed while part of the code is not covered by the rules would be misleading.
-      healthScore: legacy > 0 ? null : score,
+      healthScore: notCovered ? null : score,
       grade:
-        legacy > 0 ? 'N/A — legacy layout detected, run /clean-architecture:migrate' :
+        notCovered ? notCovered :
         score >= 90 ? 'A — Excellent' :
         score >= 75 ? 'B — Good' :
         score >= 50 ? 'C — Fair' :
@@ -307,14 +339,12 @@ function toolMetrics(args) {
       let content;
       try { content = readFileSync(file, 'utf8'); } catch { continue; }
 
-      // Detect abstract classes/interfaces
-      if (/(?:interface\s+\w|abstract\s+class\s+\w|class\s+\w[^{]*implements|ABC\)|@abstractmethod)/.test(content)) {
-        abstractCount++;
-      }
+      // Interfaces / abstract types, as the file's language defines them
+      if (profileFor(file)?.isAbstract(content)) abstractCount++;
 
       // Count outgoing dependencies to other components
-      for (const imp of extractImports(content)) {
-        const impComp = componentOf(importToSrcRelative(file, imp, srcDir));
+      for (const { rel: impRel } of fileImports(file, srcDir, content)) {
+        const impComp = impRel === null ? null : componentOf(impRel);
         if (impComp && impComp !== comp) {
           data.fanOut++;
           if (components[impComp]) components[impComp].fanIn++;
@@ -499,6 +529,16 @@ function toolLayerOf(args) {
 
   const mod = detectModule(rel);
   const allowedLayers = ALLOWED_LAYERS[layerDef.layer] || [];
+  const profile = profileFor(safeFile);
+  if (!profile) {
+    return {
+      layer: layerDef.layer,
+      module: mod,
+      level: layerDef.level,
+      language: unsupportedLanguageOf(safeFile),
+      message: `This file's language is not supported yet, so its imports were not checked. Supported: ${SUPPORTED_NAMES}.`,
+    };
+  }
 
   let content;
   try { content = readFileSync(safeFile, 'utf8'); } catch {
@@ -517,6 +557,7 @@ function toolLayerOf(args) {
     layer: layerDef.layer,
     module: mod,
     level: layerDef.level,
+    language: profile.id,
     dependencyRuleCompliant: violations.length === 0,
     importViolations: violations,
     allowedDependencies: allowedLayers.length ? allowedLayers : ['none — this is the innermost layer'],
@@ -540,8 +581,8 @@ function toolCycles(args) {
     graph[comp] ??= new Set();
     let content;
     try { content = readFileSync(file, 'utf8'); } catch { continue; }
-    for (const imp of extractImports(content)) {
-      const impComp = componentOf(importToSrcRelative(file, imp, srcDir));
+    for (const { rel: impRel } of fileImports(file, srcDir, content)) {
+      const impComp = impRel === null ? null : componentOf(impRel);
       if (impComp && impComp !== comp) {
         graph[comp].add(impComp);
         graph[impComp] ??= new Set();
@@ -595,7 +636,7 @@ function handleMessage(msg) {
     ok(id, {
       protocolVersion: '2024-11-05',
       capabilities: { tools: {} },
-      serverInfo: { name: 'clean-architecture', version: '2.0.0' },
+      serverInfo: { name: 'clean-architecture', version: '2.1.0' },
     });
     return;
   }
