@@ -9,9 +9,12 @@ import { existsSync, readFileSync } from 'fs';
 import { dirname, join, relative } from 'path';
 import { toPosix } from '../paths.js';
 import { looksLikeSql } from './sql.js';
-import { stringLiterals } from './strings.js';
+import { codeOnly, stringLiterals } from './strings.js';
 
 const SYNTAX = { line: ['//'], block: true, quotes: ['"', '`', "'"], raw: ['`'] }; // ' is a rune: skipped like a string
+
+// Reading the process environment, in code.
+const ENVIRONMENT = /\b(?:os\.(?:Getenv|LookupEnv|Environ)|syscall\.(?:Getenv|Environ))\b/g;
 
 const SINGLE = /^[ \t]*import[ \t]+(?:[\w.]+[ \t]+)?"([^"]+)"/gm;
 const GROUP = /^[ \t]*import[ \t]*\(([\s\S]*?)\)/gm;
@@ -61,6 +64,19 @@ export default {
     if (!mod) return spec; // no go.mod: classify the path as written
     if (spec !== mod.module && !spec.startsWith(`${mod.module}/`)) return null;
     return toPosix(relative(srcDir, join(mod.dir, spec.slice(mod.module.length + 1))));
+  },
+
+  // Tests sit beside the code in Go; they are their own composition root and may read the environment.
+  isTest(relPath) {
+    return /_test\.go$/.test(relPath);
+  },
+
+  // Packages whose only job is to load configuration (from .env files, the environment, config files).
+  configPackages: ['github.com/spf13/viper', 'github.com/joho/godotenv', 'github.com/kelseyhightower/envconfig',
+    'github.com/caarlos0/env', 'github.com/sethvargo/go-envconfig'],
+
+  environmentAccess(content) {
+    return [...new Set([...codeOnly(content, SYNTAX).matchAll(ENVIRONMENT)].map((m) => m[0]))];
   },
 
   embeddedSql(content) {

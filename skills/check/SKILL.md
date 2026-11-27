@@ -118,7 +118,7 @@ Beyond import direction, check for:
 2. **Framework-specific types in inner layers** (Express `Request`, FastAPI `Request`, `*http.Request` in a use case, SQLAlchemy `Column` in `domain/`).
 3. **ORMs in the domain** (TypeORM `@Entity()`, a SQLAlchemy declarative base, GORM tags on domain structs).
 4. **HTTP status codes in use cases** (`res.status(404)` inside an interactor).
-5. **Environment variables accessed in inner layers** (`process.env`, `os.environ`, `os.Getenv` in `domain/` or `application/`).
+5. **Configuration read outside `main/`**: see Step 4c.
 6. **Logging framework calls in the domain** (`console.log`, `logger.info` with external loggers).
 7. **The clock or randomness in business rules** (`Date.now()`, `datetime.now()`, `time.Now()`, `uuid4()`): inject them as a port or a function.
 8. **Port interfaces defined in the wrong layer** (repository interface in `infrastructure/` instead of `application/ports/output/`), or in the wrong module.
@@ -132,12 +132,17 @@ SQL is found in `.sql` files and in string literals of code that start like a st
 - **`sql-placement`** — SQL anywhere but `infrastructure/` and `platform/db/` (a query string in an interactor, a `.sql` file in `domain/`). Severity of the layer it is in.
 - **`table-ownership`** — a table belongs to the module whose migrations create it. A module that queries, alters or adds a foreign key to another module's table, or two modules creating the same table, is HIGH: it couples the modules through the database exactly as an import would.
 
+### Step 4c: Configuration
+
+- **`config-placement`** — code outside `main/` that reads the environment (`process.env`, `import.meta.env`, `os.environ`, `os.getenv`, `from os import environ`, `os.Getenv`, `os.LookupEnv`) or imports a configuration loader (`dotenv`, `config`, `envalid`, `pydantic-settings`, `environs`, `viper`, `godotenv`, `envconfig`). Only code counts, never a comment or a string. A Go `_test.go` file is a composition root of its own and is not reported. Severity of the layer it is in: CRITICAL in `domain/`, HIGH in `application/`, MEDIUM in `infrastructure/` and `platform/`.
+- The fix is always the same: `main/` loads and validates the configuration once and passes each value through a constructor.
+
 ### Step 5: Report All Violations
 
 For each violation:
 ```
 ARCHITECTURE RULE VIOLATION
-  Rule: dependency-rule | cross-module | sql-placement | table-ownership
+  Rule: dependency-rule | cross-module | sql-placement | table-ownership | config-placement
   Severity: CRITICAL | HIGH | MEDIUM
   File: <path>:<line>
   Module: <module>
@@ -181,7 +186,7 @@ Date: <date>
 
 RESULTS:
   ✓ Allowed imports: <N>
-  ✗ Violations: <N>   (layers: <N>, cross-module: <N>)
+  ✗ Violations: <N>   (layers: <N>, cross-module: <N>, SQL: <N>, config: <N>)
   ⚠ Warnings: <N>
 
 VIOLATIONS BY SEVERITY:

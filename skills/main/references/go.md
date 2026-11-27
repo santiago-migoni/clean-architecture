@@ -87,25 +87,71 @@ func New(cfg Config) (http.Handler, *sql.DB, error) {
 }
 ```
 
+## Configuration — read once, validated, passed as values
+
 ```go
-// cmd/api/main.go — reads the environment, calls bootstrap, serves. No wiring here.
+// internal/bootstrap/settings.go — a pure function of the lookup it is given: bootstrap never calls os.Getenv.
+package bootstrap
+
+import (
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+)
+
+type Settings struct {
+	DatabaseURL string
+	Port        int
+}
+
+var digits = regexp.MustCompile(`^\d+$`)
+
+// LoadSettings reads DATABASE_URL and PORT through getenv (os.Getenv in production, a map in tests).
+func LoadSettings(getenv func(string) string) (Settings, error) {
+	url := strings.TrimSpace(getenv("DATABASE_URL"))
+	if url == "" {
+		return Settings{}, fmt.Errorf("invalid configuration: DATABASE_URL is required")
+	}
+	portText := strings.TrimSpace(getenv("PORT"))
+	if portText == "" {
+		portText = "8080"
+	}
+	port := 0
+	if digits.MatchString(portText) {
+		port, _ = strconv.Atoi(portText)
+	}
+	if port < 1 || port > 65535 {
+		return Settings{}, fmt.Errorf("invalid configuration: PORT must be a whole number from 1 to 65535, got %q", portText)
+	}
+	return Settings{DatabaseURL: url, Port: port}, nil
+}
+```
+
+```go
+// cmd/api/main.go — the entry point, and the only file that touches os.Getenv. No wiring here.
 package main
 
 import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 
 	"example.com/shop/internal/bootstrap"
 )
 
 func main() {
-	handler, conn, err := bootstrap.New(bootstrap.Config{DatabaseURL: os.Getenv("DATABASE_URL")})
+	settings, err := bootstrap.LoadSettings(os.Getenv) // a wrong setting stops here, before anything starts
+	if err != nil {
+		log.Fatal(err)
+	}
+	handler, conn, err := bootstrap.New(bootstrap.Config{DatabaseURL: settings.DatabaseURL})
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer conn.Close()
-	log.Fatal(http.ListenAndServe(":"+os.Getenv("PORT"), handler))
+	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(settings.Port), handler))
 }
 ```
 

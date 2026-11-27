@@ -41,7 +41,7 @@ internal/
 │                                  queries/*.sql, migrations/*.sql, inmemory/
 ├── shared/                        domain_error.go   ← ErrBusinessRule, wrapped by every module's domain error
 ├── platform/                      db/ (open, migrate) · web/ (routes, PlaceOrder view, recovery)
-└── bootstrap/                     bootstrap.go (New) · customers.go · orders.go · testing.go (NewForTest) · e2e_test.go
+└── bootstrap/                     bootstrap.go (New) · settings.go (LoadSettings) · customers.go · orders.go · testing.go (NewForTest) · e2e_test.go
 ```
 
 ## Go-specific decisions

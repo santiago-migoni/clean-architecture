@@ -1,28 +1,26 @@
 // Entry point: reads the environment, builds the app through internal/bootstrap and serves it. No wiring here.
+// The only file of the project that touches os.Getenv.
 package main
 
 import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 
 	"example.com/shop/internal/bootstrap"
 )
 
 func main() {
-	dsn := os.Getenv("DB_PATH")
-	if dsn == "" {
-		dsn = ":memory:"
+	settings, err := bootstrap.LoadSettings(os.Getenv) // a wrong setting stops here, before anything starts
+	if err != nil {
+		log.Fatal(err)
 	}
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-	handler, conn, err := bootstrap.New(bootstrap.Config{DatabaseDSN: dsn, AuditLog: func(line string) { log.Printf("audit %s", line) }})
+	handler, conn, err := bootstrap.New(bootstrap.Config{DatabaseDSN: settings.DatabaseDSN, AuditLog: func(line string) { log.Printf("audit %s", line) }})
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer conn.Close()
-	log.Printf("Server running on port %s", port)
-	log.Fatal(http.ListenAndServe(":"+port, handler))
+	log.Printf("Server running on port %d", settings.Port)
+	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(settings.Port), handler))
 }

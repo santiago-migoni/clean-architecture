@@ -176,7 +176,7 @@ Steps:
 
 Add lint rules or architecture tests for BOTH axes — layers and modules:
 
-Use the enforcement the `init` skill sets up for the language (its references), and run `ca-scan` in CI (the job is in the `init` references): it checks both axes, SQL table ownership and cycles in every supported language. During migration, keep a linter's rule at warning level so existing violations are visible without blocking the build, and raise it to error once a module is migrated.
+Use the enforcement the `init` skill sets up for the language (its references), and run `ca-scan` in CI (the job is in the `init` references): it checks both axes, SQL table ownership, configuration placement and cycles in every supported language. During migration, keep a linter's rule at warning level so existing violations are visible without blocking the build, and raise it to error once a module is migrated.
 
 ## Migration Execution Plan
 

@@ -99,6 +99,8 @@ SQL has no imports: its dependencies are tables. Two rules apply to it, in `.sql
 - **SQL lives only in `infrastructure/` and `platform/db/`** (`sql-placement`).
 - **Each module uses only its own tables** (`table-ownership`): a table belongs to the module whose migrations create it, and querying, altering or adding a foreign key to another module's table is reported, as is a table created by two modules.
 
+Configuration has one place too (`config-placement`): only `main/` reads the environment (`process.env`, `os.environ`, `os.Getenv`, …) or imports a configuration loader (`dotenv`, `pydantic-settings`, `viper`, …). Only code is read, never comments or strings; a Go `_test.go` file is its own composition root and may read it.
+
 Embedded SQL is read only from string literals (never comments) that start like a statement; a lower-case one also needs something only SQL has (`where`, `join`, `values`, `?`, `*`, a comma…), so a message such as `"select a customer from the list"` is not taken for a query.
 
 Source files in any other language (Java, Kotlin, C#, …) are **reported as not checked** and the project gets no health score, instead of a misleading 100.
@@ -109,7 +111,7 @@ Each profile is verified against its example in [`examples/<language>/`](example
 
 ## Command line: `ca-scan`
 
-The same checks as the `ca_scan` and `ca_cycles` tools, without Claude Code, for CI and the terminal: both axes, SQL placement and table ownership, and cycles between components. Node.js only, no dependencies.
+The same checks as the `ca_scan` and `ca_cycles` tools, without Claude Code, for CI and the terminal: both axes, SQL placement and table ownership, configuration placement, and cycles between components. Node.js only, no dependencies.
 
 ```bash
 npx --yes --package=github:santiago-migoni/clean-architecture ca-scan . --strict

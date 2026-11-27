@@ -149,6 +149,7 @@ Check the composition root (`main/`, or `bootstrap/` + `cmd/` in Go):
 - Is `main/` the most **volatile** component (changes when adding new features, but doesn't break tests of inner layers)?
 - Is each module composed by its own `compose<Module>` function, with modules connected **only through input ports**?
 - Does `platform/` avoid instantiating interactors and gateways (it only registers routes and creates connections)?
+- Is the configuration read only here, once, validated at startup, and passed to each piece as the values it uses (`config-placement`)?
 
 Score: 0-5 points
 

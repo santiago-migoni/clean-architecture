@@ -1,6 +1,6 @@
 // src/main/index.ts — MAIN COMPONENT (Composition Root)
 // The ONLY place that knows every module and layer. Nothing imports from main/.
-// Environment variables are read here and in server.ts, nowhere else.
+// It never reads the environment: server.ts loads the configuration (config.ts) and passes the values in.
 // It exports a factory instead of listening, so tests can import the app without opening a port;
 // the tiny entry point that listens is server.ts.
 import { randomUUID } from 'node:crypto';
@@ -12,7 +12,7 @@ import { composeOrders, ordersMigrations } from './compose/orders';
 
 export function createApp(options: { dbPath?: string; auditLog?: (line: string) => void } = {}) {
   // 1. Infrastructure (platform)
-  const db = createDbConnection(options.dbPath ?? process.env.DB_PATH ?? ':memory:');
+  const db = createDbConnection(options.dbPath ?? ':memory:');
   runMigrations(db, [...customersMigrations, ...ordersMigrations]);
   const newId = () => randomUUID();
 

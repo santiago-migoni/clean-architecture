@@ -10,9 +10,12 @@ import { existsSync } from 'fs';
 import { dirname, join, relative, resolve } from 'path';
 import { toPosix } from '../paths.js';
 import { looksLikeSql } from './sql.js';
-import { stringLiterals } from './strings.js';
+import { codeOnly, stringLiterals } from './strings.js';
 
 const SYNTAX = { line: ['//'], block: true, quotes: ['"', "'", '`'] };
+
+// Reading the process environment, in code (not in a comment or a string).
+const ENVIRONMENT = /\bprocess\.env\b|\bimport\.meta\.env\b|\b(?:Deno|Bun)\.env\b/g;
 
 const PATTERNS = [
   /\b(?:import|export)\s+(?:type\s+)?(?:[^'"`;]*?\s+from\s+)?['"]([^'"]+)['"]/g, // import x from '…' / export * from '…' / import '…'
@@ -40,6 +43,13 @@ export default {
     // "platform" alone is a package; "platform/web/server" with a src/platform folder is a baseUrl import.
     const [first, ...rest] = spec.split('/');
     return rest.length && !first.startsWith('@') && !first.includes(':') && existsSync(join(srcDir, first)) ? spec : null;
+  },
+
+  // Packages whose only job is to load configuration (from .env files, the environment, config files).
+  configPackages: ['dotenv', '@dotenvx/dotenvx', 'config', 'convict', 'env-var', 'envalid', '@nestjs/config', '@t3-oss/env-core', '@t3-oss/env-nextjs'],
+
+  environmentAccess(content) {
+    return [...new Set([...codeOnly(content, SYNTAX).matchAll(ENVIRONMENT)].map((m) => m[0]))];
   },
 
   embeddedSql(content) {

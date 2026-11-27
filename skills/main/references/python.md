@@ -49,7 +49,6 @@ def compose_orders(db: sqlite3.Connection, new_id: Callable[[], str], get_custom
 
 ```python
 # src/shop/main/app.py — the ONLY place that knows every module and layer. Nothing imports from main.
-import os
 import uuid
 
 from fastapi import FastAPI
@@ -62,8 +61,8 @@ from shop.platform.web.app import build_app
 
 
 def create_app(db_path: str | None = None) -> FastAPI:
-    # 1. Drivers (platform). Environment variables are read here only.
-    db = connect(db_path or os.environ.get("DB_PATH", ":memory:"))
+    # 1. Drivers (platform), with values from the configuration. The environment is never read here.
+    db = connect(db_path or ":memory:")
     run_migrations(db, ["shop.modules.customers", "shop.modules.orders"])
     new_id = lambda: str(uuid.uuid4())
 
@@ -75,16 +74,47 @@ def create_app(db_path: str | None = None) -> FastAPI:
     return build_app(place_order)
 ```
 
+## Configuration — read once, validated, passed as values
+
 ```python
-# src/shop/main/__main__.py — the entry point: python -m shop.main
+# src/shop/main/config.py — a pure function of the environment it is given: testable without touching os.environ.
+import re
+from dataclasses import dataclass
+from typing import Mapping
+
+
+class ConfigError(Exception):
+    def __init__(self, message: str) -> None:
+        super().__init__(f"Invalid configuration: {message}")
+
+
+@dataclass(frozen=True)
+class AppConfig:
+    db_path: str
+    port: int
+
+
+def load_config(env: Mapping[str, str]) -> AppConfig:
+    db_path = env.get("DB_PATH", "").strip() or ":memory:"
+    port_text = env.get("PORT", "").strip() or "8000"
+    port = int(port_text) if re.fullmatch(r"\d+", port_text) else 0
+    if not 1 <= port <= 65535:
+        raise ConfigError(f'PORT must be a whole number from 1 to 65535, got "{port_text}"')
+    return AppConfig(db_path=db_path, port=port)
+```
+
+```python
+# src/shop/main/__main__.py — the entry point (python -m shop.main), and the only module that touches os.environ.
 import os
 
 import uvicorn
 
 from shop.main.app import create_app
+from shop.main.config import load_config
 
 if __name__ == "__main__":
-    uvicorn.run(create_app(), port=int(os.environ.get("PORT", "8000")))
+    config = load_config(os.environ)  # a wrong setting stops here, before anything starts
+    uvicorn.run(create_app(config.db_path), port=config.port)
 ```
 
 ## Test composition root — the same ports, in-memory implementations

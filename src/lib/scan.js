@@ -126,6 +126,7 @@ export function scanProject(root) {
       layerViolations: byRule('dependency-rule'),
       crossModuleViolations: byRule('cross-module'),
       sqlViolations: byRule('sql-placement', 'table-ownership'),
+      configViolations: byRule('config-placement'),
       tables: Object.fromEntries([...tables].map(([t, owners]) => [t, [...owners].sort().join(', ')])),
       critical: counts.CRITICAL,
       high: counts.HIGH,

@@ -291,9 +291,14 @@ try {
         'orders/infrastructure/gateways/planted-infra.jsx':
           "export { CustomerInMemoryRepository } from '../../../customers/infrastructure/gateways/in-memory/customer-in-memory-repository';\n",
         'orders/domain/planted-packages.ts': "import platform from 'platform';\nimport { z } from 'zod';\nimport { readFile } from 'node:fs';\n",
+        // configuration: only main/ reads the environment or loads configuration
+        'orders/domain/planted-env.ts': 'export const maxItems = Number(process.env.MAX_ITEMS);\n',
+        'orders/infrastructure/gateways/planted-dotenv.ts': "import 'dotenv/config';\n",
+        'orders/application/interactors/planted-env-prose.ts': "// never read process.env here\nexport const hint = 'set process.env.PORT';\n",
       },
       want: ['dependency-rule:planted-outward.ts', 'dependency-rule:planted-dynamic.tsx', 'cross-module:planted-cross.mts',
-        'dependency-rule:planted-platform.cjs', 'cross-module:planted-infra.jsx'],
+        'dependency-rule:planted-platform.cjs', 'cross-module:planted-infra.jsx',
+        'config-placement:planted-env.ts', 'config-placement:planted-dotenv.ts'],
     },
     python: {
       dir: join(ROOT, 'examples/python'),
@@ -305,9 +310,15 @@ try {
         'orders/infrastructure/gateways/planted_infra.py':
           'try:\n    from ....customers.infrastructure.gateways.in_memory import customer_in_memory_repository\nexcept ImportError:\n    pass\n',
         'orders/domain/planted_stdlib.py': 'import platform, json\nfrom typing import Protocol\n',
+        // configuration: only main/ reads the environment or loads configuration
+        'orders/domain/planted_env.py': 'import os\n\nMAX_ITEMS = int(os.environ["MAX_ITEMS"])\n',
+        'orders/application/interactors/planted_getenv.py': 'from os import path, getenv\n',
+        'orders/infrastructure/gateways/planted_settings.py': 'from pydantic_settings import BaseSettings\n',
+        'orders/infrastructure/gateways/planted_env_prose.py': '# os.getenv belongs in main/\nHINT = "set os.environ[PORT]"\n',
       },
       want: ['dependency-rule:planted_outward.py', 'cross-module:planted_cross.py', 'dependency-rule:planted_platform.py',
-        'cross-module:planted_infra.py'],
+        'cross-module:planted_infra.py',
+        'config-placement:planted_env.py', 'config-placement:planted_getenv.py', 'config-placement:planted_settings.py'],
     },
     go: {
       dir: join(ROOT, 'examples/go'),
@@ -320,9 +331,14 @@ try {
         'orders/infrastructure/gateways/planted_infra.go':
           'package gateways\n\nimport (\n\tmem "example.com/shop/internal/modules/customers/infrastructure/gateways/inmemory"\n)\n',
         'orders/domain/planted_external.go': 'package domain\n\nimport "github.com/other/lib/modules/customers/domain"\n',
+        // configuration: only main/ (bootstrap, cmd) reads the environment or loads configuration; a test may
+        'orders/domain/planted_env.go': 'package domain\n\nimport "os"\n\nvar maxItems = os.Getenv("MAX_ITEMS")\n',
+        'orders/infrastructure/gateways/planted_viper.go': 'package gateways\n\nimport "github.com/spf13/viper"\n\nvar _ = viper.New\n',
+        'orders/infrastructure/gateways/planted_env_test.go': 'package gateways\n\nimport "os"\n\nvar testDSN = os.Getenv("TEST_DB")\n',
+        'orders/domain/planted_env_prose.go': 'package domain\n\n// os.Getenv belongs in cmd/\nconst hint = "os.Getenv(PORT)"\n',
       },
       want: ['dependency-rule:planted_outward.go', 'cross-module:planted_cross.go', 'dependency-rule:planted_platform.go',
-        'cross-module:planted_infra.go'],
+        'cross-module:planted_infra.go', 'config-placement:planted_env.go', 'config-placement:planted_viper.go'],
     },
     sql: {
       // SQL has no project of its own: it is checked on the Go example, whose queries and migrations are .sql files.

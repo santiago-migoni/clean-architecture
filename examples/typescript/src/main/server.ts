@@ -1,5 +1,7 @@
-// src/main/server.ts — the entry point: creates the app and listens. Nothing else.
+// src/main/server.ts — the entry point: reads the configuration, creates the app and listens. Nothing else.
+// The only line of the project that touches process.env.
+import { loadConfig } from './config';
 import { createApp } from './index';
 
-const port = Number(process.env.PORT ?? 3000);
-createApp().app.listen(port, () => console.log(`Server running on port ${port}`));
+const config = loadConfig(process.env); // a wrong setting stops here, before anything starts
+createApp({ dbPath: config.dbPath }).app.listen(config.port, () => console.log(`Server running on port ${config.port}`));

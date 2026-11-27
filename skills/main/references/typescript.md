@@ -70,8 +70,8 @@ import { composeCustomers, customersMigrations } from './compose/customers';
 import { composeOrders, ordersMigrations } from './compose/orders';
 
 export function createApp(options: { dbPath?: string } = {}) {
-  // 1. Drivers (platform). Environment variables are read here and in server.ts only.
-  const db = createDbConnection(options.dbPath ?? process.env.DB_PATH ?? ':memory:');
+  // 1. Drivers (platform), with values from the configuration. The environment is never read here.
+  const db = createDbConnection(options.dbPath ?? ':memory:');
   runMigrations(db, [...customersMigrations, ...ordersMigrations]);
   const newId = () => randomUUID();
 
@@ -84,12 +84,38 @@ export function createApp(options: { dbPath?: string } = {}) {
 }
 ```
 
+## Configuration — read once, validated, passed as values
+
 ```typescript
-// src/main/server.ts — the entry point: creates the app and listens. Nothing else.
+// src/main/config.ts — a pure function of the environment it is given: testable without touching process.env.
+export interface AppConfig {
+  readonly dbPath: string;
+  readonly port: number;
+}
+
+export class ConfigError extends Error {
+  constructor(message: string) {
+    super(`Invalid configuration: ${message}`);
+    this.name = 'ConfigError';
+  }
+}
+
+export function loadConfig(env: Readonly<Record<string, string | undefined>>): AppConfig {
+  const dbPath = env.DB_PATH?.trim() || ':memory:';
+  const portText = env.PORT?.trim() || '3000';
+  const port = /^\d+$/.test(portText) ? Number(portText) : NaN;
+  if (!(port >= 1 && port <= 65535)) throw new ConfigError(`PORT must be a whole number from 1 to 65535, got "${portText}"`);
+  return { dbPath, port };
+}
+```
+
+```typescript
+// src/main/server.ts — the entry point, and the only line of the project that touches process.env.
+import { loadConfig } from './config';
 import { createApp } from './index';
 
-const port = Number(process.env.PORT ?? 3000);
-createApp().app.listen(port, () => console.log(`Server running on port ${port}`));
+const config = loadConfig(process.env); // a wrong setting stops here, before anything starts
+createApp({ dbPath: config.dbPath }).app.listen(config.port, () => console.log(`Server running on port ${config.port}`));
 ```
 
 ## Test composition root — the same ports, in-memory implementations
@@ -139,8 +165,9 @@ import { container } from 'tsyringe';
 import { createDbConnection } from '../platform/db/connection';
 import { SqlCustomerRepository } from '../modules/customers/infrastructure/gateways/sql-customer-repository';
 import { GetCustomerInteractor } from '../modules/customers/application/interactors/get-customer';
+import { loadConfig } from './config';
 
-const db = createDbConnection(process.env.DB_PATH ?? ':memory:');
+const db = createDbConnection(loadConfig(process.env).dbPath);
 container.register('CustomerRepository', { useValue: new SqlCustomerRepository(db) });
 container.register('GetCustomer', {
   useFactory: (c) => new GetCustomerInteractor(c.resolve('CustomerRepository')),

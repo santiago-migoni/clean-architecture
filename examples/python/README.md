@@ -42,7 +42,7 @@ src/shop/
 │                              audit_log_order_events.py, in_memory/, migrations/
 ├── shared/                    domain_error.py   ← base of every module's domain error
 ├── platform/                  db/{connection,migrate}.py · web/app.py (FastAPI, last-resort handlers)
-└── main/                      app.py (create_app) · __main__.py (serve) · compose/{customers,orders}.py · testing.py
+└── main/                      app.py (create_app) · __main__.py (serve) · config.py (load_config) · compose/{customers,orders}.py · testing.py
 tests/<module>/unit/ (mirrors the module) · tests/<module>/integration/ · tests/shared/ · tests/e2e/
 ```
 

@@ -60,6 +60,7 @@ const TOOLS = [
       'Reports every file that imports from a layer it should not depend on, with severity levels. ' +
       'Also checks SQL (.sql files and SQL in string literals): it may live only in infrastructure and ' +
       "platform/db, and a module may use only the tables its own migrations create. " +
+        'And configuration: only main/ may read the environment or import a configuration loader. ' +
       `Languages: ${SUPPORTED_NAMES}; files in any other language are reported as not checked.`,
     inputSchema: {
       type: 'object',
@@ -305,7 +306,7 @@ function handleMessage(msg) {
     ok(id, {
       protocolVersion: '2024-11-05',
       capabilities: { tools: {} },
-      serverInfo: { name: 'clean-architecture', version: '2.7.0' },
+      serverInfo: { name: 'clean-architecture', version: '2.8.0' },
     });
     return;
   }

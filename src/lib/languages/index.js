@@ -12,6 +12,9 @@
  *   resolveImport(file, spec, srcDir)    → path relative to srcDir, or null when external
  *   isAbstract(content)                  → true for an interface / abstract type (ca_metrics)
  *   embeddedSql(content)                 → SQL statements in the file (string literals; a .sql file is one)
+ *   environmentAccess?(content)          → how the file reads the process environment, in code (e.g. ['process.env'])
+ *   configPackages?                      → packages that load configuration; imported outside main/ they are reported
+ *   isTest?(relPath)                     → true for a test kept beside the code (Go): it may read the environment
  *   isNeutral?(relPath, content)         → true for files that belong to no layer (e.g. __init__.py)
  *   metrics?                             → false when the files are not code (SQL): left out of ca_metrics
  */

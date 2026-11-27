@@ -38,6 +38,7 @@ its trigger holds — and the pieces that are absent are absent for a reason, wh
 | Controllers, HTTP request DTO | `infrastructure/controllers` | delivery input → use case request |
 | Platform | `platform/db`, `platform/web` | the connection, the migration runner, the web framework |
 | Composition roots | production (SQLite) and test (in-memory) | the same HTTP scenarios run against both |
+| Configuration | `main/config` (Go: `bootstrap/settings.go`) | `DB_PATH` and `PORT` are read only by the entry point and validated once; a bad `PORT` stops the process at startup |
 
 Absent on purpose:
 
@@ -54,4 +55,5 @@ All three versions keep these tests:
   `INSERT OR REPLACE`), against the SQL and the in-memory repository alike;
 - a presenter is never shared between requests (a deterministic test on the factory);
 - an unexpected failure never reaches the client with its internals;
-- no `OrderPlaced` is published for an order that was not placed.
+- no `OrderPlaced` is published for an order that was not placed;
+- a bad `PORT` (`abc`, `0`, `65536`, `1e3`) stops the process at startup, with an error that names the setting.

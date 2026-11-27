@@ -94,7 +94,7 @@ domain  ←  application  ←  infrastructure  ←  platform
 | infrastructure | `modules/<m>/infrastructure/` | Controllers, Presenters, Gateways | `application`, `domain`, `shared` |
 | shared | `shared/` | Shared kernel: `Money`, `Id`, base errors | Nothing |
 | platform | `platform/` | Web, DB, external tools | All inner layers |
-| main | `main/` (Go: `bootstrap/` + `cmd/`) | Composition root, wiring | Everything |
+| main | `main/` (Go: `bootstrap/` + `cmd/`) | Composition root, wiring, configuration | Everything |
 
 ### 3. The Module Rule (axis 2 — modules)
 A module is a cohesive component (CCP/CRP): it changes and is deployed as a unit.
@@ -156,6 +156,14 @@ Use this for Presenters, Views, and Database Gateways.
 - Domain tests must NOT touch use cases.
 - Follow the same Dependency Rule and Module Rule for test code.
 
+### 12. Configuration
+Configuration is a detail, and it has one place: the composition root.
+- Only `main/` reads the environment (`process.env`, `os.environ`, `os.Getenv`) or imports a configuration loader (`dotenv`, `pydantic-settings`, `viper`). `platform/` included: the connection receives its URL from `main/`.
+- `main/` loads it once, at startup, into a typed object and validates every value: a wrong setting stops the process before it serves anything.
+- Each piece receives through its constructor only the values it uses (ISP), never the whole configuration object.
+- A business policy value (a limit, a rate) reaches the use case as a plain value whose type lives in `application/`; `main/` decides where it comes from.
+- A test is its own composition root and may read the environment (Go keeps tests beside the code: `_test.go` files are not reported).
+
 ## When Reviewing or Writing Code
 
 Always check:
@@ -168,6 +176,7 @@ Always check:
 7. Does each component have a single axis of change (SRP)?
 8. Are there cyclic dependencies between modules or layers?
 9. Does any module's SQL use a table that another module's migrations create?
+10. Does any code outside `main/` read the environment or load configuration?
 
 ## Available Skills
 
