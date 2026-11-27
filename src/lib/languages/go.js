@@ -71,9 +71,13 @@ export default {
     return /_test\.go$/.test(relPath);
   },
 
-  // Packages whose only job is to load configuration (from .env files, the environment, config files).
-  configPackages: ['github.com/spf13/viper', 'github.com/joho/godotenv', 'github.com/kelseyhightower/envconfig',
-    'github.com/caarlos0/env', 'github.com/sethvargo/go-envconfig'],
+  // Packages that belong to one place only (see PACKAGE_RULES in ../architecture.js).
+  packages: {
+    config: ['github.com/spf13/viper', 'github.com/joho/godotenv', 'github.com/kelseyhightower/envconfig',
+      'github.com/caarlos0/env', 'github.com/sethvargo/go-envconfig'],
+    i18n: ['golang.org/x/text/message', 'golang.org/x/text/language', 'github.com/nicksnyder/go-i18n',
+      'github.com/leonelquinteros/gotext', 'github.com/chai2010/gettext-go'],
+  },
 
   environmentAccess(content) {
     return [...new Set([...codeOnly(content, SYNTAX).matchAll(ENVIRONMENT)].map((m) => m[0]))];

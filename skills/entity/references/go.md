@@ -14,8 +14,6 @@ Unexported fields keep the state behind methods; the constructors enforce the in
 // It imports only internal/shared; the customer is referenced by id only.
 package domain
 
-import "fmt"
-
 type Status string
 
 const (
@@ -68,7 +66,7 @@ func (o *Order) CanBeCancelled() bool { return o.status == StatusPending }
 
 func (o *Order) Cancel() error {
 	if !o.CanBeCancelled() {
-		return fmt.Errorf("%w: order %s cannot be cancelled", ErrInvalidOrder, o.id)
+		return &InvalidOrderError{Reason: ReasonNotCancellable, Detail: "order " + o.id + " cannot be cancelled"}
 	}
 	o.status = StatusCancelled
 	return nil
@@ -76,17 +74,17 @@ func (o *Order) Cancel() error {
 
 func (o *Order) validate() error {
 	if o.customerID == "" {
-		return fmt.Errorf("%w: order must reference a customer", ErrInvalidOrder)
+		return &InvalidOrderError{Reason: ReasonCustomerRequired, Detail: "order must reference a customer"}
 	}
 	if len(o.lines) == 0 {
-		return fmt.Errorf("%w: order must have at least one line", ErrInvalidOrder)
+		return &InvalidOrderError{Reason: ReasonNoLines, Detail: "order must have at least one line"}
 	}
 	for _, l := range o.lines {
 		if l.Quantity <= 0 {
-			return fmt.Errorf("%w: line quantity must be positive", ErrInvalidOrder)
+			return &InvalidOrderError{Reason: ReasonInvalidQuantity, Detail: "line quantity must be positive"}
 		}
 		if l.UnitPriceCents < 0 {
-			return fmt.Errorf("%w: unit price must not be negative", ErrInvalidOrder)
+			return &InvalidOrderError{Reason: ReasonInvalidUnitPrice, Detail: "unit price must not be negative"}
 		}
 	}
 	return nil
@@ -95,7 +93,9 @@ func (o *Order) validate() error {
 
 ## Domain error
 
-A sentinel the outer layers match with `errors.Is`; the message gives the detail.
+A sentinel the outer layers match with `errors.Is`, and a typed error that carries the **reason**: a stable code the
+outer layers map to a status and translate for users (`errors.As`). The detail is for logs, in one language; it is
+never shown as it is.
 
 ```go
 // internal/modules/orders/domain/errors.go
@@ -105,6 +105,26 @@ import "errors"
 
 // ErrInvalidOrder: a rule of the Order aggregate was violated.
 var ErrInvalidOrder = errors.New("invalid order")
+
+// InvalidOrderReason is the stable code of the rule that was violated.
+type InvalidOrderReason string
+
+const (
+	ReasonCustomerRequired InvalidOrderReason = "CUSTOMER_REQUIRED"
+	ReasonNoLines          InvalidOrderReason = "NO_LINES"
+	ReasonInvalidQuantity  InvalidOrderReason = "INVALID_QUANTITY"
+	ReasonInvalidUnitPrice InvalidOrderReason = "INVALID_UNIT_PRICE"
+	ReasonNotCancellable   InvalidOrderReason = "NOT_CANCELLABLE"
+)
+
+// InvalidOrderError carries the reason; errors.Is(err, ErrInvalidOrder) holds.
+type InvalidOrderError struct {
+	Reason InvalidOrderReason
+	Detail string
+}
+
+func (e *InvalidOrderError) Error() string { return ErrInvalidOrder.Error() + ": " + e.Detail }
+func (e *InvalidOrderError) Unwrap() error { return ErrInvalidOrder }
 ```
 
 ## Value object

@@ -18,9 +18,9 @@ class Customer:
     def __post_init__(self) -> None:
         # Runs on create() and reconstitute() alike: stored data must satisfy the same invariants.
         if not self.name:
-            raise InvalidCustomerError("Customer name must not be empty")
+            raise InvalidCustomerError("NAME_REQUIRED", "Customer name must not be empty")
         if not _EMAIL.match(self.email):
-            raise InvalidCustomerError("Customer email is not valid")
+            raise InvalidCustomerError("INVALID_EMAIL", "Customer email is not valid")
 
     @classmethod
     def create(cls, id: str, name: str, email: str) -> Customer:

@@ -10,10 +10,11 @@ def test_create_normalises_name_and_email():
     assert (customer.name, customer.email) == ("Ada", "ada@example.com")
 
 
-@pytest.mark.parametrize("name, email", [("", "a@b.co"), ("Ada", "not-an-email")])
-def test_rejects_an_invalid_customer(name, email):
-    with pytest.raises(InvalidCustomerError):
+@pytest.mark.parametrize("name, email, reason", [("", "a@b.co", "NAME_REQUIRED"), ("Ada", "not-an-email", "INVALID_EMAIL")])
+def test_rejects_an_invalid_customer_with_a_stable_reason(name, email, reason):
+    with pytest.raises(InvalidCustomerError) as raised:
         Customer.create("c-1", name, email)
+    assert raised.value.reason == reason
 
 
 def test_reconstitute_runs_the_same_invariants():

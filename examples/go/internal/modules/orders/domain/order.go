@@ -1,8 +1,6 @@
 // Package domain holds the orders module's enterprise business rules. The customer is referenced by id only.
 package domain
 
-import "fmt"
-
 type Status string
 
 const (
@@ -54,21 +52,23 @@ func (o *Order) TotalCents() int {
 func (o *Order) CanBeCancelled() bool { return o.status == StatusPending }
 
 func (o *Order) validate() error {
-	invalid := func(msg string) error { return fmt.Errorf("%w: %s", ErrInvalidOrder, msg) }
+	invalid := func(reason InvalidOrderReason, detail string) error {
+		return &InvalidOrderError{Reason: reason, Detail: detail}
+	}
 	if o.customerID == "" {
-		return invalid("Order must reference a customer")
+		return invalid(ReasonCustomerRequired, "Order must reference a customer")
 	}
 	if len(o.lines) == 0 {
-		return invalid("Order must have at least one line")
+		return invalid(ReasonNoLines, "Order must have at least one line")
 	}
 	for _, l := range o.lines {
 		switch {
 		case l.ProductID == "":
-			return invalid("Line product id must not be empty")
+			return invalid(ReasonProductRequired, "Line product id must not be empty")
 		case l.Quantity <= 0:
-			return invalid("Line quantity must be a positive integer")
+			return invalid(ReasonInvalidQuantity, "Line quantity must be a positive integer")
 		case l.UnitPriceCents < 0:
-			return invalid("Unit price must be a non-negative integer (cents)")
+			return invalid(ReasonInvalidUnitPrice, "Unit price must be a non-negative integer (cents)")
 		}
 	}
 	return nil

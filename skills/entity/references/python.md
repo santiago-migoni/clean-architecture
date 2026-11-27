@@ -36,14 +36,14 @@ class Order:
     def __post_init__(self) -> None:
         # Runs on create() and reconstitute() alike: stored data must satisfy the same invariants.
         if not self.customer_id.strip():
-            raise InvalidOrderError("Order must reference a customer")
+            raise InvalidOrderError("CUSTOMER_REQUIRED", "Order must reference a customer")
         if not self.lines:
-            raise InvalidOrderError("Order must have at least one line")
+            raise InvalidOrderError("NO_LINES", "Order must have at least one line")
         for line in self.lines:
             if line.quantity <= 0:
-                raise InvalidOrderError("Line quantity must be a positive integer")
+                raise InvalidOrderError("INVALID_QUANTITY", "Line quantity must be a positive integer")
             if line.unit_price_cents < 0:
-                raise InvalidOrderError("Unit price must be a non-negative integer (cents)")
+                raise InvalidOrderError("INVALID_UNIT_PRICE", "Unit price must be a non-negative integer (cents)")
 
     @classmethod
     def create(cls, id: str, customer_id: str, lines: list[OrderLine]) -> Order:
@@ -63,7 +63,7 @@ class Order:
 
     def cancel(self) -> Order:
         if not self.can_be_cancelled():
-            raise InvalidOrderError(f"Order {self.id} cannot be cancelled")
+            raise InvalidOrderError("NOT_CANCELLABLE", f"Order {self.id} cannot be cancelled")
         return replace(self, status="CANCELLED")
 ```
 
@@ -71,10 +71,22 @@ Equality: a frozen dataclass compares every field. When identity is what matters
 
 ## Domain error
 
+The error carries a **reason**: a stable code the outer layers map to a status and translate for users. Its message
+is for logs, in one language; it is never shown as it is.
+
 ```python
 # src/shop/modules/orders/domain/errors.py
+from typing import Literal
+
+InvalidOrderReason = Literal["CUSTOMER_REQUIRED", "NO_LINES", "INVALID_QUANTITY", "INVALID_UNIT_PRICE", "NOT_CANCELLABLE"]
+
+
 class InvalidOrderError(ValueError):
-    """A rule of the Order aggregate was violated. Mapped by the outer layers by type."""
+    """A rule of the Order aggregate was violated. Mapped by the outer layers by type and reason."""
+
+    def __init__(self, reason: InvalidOrderReason, message: str) -> None:
+        super().__init__(message)  # for logs; users get the text of the reason, in their language
+        self.reason = reason
 ```
 
 ## Value object

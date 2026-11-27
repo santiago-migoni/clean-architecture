@@ -41,8 +41,8 @@ src/shop/
 │           └── gateways/      sql_order_repository.py, order_persistence_model.py, customer_lookup_gateway.py,
 │                              audit_log_order_events.py, in_memory/, migrations/
 ├── shared/                    domain_error.py   ← base of every module's domain error
-├── platform/                  db/{connection,migrate}.py · web/app.py (FastAPI, last-resort handlers)
-└── main/                      app.py (create_app) · __main__.py (serve) · config.py (load_config) · compose/{customers,orders}.py · testing.py
+├── platform/                  db/{connection,migrate}.py · i18n/translator.py · web/{app,locale,messages}.py (FastAPI, locale, last-resort handlers)
+└── main/                      app.py (create_app) · __main__.py (serve) · config.py (load_config) · locales.py · compose/{customers,orders}.py · testing.py
 tests/<module>/unit/ (mirrors the module) · tests/<module>/integration/ · tests/shared/ · tests/e2e/
 ```
 

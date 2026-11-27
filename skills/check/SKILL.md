@@ -137,12 +137,17 @@ SQL is found in `.sql` files and in string literals of code that start like a st
 - **`config-placement`** — code outside `main/` that reads the environment (`process.env`, `import.meta.env`, `os.environ`, `os.getenv`, `from os import environ`, `os.Getenv`, `os.LookupEnv`) or imports a configuration loader (`dotenv`, `config`, `envalid`, `pydantic-settings`, `environs`, `viper`, `godotenv`, `envconfig`). Only code counts, never a comment or a string. A Go `_test.go` file is a composition root of its own and is not reported. Severity of the layer it is in: CRITICAL in `domain/`, HIGH in `application/`, MEDIUM in `infrastructure/` and `platform/`.
 - The fix is always the same: `main/` loads and validates the configuration once and passes each value through a constructor.
 
+### Step 4d: Translations
+
+- **`i18n-placement`** — `domain/`, `application/` or `shared/` importing an i18n library (`i18next`, `react-intl`, `@formatjs/intl`, `vue-i18n`, `@lingui/core`, `gettext`, `babel`, `fluent`, `go-i18n`, `golang.org/x/text/message`). A Go `_test.go` file is not reported. Severity of the layer it is in.
+- Beyond the scan, read the inner layers for **text meant for users**: an error message shown to the client as it is, a label built in a use case. Business code returns codes (a reason, a status); the presenter or controller turns them into text for the request's locale.
+
 ### Step 5: Report All Violations
 
 For each violation:
 ```
 ARCHITECTURE RULE VIOLATION
-  Rule: dependency-rule | cross-module | sql-placement | table-ownership | config-placement
+  Rule: dependency-rule | cross-module | sql-placement | table-ownership | config-placement | i18n-placement
   Severity: CRITICAL | HIGH | MEDIUM
   File: <path>:<line>
   Module: <module>
@@ -186,7 +191,7 @@ Date: <date>
 
 RESULTS:
   ✓ Allowed imports: <N>
-  ✗ Violations: <N>   (layers: <N>, cross-module: <N>, SQL: <N>, config: <N>)
+  ✗ Violations: <N>   (layers: <N>, cross-module: <N>, SQL: <N>, config: <N>, i18n: <N>)
   ⚠ Warnings: <N>
 
 VIOLATIONS BY SEVERITY:

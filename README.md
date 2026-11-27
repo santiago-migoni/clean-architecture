@@ -101,6 +101,8 @@ SQL has no imports: its dependencies are tables. Two rules apply to it, in `.sql
 
 Configuration has one place too (`config-placement`): only `main/` reads the environment (`process.env`, `os.environ`, `os.Getenv`, …) or imports a configuration loader (`dotenv`, `pydantic-settings`, `viper`, …). Only code is read, never comments or strings; a Go `_test.go` file is its own composition root and may read it.
 
+Translations stay out of business code (`i18n-placement`): `domain/`, `application/` and `shared/` never import an i18n library (`i18next`, `react-intl`, `gettext`, `babel`, `go-i18n`, …). They return codes; the presenter or controller writes the text in the request's language.
+
 Embedded SQL is read only from string literals (never comments) that start like a statement; a lower-case one also needs something only SQL has (`where`, `join`, `values`, `?`, `*`, a comma…), so a message such as `"select a customer from the list"` is not taken for a query.
 
 Source files in any other language (Java, Kotlin, C#, …) are **reported as not checked** and the project gets no health score, instead of a misleading 100.
@@ -111,7 +113,7 @@ Each profile is verified against its example in [`examples/<language>/`](example
 
 ## Command line: `ca-scan`
 
-The same checks as the `ca_scan` and `ca_cycles` tools, without Claude Code, for CI and the terminal: both axes, SQL placement and table ownership, configuration placement, and cycles between components. Node.js only, no dependencies.
+The same checks as the `ca_scan` and `ca_cycles` tools, without Claude Code, for CI and the terminal: both axes, SQL placement and table ownership, configuration and i18n placement, and cycles between components. Node.js only, no dependencies.
 
 ```bash
 npx --yes --package=github:santiago-migoni/clean-architecture ca-scan . --strict

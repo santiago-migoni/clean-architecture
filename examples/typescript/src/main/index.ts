@@ -9,6 +9,7 @@ import { runMigrations } from '../platform/db/migrate';
 import { buildHttpApp } from '../platform/web/app';
 import { composeCustomers, customersMigrations } from './compose/customers';
 import { composeOrders, ordersMigrations } from './compose/orders';
+import { LOCALES } from './locales';
 
 export function createApp(options: { dbPath?: string; auditLog?: (line: string) => void } = {}) {
   // 1. Infrastructure (platform)
@@ -17,11 +18,12 @@ export function createApp(options: { dbPath?: string; auditLog?: (line: string) 
   const newId = () => randomUUID();
 
   // 2. Compose modules in dependency order; the cross-module tie is an INPUT PORT
-  const customers = composeCustomers({ db, newId });
+  const defaultLocale = LOCALES[0];
+  const customers = composeCustomers({ db, newId, defaultLocale });
   const auditLog = options.auditLog ?? ((line: string) => console.log(`audit ${line}`));
-  const orders = composeOrders({ db, newId, getCustomer: customers.ports.getCustomer, auditLog });
+  const orders = composeOrders({ db, newId, getCustomer: customers.ports.getCustomer, auditLog, defaultLocale });
 
   // 3. HTTP: routes of every module
-  const app = buildHttpApp({ ...customers.routes, ...orders.routes });
+  const app = buildHttpApp({ ...customers.routes, ...orders.routes }, LOCALES);
   return { app, db };
 }

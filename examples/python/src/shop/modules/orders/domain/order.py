@@ -25,16 +25,16 @@ class Order:
 
     def __post_init__(self) -> None:
         if not self.customer_id.strip():
-            raise InvalidOrderError("Order must reference a customer")
+            raise InvalidOrderError("CUSTOMER_REQUIRED", "Order must reference a customer")
         if not self.lines:
-            raise InvalidOrderError("Order must have at least one line")
+            raise InvalidOrderError("NO_LINES", "Order must have at least one line")
         for line in self.lines:
             if not line.product_id.strip():
-                raise InvalidOrderError("Line product id must not be empty")
+                raise InvalidOrderError("PRODUCT_REQUIRED", "Line product id must not be empty")
             if not isinstance(line.quantity, int) or line.quantity <= 0:
-                raise InvalidOrderError("Line quantity must be a positive integer")
+                raise InvalidOrderError("INVALID_QUANTITY", "Line quantity must be a positive integer")
             if not isinstance(line.unit_price_cents, int) or line.unit_price_cents < 0:
-                raise InvalidOrderError("Unit price must be a non-negative integer (cents)")
+                raise InvalidOrderError("INVALID_UNIT_PRICE", "Unit price must be a non-negative integer (cents)")
 
     @classmethod
     def create(cls, id: str, customer_id: str, lines: list[OrderLine]) -> Order:

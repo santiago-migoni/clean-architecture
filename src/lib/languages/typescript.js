@@ -45,8 +45,12 @@ export default {
     return rest.length && !first.startsWith('@') && !first.includes(':') && existsSync(join(srcDir, first)) ? spec : null;
   },
 
-  // Packages whose only job is to load configuration (from .env files, the environment, config files).
-  configPackages: ['dotenv', '@dotenvx/dotenvx', 'config', 'convict', 'env-var', 'envalid', '@nestjs/config', '@t3-oss/env-core', '@t3-oss/env-nextjs'],
+  // Packages that belong to one place only (see PACKAGE_RULES in ../architecture.js).
+  packages: {
+    config: ['dotenv', '@dotenvx/dotenvx', 'config', 'convict', 'env-var', 'envalid', '@nestjs/config', '@t3-oss/env-core', '@t3-oss/env-nextjs'],
+    i18n: ['i18next', 'react-i18next', 'next-i18next', 'next-intl', 'react-intl', '@formatjs/intl', 'vue-i18n', '@lingui/core',
+      '@lingui/react', 'typesafe-i18n', 'rosetta', 'i18n'],
+  },
 
   environmentAccess(content) {
     return [...new Set([...codeOnly(content, SYNTAX).matchAll(ENVIRONMENT)].map((m) => m[0]))];

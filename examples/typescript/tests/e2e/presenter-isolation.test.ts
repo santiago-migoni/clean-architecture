@@ -13,13 +13,14 @@ describe('composeOrders - presenter isolation', () => {
       db: createDbConnection(),
       newId: (() => { let n = 0; return () => 'o-' + ++n; })(),
       auditLog: () => {},
+      defaultLocale: 'en',
       getCustomer: { execute: vi.fn(async ({ customerId }) => (customerExists(customerId) ? { id: customerId, name: 'n', email: 'e@e.co' } : null)) },
     }).routes.makePlaceOrder;
 
   it('builds a new presenter and a new controller on every call', () => {
     const make = compose(() => true);
-    const a = make();
-    const b = make();
+    const a = make('en');
+    const b = make('en');
     expect(a.presenter).not.toBe(b.presenter);
     expect(a.controller).not.toBe(b.controller);
   });
@@ -27,8 +28,8 @@ describe('composeOrders - presenter isolation', () => {
   it('keeps the state of two interleaved requests apart', async () => {
     // The DB is fresh, so the order tables do not exist: this only checks the lookup path.
     const make = compose((id) => id === 'known');
-    const failing = make();
-    const other = make();
+    const failing = make('en');
+    const other = make('en');
 
     await failing.controller.handle({ body: { customerId: 'ghost', items: [{ productId: 'p', quantity: 1, unitPriceCents: 1 }] } } as Request);
 

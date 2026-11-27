@@ -24,9 +24,16 @@ describe('Customer entity', () => {
 });
 
 describe('InvalidCustomerError', () => {
+  it.each([
+    [{ name: ' ', email: 'a@b.co' }, 'NAME_REQUIRED'],
+    [{ name: 'Ada', email: 'nope' }, 'INVALID_EMAIL'],
+  ])('carries the reason as a code, never only as text (%#)', (props, reason) => {
+    expect(() => Customer.create({ id: 'c-1', ...props })).toThrow(expect.objectContaining({ reason }));
+  });
+
   it('is a DomainError from the shared kernel', async () => {
     const { DomainError } = await import('@/shared/domain-error');
     const { InvalidCustomerError } = await import('@/modules/customers/domain/errors/invalid-customer-error');
-    expect(new InvalidCustomerError('x')).toBeInstanceOf(DomainError);
+    expect(new InvalidCustomerError('NAME_REQUIRED', 'x')).toBeInstanceOf(DomainError);
   });
 });

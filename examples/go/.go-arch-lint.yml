@@ -29,7 +29,7 @@ components:
 
 deps:
   platform:
-    mayDependOn: [shared, orders-infrastructure]  # the web view reads the orders presenter
+    mayDependOn: [platform, shared, orders-infrastructure]  # web uses i18n; the web view reads the orders presenter
   bootstrap:
     anyProjectDeps: true
 

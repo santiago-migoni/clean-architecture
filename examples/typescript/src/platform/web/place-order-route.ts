@@ -11,9 +11,9 @@ export interface PlaceOrderPair { presenter: PlaceOrderPresenter; controller: Pl
 // Delivery detail: which HTTP status each presenter error code gets.
 const STATUS_BY_CODE = { CUSTOMER_NOT_FOUND: 404, INVALID_ORDER: 400, UNKNOWN_ERROR: 500 } as const;
 
-export function placeOrderHandler(make: () => PlaceOrderPair) {
+export function placeOrderHandler(make: (locale: string) => PlaceOrderPair, localeOf: (req: Request) => string) {
   return async (req: Request, res: Response): Promise<void> => {
-    const { presenter, controller } = make();
+    const { presenter, controller } = make(localeOf(req));
 
     await controller.handle(req);
 

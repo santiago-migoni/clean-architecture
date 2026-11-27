@@ -10,6 +10,7 @@ from fastapi import FastAPI
 
 from shop.main.compose import customers as customers_composition
 from shop.main.compose import orders as orders_composition
+from shop.main.locales import LOCALES
 from shop.platform.db.connection import connect
 from shop.platform.db.migrate import run_migrations
 from shop.platform.web.app import RouteHandlers, build_app
@@ -22,10 +23,11 @@ def create_app(db_path: Optional[str] = None, audit_log: Optional[Callable[[str]
     new_id = lambda: str(uuid.uuid4())  # noqa: E731 — randomness is injected, never used by business rules
 
     # 2. Modules in dependency order; the cross-module tie is an input port
-    customers = customers_composition.compose_customers(db, new_id)
+    default_locale = LOCALES[0]
+    customers = customers_composition.compose_customers(db, new_id, default_locale)
     make_place_order = orders_composition.compose_orders(
-        db, new_id, customers.get_customer, audit_log or (lambda line: print(f"audit {line}", flush=True))
+        db, new_id, customers.get_customer, audit_log or (lambda line: print(f"audit {line}", flush=True)), default_locale
     )
 
     # 3. Delivery
-    return build_app(RouteHandlers(customers.register_controller, customers.get_controller, make_place_order))
+    return build_app(RouteHandlers(customers.register_controller, customers.get_controller, make_place_order), LOCALES)

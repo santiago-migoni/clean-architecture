@@ -15,9 +15,13 @@ func TestNewCustomerNormalisesNameAndEmail(t *testing.T) {
 }
 
 func TestInvalidCustomersAreRejectedWithTheModuleAndTheSharedError(t *testing.T) {
-	for _, tc := range []struct{ name, email string }{{"", "a@b.co"}, {"Ada", "not-an-email"}} {
+	for _, tc := range []struct {
+		name, email string
+		reason      InvalidCustomerReason
+	}{{"", "a@b.co", ReasonNameRequired}, {"Ada", "not-an-email", ReasonInvalidEmail}} {
 		_, err := NewCustomer("c-1", tc.name, tc.email)
-		if !errors.Is(err, ErrInvalidCustomer) || !errors.Is(err, shared.ErrBusinessRule) {
+		var invalid *InvalidCustomerError
+		if !errors.Is(err, ErrInvalidCustomer) || !errors.Is(err, shared.ErrBusinessRule) || !errors.As(err, &invalid) || invalid.Reason != tc.reason {
 			t.Fatalf("%+v: got %v", tc, err)
 		}
 	}

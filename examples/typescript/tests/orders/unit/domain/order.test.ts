@@ -38,3 +38,16 @@ describe('Order entity', () => {
     expect(o.customerId).toBe('c-1');
   });
 });
+
+describe('InvalidOrderError reasons', () => {
+  const line = { productId: 'p1', quantity: 1, unitPriceCents: 100 };
+  it.each([
+    [{ customerId: '', lines: [line] }, 'CUSTOMER_REQUIRED'],
+    [{ customerId: 'c-1', lines: [] }, 'NO_LINES'],
+    [{ customerId: 'c-1', lines: [{ ...line, productId: ' ' }] }, 'PRODUCT_REQUIRED'],
+    [{ customerId: 'c-1', lines: [{ ...line, quantity: 0 }] }, 'INVALID_QUANTITY'],
+    [{ customerId: 'c-1', lines: [{ ...line, unitPriceCents: -1 }] }, 'INVALID_UNIT_PRICE'],
+  ])('each rule has a stable code the outer layers translate (%#)', (props, reason) => {
+    expect(() => Order.create({ id: 'o-1', ...props })).toThrow(expect.objectContaining({ reason }));
+  });
+});

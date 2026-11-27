@@ -64,8 +64,8 @@ src/
 │           └── gateways/      sql-order-repository.ts, order-persistence-model.ts, customer-lookup-gateway.ts,
 │                              audit-log-order-events.ts, in-memory/, migrations/
 ├── shared/                    domain-error.ts   ← base of every module's domain error
-├── platform/                  db/{connection,migrate}.ts · web/{app,routes,place-order-route}.ts
-└── main/                      index.ts (createApp) · server.ts (listen) · config.ts (loadConfig) · compose/{customers,orders}.ts · index.test.ts
+├── platform/                  db/{connection,migrate}.ts · i18n/translator.ts · web/{app,routes,place-order-route,locale,messages}.ts
+└── main/                      index.ts (createApp) · server.ts (listen) · config.ts (loadConfig) · locales.ts · compose/{customers,orders}.ts · index.test.ts
 tests/<module>/unit/ (mirrors the module) · tests/<module>/integration/ (flat, gateways) · tests/shared/ · tests/e2e/
 ```
 
@@ -81,6 +81,7 @@ tests/<module>/unit/ (mirrors the module) · tests/<module>/integration/ (flat, 
 | **Typed errors** | `domain/errors/` (entity rules) and `application/errors/` (use case failures) are mapped by `instanceof` in controllers/presenters, never by message text |
 | **Domain events** | `PlaceOrder` publishes `OrderPlaced` through its own port (`order-events.ts`) after the order is stored; `audit-log-order-events.ts` writes it to an audit log injected by `main/`, and the tests use `in-memory/recording-order-events.ts` |
 | **Shared kernel** | `shared/domain-error.ts`: the base of `InvalidOrderError` and `InvalidCustomerError`; it imports nothing and holds no module's policy |
+| **Translations outside business code** | errors carry a `reason`, never a text for users; `customer-messages.ts` and `place-order-messages.ts` hold each module's texts; `platform/web/locale.ts` negotiates `Accept-Language`; `main/` builds the translators (`platform/i18n/translator.ts`) and lists the locales (`main/locales.ts`) |
 | **Configuration in one place** | `server.ts` is the only line that reads `process.env`; `main/config.ts` validates it once (`loadConfig`, tested in `tests/main/`), and each piece receives only the values it uses |
 | **Composition per module** | `main/compose/<module>.ts`; modules are tied together only through input ports |
 | **One composition root for production, one for tests** | `main/index.ts` (SQLite) and `main/index.test.ts` (in-memory); the same HTTP scenarios run against both |

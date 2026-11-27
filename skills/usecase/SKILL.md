@@ -77,7 +77,7 @@ In the module's `application/interactors/`. It:
 Failures are **typed errors** so the outer layers can map them without parsing messages:
 - **Enterprise rule** broken by an entity → a domain error, raised by the entity itself (`InvalidOrderError`, `ErrInvalidOrder`).
 - **Application failure** of the use case (a needed record is missing, a conflict) → an application error in the module's `application/` (`CustomerNotFoundError`, `EmailAlreadyRegisteredError`). Create it with the first one.
-A generic error for a rule the caller must react to is a smell: the controller or presenter would have to match on text.
+A generic error for a rule the caller must react to is a smell: the controller or presenter would have to match on text. An error carries codes and data, never text for users: the outer layers write that, in the user's language.
 
 ### Step 2: Define the Repository Interface (if data access is needed)
 In the module's `application/ports/output/`, one file per port.

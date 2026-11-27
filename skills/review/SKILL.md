@@ -88,6 +88,7 @@ For each presenter:
 - Does it apply the **Humble Object Pattern** (logic in presenter, rendering in view)?
 - Is the **View Model** a plain data structure?
 - Is the presenter **testable without an HTTP stack**?
+- Does every text for users come from the module's **catalog**, in the request's locale (the use case returns codes, `i18n-placement` is clean)?
 
 For each gateway:
 - Does it implement a repository interface **defined in the use case layer**?

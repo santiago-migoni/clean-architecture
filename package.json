@@ -1,6 +1,6 @@
 {
   "name": "clean-architecture-plugin",
-  "version": "2.8.0",
+  "version": "2.9.0",
   "description": "Full Clean Architecture plugin for Claude Code based on Uncle Bob's book",
   "type": "module",
   "main": "src/server.js",

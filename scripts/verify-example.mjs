@@ -295,10 +295,15 @@ try {
         'orders/domain/planted-env.ts': 'export const maxItems = Number(process.env.MAX_ITEMS);\n',
         'orders/infrastructure/gateways/planted-dotenv.ts': "import 'dotenv/config';\n",
         'orders/application/interactors/planted-env-prose.ts': "// never read process.env here\nexport const hint = 'set process.env.PORT';\n",
+        // translations: business code returns codes; only the outer layers turn them into text
+        'orders/domain/planted-i18n.ts': "import i18next from 'i18next';\nexport const t = i18next.t;\n",
+        'orders/application/interactors/planted-intl.ts': "import { createIntl } from '@formatjs/intl';\nexport { createIntl };\n",
+        'orders/infrastructure/presenters/planted-i18n-ok.ts': "import i18next from 'i18next';\nexport const t = i18next.t;\n",
       },
       want: ['dependency-rule:planted-outward.ts', 'dependency-rule:planted-dynamic.tsx', 'cross-module:planted-cross.mts',
         'dependency-rule:planted-platform.cjs', 'cross-module:planted-infra.jsx',
-        'config-placement:planted-env.ts', 'config-placement:planted-dotenv.ts'],
+        'config-placement:planted-env.ts', 'config-placement:planted-dotenv.ts',
+        'i18n-placement:planted-i18n.ts', 'i18n-placement:planted-intl.ts'],
     },
     python: {
       dir: join(ROOT, 'examples/python'),
@@ -315,10 +320,15 @@ try {
         'orders/application/interactors/planted_getenv.py': 'from os import path, getenv\n',
         'orders/infrastructure/gateways/planted_settings.py': 'from pydantic_settings import BaseSettings\n',
         'orders/infrastructure/gateways/planted_env_prose.py': '# os.getenv belongs in main/\nHINT = "set os.environ[PORT]"\n',
+        // translations: business code returns codes; only the outer layers turn them into text
+        'orders/domain/planted_gettext.py': 'import gettext\n\n_ = gettext.gettext\n',
+        'orders/application/interactors/planted_babel.py': 'from babel.numbers import format_currency\n',
+        'orders/infrastructure/presenters/planted_babel_ok.py': 'from babel.numbers import format_currency\n',
       },
       want: ['dependency-rule:planted_outward.py', 'cross-module:planted_cross.py', 'dependency-rule:planted_platform.py',
         'cross-module:planted_infra.py',
-        'config-placement:planted_env.py', 'config-placement:planted_getenv.py', 'config-placement:planted_settings.py'],
+        'config-placement:planted_env.py', 'config-placement:planted_getenv.py', 'config-placement:planted_settings.py',
+        'i18n-placement:planted_gettext.py', 'i18n-placement:planted_babel.py'],
     },
     go: {
       dir: join(ROOT, 'examples/go'),
@@ -336,9 +346,14 @@ try {
         'orders/infrastructure/gateways/planted_viper.go': 'package gateways\n\nimport "github.com/spf13/viper"\n\nvar _ = viper.New\n',
         'orders/infrastructure/gateways/planted_env_test.go': 'package gateways\n\nimport "os"\n\nvar testDSN = os.Getenv("TEST_DB")\n',
         'orders/domain/planted_env_prose.go': 'package domain\n\n// os.Getenv belongs in cmd/\nconst hint = "os.Getenv(PORT)"\n',
+        // translations: business code returns codes; only the outer layers turn them into text
+        'orders/domain/planted_i18n.go': 'package domain\n\nimport "github.com/nicksnyder/go-i18n/v2/i18n"\n\nvar _ = i18n.NewBundle\n',
+        'orders/application/interactors/planted_message.go': 'package interactors\n\nimport "golang.org/x/text/message"\n\nvar _ = message.NewPrinter\n',
+        'orders/infrastructure/presenters/planted_i18n_ok.go': 'package presenters\n\nimport "github.com/nicksnyder/go-i18n/v2/i18n"\n\nvar _ = i18n.NewBundle\n',
       },
       want: ['dependency-rule:planted_outward.go', 'cross-module:planted_cross.go', 'dependency-rule:planted_platform.go',
-        'cross-module:planted_infra.go', 'config-placement:planted_env.go', 'config-placement:planted_viper.go'],
+        'cross-module:planted_infra.go', 'config-placement:planted_env.go', 'config-placement:planted_viper.go',
+        'i18n-placement:planted_i18n.go', 'i18n-placement:planted_message.go'],
     },
     sql: {
       // SQL has no project of its own: it is checked on the Go example, whose queries and migrations are .sql files.

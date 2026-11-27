@@ -59,11 +59,11 @@ export class Order {
   }
 
   private validate(): void {
-    if (this.props.customerId.trim() === '') throw new InvalidOrderError('Order must reference a customer');
-    if (this.props.lines.length === 0) throw new InvalidOrderError('Order must have at least one line');
+    if (this.props.customerId.trim() === '') throw new InvalidOrderError('CUSTOMER_REQUIRED', 'Order must reference a customer');
+    if (this.props.lines.length === 0) throw new InvalidOrderError('NO_LINES', 'Order must have at least one line');
     for (const l of this.props.lines) {
-      if (!Number.isInteger(l.quantity) || l.quantity <= 0) throw new InvalidOrderError('Line quantity must be a positive integer');
-      if (!Number.isInteger(l.unitPriceCents) || l.unitPriceCents < 0) throw new InvalidOrderError('Unit price must be a non-negative integer (cents)');
+      if (!Number.isInteger(l.quantity) || l.quantity <= 0) throw new InvalidOrderError('INVALID_QUANTITY', 'Line quantity must be a positive integer');
+      if (!Number.isInteger(l.unitPriceCents) || l.unitPriceCents < 0) throw new InvalidOrderError('INVALID_UNIT_PRICE', 'Unit price must be a non-negative integer (cents)');
     }
   }
 }
@@ -72,7 +72,8 @@ export class Order {
 ## Domain error
 
 Each module declares its own error; the shared kernel holds their common base, so outer layers can catch any broken
-business rule with one type.
+business rule with one type. The error carries a **reason**: a stable code the outer layers map to a status and
+translate for users. Its message is for logs, in one language; it is never shown as it is.
 
 ```typescript
 // src/shared/domain-error.ts — shared kernel: imports nothing, holds no module's policy
@@ -86,10 +87,16 @@ export abstract class DomainError extends Error {
 
 ```typescript
 // src/modules/orders/domain/errors/invalid-order-error.ts
-// A rule of the Order aggregate was violated. Thrown by the entity, mapped by the outer layers by type.
+// A rule of the Order aggregate was violated. Thrown by the entity, mapped by the outer layers by type and reason.
 import { DomainError } from '../../../../shared/domain-error';
 
-export class InvalidOrderError extends DomainError {}
+export type InvalidOrderReason = 'CUSTOMER_REQUIRED' | 'NO_LINES' | 'INVALID_QUANTITY' | 'INVALID_UNIT_PRICE';
+
+export class InvalidOrderError extends DomainError {
+  constructor(readonly reason: InvalidOrderReason, message: string) {
+    super(message); // for logs; users get the text of the reason, in their language
+  }
+}
 ```
 
 ## Value object

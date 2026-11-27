@@ -36,7 +36,7 @@ export class Customer {
   }
 
   private validate(): void {
-    if (this.props.name.length === 0) throw new InvalidCustomerError('Customer name must not be empty');
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(this.props.email)) throw new InvalidCustomerError('Customer email is not valid');
+    if (this.props.name.length === 0) throw new InvalidCustomerError('NAME_REQUIRED', 'Customer name must not be empty');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(this.props.email)) throw new InvalidCustomerError('INVALID_EMAIL', 'Customer email is not valid');
   }
 }

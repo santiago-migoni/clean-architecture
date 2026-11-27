@@ -5,8 +5,8 @@
  *   ca-scan [path] [--json] [--strict]
  *
  * Runs the same analysis as the ca_scan and ca_cycles tools on `path` (default: the current directory):
- * the Dependency Rule, the Module Rule, SQL placement and table ownership, configuration placement, and cycles
- * between components.
+ * the Dependency Rule, the Module Rule, SQL placement and table ownership, configuration and i18n placement, and
+ * cycles between components.
  *
  * Exit codes:
  *   0  clean
@@ -25,7 +25,7 @@ const flags = new Set(args.filter((a) => a.startsWith('-')));
 const paths = args.filter((a) => !a.startsWith('-'));
 
 if (flags.has('-h') || flags.has('--help')) {
-  console.log(`${USAGE}\n\nChecks layers, modules, SQL placement, table ownership, configuration placement and cycles. Exit 0 clean, 1 violations,\n2 not reliable (no file in the layout, legacy layout or unsupported language), 64 bad usage.`);
+  console.log(`${USAGE}\n\nChecks layers, modules, SQL placement, table ownership, configuration and i18n placement, and cycles. Exit 0 clean, 1 violations,\n2 not reliable (no file in the layout, legacy layout or unsupported language), 64 bad usage.`);
   process.exit(0);
 }
 const unknown = [...flags].filter((f) => !['--json', '--strict'].includes(f));
@@ -63,7 +63,7 @@ for (const v of scan.violations) {
 }
 for (const c of cycles.cycles) console.log(`\n  ✗ cycle ${c.cycle}\n    Fix: ${c.fix}`);
 console.log(
-  `\n${scan.violations.length} violation(s) (layers ${s.layerViolations}, modules ${s.crossModuleViolations}, SQL ${s.sqlViolations}, config ${s.configViolations}), ` +
+  `\n${scan.violations.length} violation(s) (layers ${s.layerViolations}, modules ${s.crossModuleViolations}, SQL ${s.sqlViolations}, config ${s.configViolations}, i18n ${s.i18nViolations}), ` +
   `${cycles.cyclesFound} cycle(s), ${scan.warnings.length} warning(s).`
 );
 process.exit(code);

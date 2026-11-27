@@ -2,7 +2,6 @@
 package domain
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 )
@@ -23,10 +22,10 @@ func NewCustomer(id, name, email string) (*Customer, error) {
 // ReconstituteCustomer rebuilds a customer from persistence: the same invariants, no normalisation.
 func ReconstituteCustomer(id, name, email string) (*Customer, error) {
 	if name == "" {
-		return nil, fmt.Errorf("%w: Customer name must not be empty", ErrInvalidCustomer)
+		return nil, &InvalidCustomerError{Reason: ReasonNameRequired, Detail: "Customer name must not be empty"}
 	}
 	if !emailPattern.MatchString(email) {
-		return nil, fmt.Errorf("%w: Customer email is not valid", ErrInvalidCustomer)
+		return nil, &InvalidCustomerError{Reason: ReasonInvalidEmail, Detail: "Customer email is not valid"}
 	}
 	return &Customer{id: id, name: name, email: email}, nil
 }

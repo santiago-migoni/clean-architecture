@@ -76,10 +76,11 @@ In the module's `infrastructure/presenters/`. It stores the view model in `prese
 In `platform/web/` (platform may import the module's adapters; the adapters never import `platform/`). It gets a factory that returns a NEW presenter and its controller, runs the controller, and sends the presenter's view model — or the error view model with the HTTP status from a code → status table. No other logic.
 
 ### Step 5: Create Presenter Tests (no HTTP stack needed)
-Where the language puts unit tests. One test per formatting rule, one per typed error (its code and message), and one proving an unexpected error is shown with the generic message.
+Where the language puts unit tests. One test per formatting rule, one per typed error (its code and message), one in a second locale, and one proving an unexpected error is shown with the generic message.
 
 ### Step 6: Error codes, status mapping and isolation (verified on a running example)
-- **Typed errors → codes**, by type (`instanceof`, `isinstance`, `errors.As`/`errors.Is`), never by message text.
+- **Typed errors → codes**, by type (`instanceof`, `isinstance`, `errors.As`/`errors.Is`) and reason, never by message text.
+- **Text in the request's language.** The presenter receives the locale (negotiated by `platform/web/`) and a translator (injected by the composition root) and writes every label and message from the module's catalog, beside it. The use case returns codes; it never knows the language.
 - **Never leak an unexpected failure.** For `UNKNOWN_ERROR` the view model carries a generic message (`'Unexpected error'`), not the error's own message (driver errors, table names, stack details).
 - **Status mapping belongs to the humble route handler** in `platform/web/`, as a table from error code to HTTP status. The presenter stays free of HTTP knowledge.
 - **A presenter is stateful, so the composition root must build one per request.** Test this deterministically on the factory (two calls return two different presenters, and an interleaved pair keeps its own state). A concurrency test over a synchronous stack (an in-memory repository, an embedded database) can NOT detect a shared presenter — requests never interleave — and gives false confidence.
@@ -94,6 +95,7 @@ Where the language puts unit tests. One test per formatting rule, one per typed 
 - [ ] The HTTP handler / View is as thin as possible — no conditional business logic.
 - [ ] Presenter is unit-testable without starting an HTTP server.
 - [ ] Error paths are handled (presentError is implemented), by type, with a generic message for unknown failures.
+- [ ] Every text comes from the module's catalog, in the request's locale; the catalog provides every locale the app speaks.
 - [ ] The composition root builds a new presenter per request, guarded by a deterministic factory test.
 
 ## SRP Check

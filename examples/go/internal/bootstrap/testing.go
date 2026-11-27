@@ -21,8 +21,8 @@ func NewForTest() TestApp {
 	n := 0
 	deterministicID := func() string { n++; return fmt.Sprintf("id-%d", n) }
 	orders, events := ordersinmemory.NewOrderRepository(), &ordersinmemory.RecordingOrderEvents{}
-	customers := composeCustomers(customersinmemory.NewCustomerRepository(), deterministicID)
-	makePlaceOrder := composeOrders(orders, events, deterministicID, customers.GetCustomer)
-	handler := web.NewHandler(web.Handlers{RegisterCustomer: customers.RegisterCustomer, GetCustomer: customers.GetController, MakePlaceOrder: makePlaceOrder})
+	customers := composeCustomers(customersinmemory.NewCustomerRepository(), deterministicID, Locales[0])
+	makePlaceOrder := composeOrders(orders, events, deterministicID, customers.GetCustomer, Locales[0])
+	handler := web.NewHandler(web.Handlers{RegisterCustomer: customers.RegisterCustomer, GetCustomer: customers.GetController, MakePlaceOrder: makePlaceOrder}, Locales)
 	return TestApp{Handler: handler, Orders: orders, Events: events}
 }

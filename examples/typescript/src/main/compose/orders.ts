@@ -2,6 +2,8 @@
 import { readFileSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
 import type { Migration } from '../../platform/db/migrate';
+import { createTranslator } from '../../platform/i18n/translator';
+import { placeOrderMessages } from '../../modules/orders/infrastructure/presenters/place-order-messages';
 import type { IGetCustomerUseCase } from '../../modules/customers/application/ports/input/get-customer';
 import { SqlOrderRepository } from '../../modules/orders/infrastructure/gateways/sql-order-repository';
 import { CustomerLookupGateway } from '../../modules/orders/infrastructure/gateways/customer-lookup-gateway';
@@ -21,17 +23,19 @@ export interface OrdersDeps {
   newId: () => string;
   getCustomer: IGetCustomerUseCase; // customers' INPUT port — the only legal cross-module link
   auditLog: (line: string) => void; // where OrderPlaced events are written (a detail chosen by main/)
+  defaultLocale: string;
 }
 
-export function composeOrders({ db, newId, getCustomer, auditLog }: OrdersDeps) {
+export function composeOrders({ db, newId, getCustomer, auditLog, defaultLocale }: OrdersDeps) {
   const orderRepository = new SqlOrderRepository(db);
   const customerLookup = new CustomerLookupGateway(getCustomer);
   const events = new AuditLogOrderEvents(auditLog);
+  const t = createTranslator(placeOrderMessages, defaultLocale);
 
   // PlaceOrder has an Output Port: presenters are stateful (they hold the view model), so build
   // presenter + interactor + controller PER REQUEST and never share a presenter between requests.
-  const makePlaceOrder = () => {
-    const presenter = new PlaceOrderPresenter();
+  const makePlaceOrder = (locale: string) => {
+    const presenter = new PlaceOrderPresenter(t, locale);
     const interactor = new PlaceOrderInteractor(presenter, orderRepository, customerLookup, newId, events);
     return { presenter, controller: new PlaceOrderController(interactor) };
   };

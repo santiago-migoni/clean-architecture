@@ -56,8 +56,11 @@ export default {
     return /(^|\/)__init__\.py$/.test(relPath) && !/^[ \t]*(def|class|async def)\b/m.test(content);
   },
 
-  // Packages whose only job is to load configuration (from .env files, the environment, config files).
-  configPackages: ['dotenv', 'pydantic_settings', 'environs', 'decouple', 'dynaconf'],
+  // Packages that belong to one place only (see PACKAGE_RULES in ../architecture.js).
+  packages: {
+    config: ['dotenv', 'pydantic_settings', 'environs', 'decouple', 'dynaconf'],
+    i18n: ['gettext', 'babel', 'flask_babel', 'fluent', 'i18n'],
+  },
 
   environmentAccess(content) {
     const code = codeOnly(content, SYNTAX);

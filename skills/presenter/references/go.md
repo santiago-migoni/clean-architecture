@@ -20,10 +20,19 @@ import (
 	"example.com/shop/internal/modules/orders/domain"
 )
 
+// Translate turns a key into text for a locale; bootstrap injects platform/i18n's implementation.
+type Translate func(locale, key string, params map[string]string) string
+
+// Messages are the module's own texts, beside the presenter that writes them.
+var Messages = map[string]map[string]string{
+	"en": {"STATUS.PENDING": "Pending", "CUSTOMER_NOT_FOUND": "Customer {customerId} not found", "INVALID_ORDER.NO_LINES": "Order must have at least one line", "UNKNOWN_ERROR": "Unexpected error"},
+	"es": {"STATUS.PENDING": "Pendiente", "CUSTOMER_NOT_FOUND": "No existe el cliente {customerId}", "INVALID_ORDER.NO_LINES": "El pedido debe tener al menos una línea", "UNKNOWN_ERROR": "Error inesperado"},
+}
+
 // ViewModel is plain data formatted for the response.
 type ViewModel struct {
 	OrderID     string `json:"orderId"`
-	StatusLabel string `json:"statusLabel"` // "Pending" instead of "PENDING"
+	StatusLabel string `json:"statusLabel"` // "Pending" (or "Pendiente") instead of "PENDING"
 	Total       string `json:"total"`       // "$25.00" instead of 2500 (cents)
 }
 
@@ -37,36 +46,47 @@ const (
 
 type ErrorViewModel struct {
 	Code    ErrorCode `json:"code"`
-	Message string    `json:"message"`
+	Message string    `json:"message"` // in the request's language
 }
-
-var statusLabels = map[string]string{"PENDING": "Pending", "CANCELLED": "Cancelled"}
 
 type PlaceOrder struct {
 	ViewModel      *ViewModel
 	ErrorViewModel *ErrorViewModel
+	t              Translate
+	locale         string
 }
 
 var _ output.PlaceOrderOutput = (*PlaceOrder)(nil)
 
+// NewPlaceOrder builds the presenter of ONE request: the locale is the request's.
+func NewPlaceOrder(t Translate, locale string) *PlaceOrder { return &PlaceOrder{t: t, locale: locale} }
+
 func (p *PlaceOrder) Present(r output.PlaceOrderResult) {
-	label, ok := statusLabels[r.Status]
-	if !ok {
-		label = r.Status
+	key := "STATUS." + r.Status
+	label := p.t(p.locale, key, nil)
+	if label == key {
+		label = r.Status // an unknown status stays readable
 	}
+	// Dollars whatever the language: the currency is a fact of the order, not of the reader.
 	p.ViewModel = &ViewModel{OrderID: r.OrderID, StatusLabel: label, Total: fmt.Sprintf("$%d.%02d", r.TotalCents/100, r.TotalCents%100)}
 }
 
 func (p *PlaceOrder) PresentError(err error) {
 	var notFound *interactors.CustomerNotFoundError
+	var invalid *domain.InvalidOrderError
+	// By type and reason, never by message text.
 	switch {
 	case errors.As(err, &notFound):
-		p.ErrorViewModel = &ErrorViewModel{Code: CustomerNotFound, Message: err.Error()}
-	case errors.Is(err, domain.ErrInvalidOrder):
-		p.ErrorViewModel = &ErrorViewModel{Code: InvalidOrder, Message: err.Error()}
+		p.fail(CustomerNotFound, p.t(p.locale, "CUSTOMER_NOT_FOUND", map[string]string{"customerId": notFound.CustomerID}))
+	case errors.As(err, &invalid):
+		p.fail(InvalidOrder, p.t(p.locale, "INVALID_ORDER."+string(invalid.Reason), nil))
 	default: // never leak the message of an unexpected failure
-		p.ErrorViewModel = &ErrorViewModel{Code: UnknownError, Message: "Unexpected error"}
+		p.fail(UnknownError, p.t(p.locale, "UNKNOWN_ERROR", nil))
 	}
+}
+
+func (p *PlaceOrder) fail(code ErrorCode, message string) {
+	p.ErrorViewModel = &ErrorViewModel{Code: code, Message: message}
 }
 ```
 
@@ -74,7 +94,8 @@ func (p *PlaceOrder) PresentError(err error) {
 
 ```go
 // internal/platform/web/place_order_route.go
-// Thin: reads what the presenter prepared and sends it. bootstrap builds a NEW presenter per request.
+// Thin: reads what the presenter prepared and sends it. bootstrap builds a NEW presenter per request, in the
+// request's locale (negotiated from Accept-Language here in platform/web).
 package web
 
 import (
@@ -91,9 +112,9 @@ var statusByCode = map[orderspresenters.ErrorCode]int{
 }
 
 // PlaceOrderHandler gets a factory that returns a fresh presenter and a controller bound to it.
-func PlaceOrderHandler(make func() (*orderspresenters.PlaceOrder, func(*http.Request))) http.HandlerFunc {
+func PlaceOrderHandler(make func(locale string) (*orderspresenters.PlaceOrder, func(*http.Request)), locales []string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		presenter, handle := make()
+		presenter, handle := make(NegotiateLocale(r.Header.Get("Accept-Language"), locales))
 		handle(r)
 		w.Header().Set("Content-Type", "application/json")
 		if e := presenter.ErrorViewModel; e != nil {
@@ -115,24 +136,38 @@ package presenters
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"example.com/shop/internal/modules/orders/application/interactors"
 	"example.com/shop/internal/modules/orders/application/ports/output"
 )
 
-func TestPresentFormatsTheResult(t *testing.T) {
-	p := &PlaceOrder{}
+// translate reads the module's own catalog, falling back to the key: a test of this package may not import
+// platform/i18n (infrastructure never depends on platform).
+func translate(locale, key string, params map[string]string) string {
+	text, ok := Messages[locale][key]
+	if !ok {
+		return key
+	}
+	for name, value := range params {
+		text = strings.ReplaceAll(text, "{"+name+"}", value)
+	}
+	return text
+}
+
+func TestPresentFormatsTheResultInTheRequestLanguage(t *testing.T) {
+	p := NewPlaceOrder(translate, "es")
 	p.Present(output.PlaceOrderResult{OrderID: "o-1", Status: "PENDING", TotalCents: 2550})
-	if p.ViewModel.StatusLabel != "Pending" || p.ViewModel.Total != "$25.50" {
+	if p.ViewModel.StatusLabel != "Pendiente" || p.ViewModel.Total != "$25.50" {
 		t.Fatalf("got %+v", p.ViewModel)
 	}
 }
 
 func TestPresentErrorMapsTypedErrorsAndHidesTheRest(t *testing.T) {
-	p := &PlaceOrder{}
+	p := NewPlaceOrder(translate, "en")
 	p.PresentError(&interactors.CustomerNotFoundError{CustomerID: "c-9"})
-	if p.ErrorViewModel.Code != CustomerNotFound {
+	if *p.ErrorViewModel != (ErrorViewModel{Code: CustomerNotFound, Message: "Customer c-9 not found"}) {
 		t.Fatalf("got %+v", p.ErrorViewModel)
 	}
 	p.PresentError(errors.New("pq: relation \"orders\" does not exist"))

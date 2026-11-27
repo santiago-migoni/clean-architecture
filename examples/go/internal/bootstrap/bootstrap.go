@@ -29,10 +29,11 @@ func New(cfg Config) (http.Handler, *sql.DB, error) {
 		return nil, nil, err
 	}
 	// 2. Modules in dependency order; the cross-module tie is an input port
-	customers := composeCustomers(sqlCustomers(conn), newID)
-	makePlaceOrder := composeOrders(ordersgateways.NewSQLOrderRepository(conn), ordersgateways.NewAuditLogOrderEvents(cfg.AuditLog), newID, customers.GetCustomer)
+	defaultLocale := Locales[0]
+	customers := composeCustomers(sqlCustomers(conn), newID, defaultLocale)
+	makePlaceOrder := composeOrders(ordersgateways.NewSQLOrderRepository(conn), ordersgateways.NewAuditLogOrderEvents(cfg.AuditLog), newID, customers.GetCustomer, defaultLocale)
 	// 3. Delivery
-	return web.NewHandler(web.Handlers{RegisterCustomer: customers.RegisterCustomer, GetCustomer: customers.GetController, MakePlaceOrder: makePlaceOrder}), conn, nil
+	return web.NewHandler(web.Handlers{RegisterCustomer: customers.RegisterCustomer, GetCustomer: customers.GetController, MakePlaceOrder: makePlaceOrder}, Locales), conn, nil
 }
 
 // newID returns a random 128-bit id: randomness is injected into the use cases, never used by them directly.

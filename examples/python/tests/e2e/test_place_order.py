@@ -28,13 +28,13 @@ def test_a_duplicate_email_is_409_and_the_first_customer_survives(client):
     first = register(client).json()["customerId"]
     second = register(client)
     assert second.status_code == 409
-    assert second.json() == {"message": "Email ada@example.com is already registered"}
+    assert second.json() == {"code": "EMAIL_ALREADY_REGISTERED", "message": "Email ada@example.com is already registered"}
     assert client.get(f"/customers/{first}").status_code == 200
 
 
 def test_an_invalid_customer_is_400(client):
     response = client.post("/customers", json={"name": "Ada", "email": "nope"})
-    assert response.status_code == 400 and response.json() == {"message": "Customer email is not valid"}
+    assert response.status_code == 400 and response.json() == {"code": "INVALID_CUSTOMER", "message": "Customer email is not valid"}
 
 
 def test_places_an_order_formatted_by_the_presenter(client):
@@ -53,6 +53,23 @@ def test_presenter_error_codes_become_http_statuses(client):
     assert empty.status_code == 400 and empty.json()["code"] == "INVALID_ORDER"
 
 
+def test_answers_in_the_language_of_accept_language_and_in_english_when_it_is_not_spoken(client):
+    es = {"accept-language": "es-AR,es;q=0.9,en;q=0.5"}
+    customer_id = register(client).json()["customerId"]
+    invalid = client.post("/customers", json={"name": "Ada", "email": "nope"}, headers=es)
+    assert (invalid.status_code, invalid.json()) == (400, {"code": "INVALID_CUSTOMER", "message": "El email del cliente no es válido"})
+    missing = client.get("/customers/ghost", headers=es)
+    assert (missing.status_code, missing.json()) == (404, {"code": "CUSTOMER_NOT_FOUND", "message": "No existe el cliente ghost"})
+    empty = client.post("/orders", json={"customerId": customer_id, "items": []}, headers=es)
+    assert (empty.status_code, empty.json()) == (400, {"code": "INVALID_ORDER", "message": "El pedido debe tener al menos una línea"})
+    placed = client.post("/orders", json={"customerId": customer_id, "items": [{"productId": "p1", "quantity": 1, "unitPriceCents": 250}]}, headers=es)
+    assert placed.status_code == 201 and (placed.json()["statusLabel"], placed.json()["total"]) == ("Pendiente", "$2.50")
+    malformed = client.post("/orders", content=b"{", headers={"content-type": "application/json", **es})
+    assert (malformed.status_code, malformed.json()) == (400, {"code": "MALFORMED_JSON", "message": "JSON mal formado"})
+    french = client.get("/customers/ghost", headers={"accept-language": "fr-FR,de;q=0.8"})
+    assert french.json()["message"] == "Customer ghost not found"
+
+
 def test_malformed_json_is_400_not_500(client):
     response = client.post("/orders", content=b"{", headers={"content-type": "application/json"})
-    assert response.status_code == 400 and response.json() == {"message": "Malformed JSON"}
+    assert response.status_code == 400 and response.json() == {"code": "MALFORMED_JSON", "message": "Malformed JSON"}

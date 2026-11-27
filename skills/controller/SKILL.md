@@ -76,6 +76,7 @@ The controller does NOT build its own use case: the composition root does. Note 
 
 ### Step 6: Error mapping and HTTP details (verified on a running example)
 - **Map known, typed failures; never match on message text.** Each typed error the use case declares gets a status: invalid (domain error) → 400, not found → 404, conflict → 409.
+- **Answer `{ code, message }`.** The code is stable, for programs; the message is the text of the error's reason in the request's locale, from the module's catalog beside the controller, through a translator the composition root injects. The locale comes from `platform/web/` (it reads `Accept-Language`); the controller never parses the header.
 - **Never swallow the rest.** An error you do not recognise propagates to the last-resort handler in `platform/web/`, which logs it and answers 500 without leaking internals.
 - **Coerce, do not validate business rules.** Converting to strings and numbers keeps a malformed body from crashing the controller; the entity then rejects empty or invalid values with its own typed error.
 - **Malformed input** (unparseable JSON) is the client's fault: 400, answered by the framework layer or the controller, never 500.

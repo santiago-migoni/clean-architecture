@@ -53,12 +53,12 @@ export class Order {
   }
 
   private validate(): void {
-    if (this.props.customerId.trim() === '') throw new InvalidOrderError('Order must reference a customer');
-    if (this.props.lines.length === 0) throw new InvalidOrderError('Order must have at least one line');
+    if (this.props.customerId.trim() === '') throw new InvalidOrderError('CUSTOMER_REQUIRED', 'Order must reference a customer');
+    if (this.props.lines.length === 0) throw new InvalidOrderError('NO_LINES', 'Order must have at least one line');
     for (const l of this.props.lines) {
-      if (l.productId.trim() === '') throw new InvalidOrderError('Line product id must not be empty');
-      if (!Number.isInteger(l.quantity) || l.quantity <= 0) throw new InvalidOrderError('Line quantity must be a positive integer');
-      if (!Number.isInteger(l.unitPriceCents) || l.unitPriceCents < 0) throw new InvalidOrderError('Unit price must be a non-negative integer (cents)');
+      if (l.productId.trim() === '') throw new InvalidOrderError('PRODUCT_REQUIRED', 'Line product id must not be empty');
+      if (!Number.isInteger(l.quantity) || l.quantity <= 0) throw new InvalidOrderError('INVALID_QUANTITY', 'Line quantity must be a positive integer');
+      if (!Number.isInteger(l.unitPriceCents) || l.unitPriceCents < 0) throw new InvalidOrderError('INVALID_UNIT_PRICE', 'Unit price must be a non-negative integer (cents)');
     }
   }
 }

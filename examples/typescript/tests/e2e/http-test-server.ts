@@ -7,10 +7,10 @@ export async function serve(app: Express) {
   await new Promise<void>((resolve) => server.once('listening', () => resolve()));
   const base = 'http://127.0.0.1:' + (server.address() as AddressInfo).port;
 
-  const send = async (method: string, path: string, body?: unknown, rawBody?: string) => {
+  const send = async (method: string, path: string, body?: unknown, rawBody?: string, headers: Record<string, string> = {}) => {
     const res = await fetch(base + path, {
       method,
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...headers },
       body: rawBody ?? (body === undefined ? undefined : JSON.stringify(body)),
     });
     return { status: res.status, body: (await res.json()) as Record<string, unknown> };

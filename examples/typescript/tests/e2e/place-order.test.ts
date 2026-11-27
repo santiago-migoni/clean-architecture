@@ -32,14 +32,14 @@ describe.each([
     const { send } = await start();
     const first = await send('POST', '/customers', { name: 'Ada', email: 'ada@example.com' });
     const second = await send('POST', '/customers', { name: 'Other', email: 'ada@example.com' });
-    expect(second).toMatchObject({ status: 409, body: { message: 'Email ada@example.com is already registered' } });
+    expect(second).toMatchObject({ status: 409, body: { code: 'EMAIL_ALREADY_REGISTERED', message: 'Email ada@example.com is already registered' } });
     expect((await send('GET', '/customers/' + first.body.customerId)).status).toBe(200);
   });
 
   it('rejects an invalid customer with 400', async () => {
     const { send } = await start();
     const res = await send('POST', '/customers', { name: 'Ada', email: 'nope' });
-    expect(res).toMatchObject({ status: 400, body: { message: 'Customer email is not valid' } });
+    expect(res).toMatchObject({ status: 400, body: { code: 'INVALID_CUSTOMER', message: 'Customer email is not valid' } });
   });
 
   it('places an order: the PRESENTER formats the response (cross-module check via the input port)', async () => {
@@ -71,7 +71,26 @@ describe.each([
   it('answers malformed JSON with 400 and never leaks internals', async () => {
     const { send } = await start();
     expect(await send('POST', '/orders', undefined, '{"customerId": '))
-      .toMatchObject({ status: 400, body: { message: 'Malformed JSON' } });
+      .toMatchObject({ status: 400, body: { code: 'MALFORMED_JSON', message: 'Malformed JSON' } });
+  });
+
+  it('answers in the language of Accept-Language, and in English when it is not spoken', async () => {
+    const { send } = await start();
+    const es = { 'accept-language': 'es-AR,es;q=0.9,en;q=0.5' };
+    const { body: { customerId } } = await send('POST', '/customers', { name: 'Ada', email: 'ada@example.com' });
+
+    expect(await send('POST', '/customers', { name: 'Ada', email: 'nope' }, undefined, es))
+      .toMatchObject({ status: 400, body: { code: 'INVALID_CUSTOMER', message: 'El email del cliente no es válido' } });
+    expect(await send('GET', '/customers/ghost', undefined, undefined, es))
+      .toMatchObject({ status: 404, body: { code: 'CUSTOMER_NOT_FOUND', message: 'No existe el cliente ghost' } });
+    expect(await send('POST', '/orders', { customerId, items: [] }, undefined, es))
+      .toMatchObject({ status: 400, body: { code: 'INVALID_ORDER', message: 'El pedido debe tener al menos una línea' } });
+    expect(await send('POST', '/orders', { customerId, items: [item(1)] }, undefined, es))
+      .toMatchObject({ status: 201, body: { statusLabel: 'Pendiente', total: '$2.50' } });
+    expect(await send('POST', '/orders', undefined, '{"customerId": ', es))
+      .toMatchObject({ status: 400, body: { code: 'MALFORMED_JSON', message: 'JSON mal formado' } });
+    expect(await send('GET', '/customers/ghost', undefined, undefined, { 'accept-language': 'fr-FR,de;q=0.8' }))
+      .toMatchObject({ status: 404, body: { message: 'Customer ghost not found' } });
   });
 
   // NOTE: this guards against mixed-up responses, but it cannot detect a shared presenter: the stack is
@@ -98,7 +117,7 @@ describe('HTTP e2e - unexpected failures (real composition root)', () => {
       const { body: { customerId } } = await http.send('POST', '/customers', { name: 'Ada', email: 'ada@example.com' });
       db.exec('DROP TABLE order_lines; DROP TABLE orders'); // the DB breaks under the use case
       const res = await http.send('POST', '/orders', { customerId, items: [item(1)] });
-      expect(res).toMatchObject({ status: 500, body: { message: 'Unexpected error' } });
+      expect(res).toMatchObject({ status: 500, body: { code: 'UNKNOWN_ERROR', message: 'Unexpected error' } });
       expect(JSON.stringify(res.body)).not.toContain('no such table');
       expect(logged).toHaveBeenCalledWith('Unhandled error:', expect.objectContaining({ message: expect.stringContaining('no such table') }));
     } finally {

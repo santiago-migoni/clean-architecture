@@ -8,11 +8,11 @@ PlaceOrderErrorCode = Literal["CUSTOMER_NOT_FOUND", "INVALID_ORDER", "UNKNOWN_ER
 @dataclass(frozen=True)
 class PlaceOrderViewModel:
     orderId: str
-    statusLabel: str  # "Pending" instead of "PENDING"
+    statusLabel: str  # "Pending" (or "Pendiente") instead of "PENDING"
     total: str  # "$25.00" instead of 2500 (cents)
 
 
 @dataclass(frozen=True)
 class PlaceOrderErrorViewModel:
     code: PlaceOrderErrorCode
-    message: str
+    message: str  # in the request's language

@@ -17,8 +17,9 @@
  *   1. Layers  — dependencies point inward: infrastructure → application → domain.
  *   2. Modules — a module never reaches into another module. The ONLY legal
  *      crossing is  A/infrastructure  →  B/application/ports/input.
- * And two details that each have one place: SQL (infrastructure and platform/db) and configuration
- * (main/ alone reads the environment and loads configuration; everything else receives values).
+ * And details that each have their place: SQL (infrastructure and platform/db), configuration (main/
+ * alone reads the environment and loads configuration) and translations (never in domain, application
+ * or shared: business code returns codes, the outer layers turn them into text).
  *
  * Detection always runs on a path RELATIVE to src/, never on the absolute path,
  * so a project that happens to live under /app/ is not misclassified, and it is
@@ -288,6 +289,33 @@ function findSqlViolations(file, layerDef, mod, content, tables) {
 /** The only layer that may read the environment or load configuration: the composition root. */
 const CONFIG_LAYERS = new Set(['main']);
 
+const CONFIG_FIX =
+  'Read the environment only in main/: load and validate the configuration once at startup, then pass each ' +
+  'value this code needs through its constructor (or as a parameter). Business policy values (limits, rates) ' +
+  'reach the use case as plain values whose type lives in application/.';
+
+/**
+ * Packages that belong to some layers only, by kind (each profile lists its language's packages of each kind).
+ * A package is reported only when it is external: project code named like one is not.
+ */
+const PACKAGE_RULES = {
+  config: {
+    rule: 'config-placement',
+    allowed: CONFIG_LAYERS,
+    message: (layer) => `the ${layer} layer loads configuration: only main/ (the composition root) may`,
+    fix: CONFIG_FIX,
+  },
+  i18n: {
+    rule: 'i18n-placement',
+    allowed: new Set(['infrastructure', 'platform', 'main']),
+    message: (layer) => `the ${layer} layer translates text for users: only infrastructure, platform and main may`,
+    fix:
+      'Business code never produces text for users. Return a stable code (an error reason, a status) from domain/ ' +
+      'and application/; the presenter or controller in infrastructure/ turns it into text for the request locale, ' +
+      'with a translator that main/ injects (the i18n library lives in platform/).',
+  },
+};
+
 /** True when an import specifier is one of the packages (or a subpath of one: dotenv/config, pkg.sub, mod/v11). */
 function isPackage(spec, packages) {
   return packages.some((p) => spec === p || spec.startsWith(`${p}/`) || spec.startsWith(`${p}.`));
@@ -298,32 +326,41 @@ function isPackage(spec, packages) {
  * configuration loader (dotenv, pydantic-settings, viper) anywhere but main/. A test kept beside the code
  * (Go) is its own composition root and is not reported.
  */
-function findConfigViolations(file, srcDir, rel, layerDef, mod, content) {
+function findConfigViolations(file, rel, layerDef, mod, content) {
   if (CONFIG_LAYERS.has(layerDef.layer)) return [];
   const profile = profileFor(file);
   if (!profile || profile.isTest?.(rel)) return [];
-  const fix =
-    'Read the environment only in main/: load and validate the configuration once at startup, then pass each ' +
-    'value this code needs through its constructor (or as a parameter). Business policy values (limits, rates) ' +
-    'reach the use case as plain values whose type lives in application/.';
-  const base = { severity: severityFor(layerDef.layer), rule: 'config-placement', layer: layerDef.layer, module: mod };
-  const out = (profile.environmentAccess?.(content) ?? []).map((access) => ({
-    ...base,
+  return (profile.environmentAccess?.(content) ?? []).map((access) => ({
+    severity: severityFor(layerDef.layer),
+    rule: 'config-placement',
+    layer: layerDef.layer,
+    module: mod,
     import: null,
     what: `reads ${access}`,
     message: `the ${layerDef.layer} layer reads the environment: only main/ (the composition root) may`,
-    fix,
+    fix: CONFIG_FIX,
   }));
-  const packages = profile.configPackages ?? [];
-  if (packages.length) {
-    for (const { spec, rel: local } of fileImports(file, srcDir, content)) {
-      if (local !== null || !isPackage(spec, packages)) continue; // project code named like a package is not one
+}
+
+/** Imports of packages outside the layers their kind allows (PACKAGE_RULES). A Go test may import anything. */
+function findPackageViolations(file, srcDir, rel, layerDef, mod, content) {
+  const profile = profileFor(file);
+  if (!profile?.packages || profile.isTest?.(rel)) return [];
+  const out = [];
+  for (const { spec, rel: local } of fileImports(file, srcDir, content)) {
+    if (local !== null) continue; // project code named like a package is not one
+    for (const [kind, packages] of Object.entries(profile.packages)) {
+      const rule = PACKAGE_RULES[kind];
+      if (!rule || rule.allowed.has(layerDef.layer) || !isPackage(spec, packages)) continue;
       out.push({
-        ...base,
+        severity: severityFor(layerDef.layer),
+        rule: rule.rule,
+        layer: layerDef.layer,
+        module: mod,
         import: spec,
         what: `imports "${spec}"`,
-        message: `the ${layerDef.layer} layer loads configuration: only main/ (the composition root) may`,
-        fix,
+        message: rule.message(layerDef.layer),
+        fix: rule.fix,
       });
     }
   }
@@ -332,7 +369,8 @@ function findConfigViolations(file, srcDir, rel, layerDef, mod, content) {
 
 /**
  * Check one file against every axis: layers and modules (imports), SQL (placement and table
- * ownership, when `ctx.tables` is given) and configuration (who may read the environment). Returns [] for files that do not belong to a known layer.
+ * ownership, when `ctx.tables` is given), configuration (who may read the environment) and
+ * translations (who may import an i18n library). Returns [] for files that do not belong to a known layer.
  */
 export function findViolations(file, srcDir, content, ctx = {}) {
   const rel = toPosix(relative(srcDir, file));
@@ -390,6 +428,7 @@ export function findViolations(file, srcDir, content, ctx = {}) {
   }
 
   out.push(...findSqlViolations(file, layerDef, mod, content, ctx.tables));
-  out.push(...findConfigViolations(file, srcDir, rel, layerDef, mod, content));
+  out.push(...findConfigViolations(file, rel, layerDef, mod, content));
+  out.push(...findPackageViolations(file, srcDir, rel, layerDef, mod, content));
   return out;
 }

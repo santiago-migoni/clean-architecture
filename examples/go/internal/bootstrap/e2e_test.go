@@ -24,8 +24,17 @@ func roots(t *testing.T) map[string]http.Handler {
 }
 
 func call(h http.Handler, method, path, body string) (int, map[string]any) {
+	return callIn(h, "", method, path, body)
+}
+
+// callIn sends the request with an Accept-Language header (none when it is empty).
+func callIn(h http.Handler, acceptLanguage, method, path, body string) (int, map[string]any) {
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(method, path, strings.NewReader(body)))
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	if acceptLanguage != "" {
+		req.Header.Set("Accept-Language", acceptLanguage)
+	}
+	h.ServeHTTP(rec, req)
 	var out map[string]any
 	_ = json.Unmarshal(rec.Body.Bytes(), &out)
 	return rec.Code, out
@@ -45,13 +54,13 @@ func TestHTTP(t *testing.T) {
 			if status, _ := call(h, "GET", "/customers/ghost", ""); status != 404 {
 				t.Fatalf("unknown customer: %d", status)
 			}
-			if status, body := call(h, "POST", "/customers", `{"name":"Other","email":"ada@example.com"}`); status != 409 || body["message"] != "Email ada@example.com is already registered" {
+			if status, body := call(h, "POST", "/customers", `{"name":"Other","email":"ada@example.com"}`); status != 409 || body["code"] != "EMAIL_ALREADY_REGISTERED" || body["message"] != "Email ada@example.com is already registered" {
 				t.Fatalf("duplicate email: %d %v", status, body)
 			}
 			if status, _ := call(h, "GET", "/customers/"+id, ""); status != 200 {
 				t.Fatal("the first customer did not survive the duplicate")
 			}
-			if status, body := call(h, "POST", "/customers", `{"name":"Ada","email":"nope"}`); status != 400 || body["message"] != "Customer email is not valid" {
+			if status, body := call(h, "POST", "/customers", `{"name":"Ada","email":"nope"}`); status != 400 || body["code"] != "INVALID_CUSTOMER" || body["message"] != "Customer email is not valid" {
 				t.Fatalf("invalid customer: %d %v", status, body)
 			}
 			items := `[{"productId":"p1","quantity":3,"unitPriceCents":250},{"productId":"p2","quantity":1,"unitPriceCents":1000}]`
@@ -64,8 +73,39 @@ func TestHTTP(t *testing.T) {
 			if status, body := call(h, "POST", "/orders", `{"customerId":"`+id+`","items":[]}`); status != 400 || body["code"] != "INVALID_ORDER" {
 				t.Fatalf("invalid order: %d %v", status, body)
 			}
-			if status, body := call(h, "POST", "/orders", `{`); status != 400 || body["message"] != "Malformed JSON" {
+			if status, body := call(h, "POST", "/orders", `{`); status != 400 || body["code"] != "MALFORMED_JSON" || body["message"] != "Malformed JSON" {
 				t.Fatalf("malformed JSON: %d %v", status, body)
+			}
+		})
+	}
+}
+
+func TestAnswersInTheLanguageOfAcceptLanguageAndInEnglishWhenItIsNotSpoken(t *testing.T) {
+	const es = "es-AR,es;q=0.9,en;q=0.5"
+	for name, h := range roots(t) {
+		t.Run(name, func(t *testing.T) {
+			_, created := call(h, "POST", "/customers", `{"name":"Ada","email":"ada@example.com"}`)
+			id, _ := created["customerId"].(string)
+			cases := []struct {
+				language, method, path, body string
+				status                       int
+				code, message                string
+			}{
+				{es, "POST", "/customers", `{"name":"Ada","email":"nope"}`, 400, "INVALID_CUSTOMER", "El email del cliente no es válido"},
+				{es, "POST", "/customers", `{`, 400, "MALFORMED_JSON", "JSON mal formado"},
+				{es, "GET", "/customers/ghost", "", 404, "CUSTOMER_NOT_FOUND", "No existe el cliente ghost"},
+				{es, "POST", "/orders", `{"customerId":"` + id + `","items":[]}`, 400, "INVALID_ORDER", "El pedido debe tener al menos una línea"},
+				{es, "POST", "/orders", `{`, 400, "MALFORMED_JSON", "JSON mal formado"},
+				{"fr-FR,de;q=0.8", "GET", "/customers/ghost", "", 404, "CUSTOMER_NOT_FOUND", "Customer ghost not found"},
+			}
+			for _, tc := range cases {
+				if status, body := callIn(h, tc.language, tc.method, tc.path, tc.body); status != tc.status || body["code"] != tc.code || body["message"] != tc.message {
+					t.Errorf("%s %s %s [%s]: got %d %v", tc.method, tc.path, tc.body, tc.language, status, body)
+				}
+			}
+			items := `[{"productId":"p1","quantity":1,"unitPriceCents":250}]`
+			if status, body := callIn(h, es, "POST", "/orders", `{"customerId":"`+id+`","items":`+items+`}`); status != 201 || body["statusLabel"] != "Pendiente" || body["total"] != "$2.50" {
+				t.Errorf("place order in Spanish: %d %v", status, body)
 			}
 		})
 	}
@@ -84,8 +124,8 @@ func TestOrderPlacedIsPublishedOnceAndOnlyForPlacedOrders(t *testing.T) {
 // Presenters hold the view model, so composeOrders must build a NEW one per call. Tested on the factory
 // itself: requests over this synchronous stack never interleave, so a concurrency test could not see sharing.
 func TestEachRequestGetsItsOwnPresenter(t *testing.T) {
-	make := composeOrders(ordersinmemory.NewOrderRepository(), &ordersinmemory.RecordingOrderEvents{}, func() string { return "o-1" }, noCustomers{})
-	a, b := make(), make()
+	make := composeOrders(ordersinmemory.NewOrderRepository(), &ordersinmemory.RecordingOrderEvents{}, func() string { return "o-1" }, noCustomers{}, "en")
+	a, b := make("en"), make("en")
 	if a.Presenter == b.Presenter {
 		t.Fatal("two requests share a presenter")
 	}

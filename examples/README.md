@@ -12,10 +12,14 @@ Two modules, `customers` and `orders`, over SQLite and HTTP:
 
 | Request | Answer |
 |---|---|
-| `POST /customers` `{name, email}` | `201 {customerId}` · `400` invalid · `409` email already registered |
-| `GET /customers/{id}` | `200 {id, name, email}` · `404` |
+| `POST /customers` `{name, email}` | `201 {customerId}` · `400 INVALID_CUSTOMER` · `409 EMAIL_ALREADY_REGISTERED` |
+| `GET /customers/{id}` | `200 {id, name, email}` · `404 CUSTOMER_NOT_FOUND` |
 | `POST /orders` `{customerId, items: [{productId, quantity, unitPriceCents}]}` | `201 {orderId, statusLabel, total}` · `404 CUSTOMER_NOT_FOUND` · `400 INVALID_ORDER` |
-| malformed JSON | `400`; an unexpected failure is `500` with no internals |
+| malformed JSON | `400 MALFORMED_JSON`; an unexpected failure is `500 UNKNOWN_ERROR` with no internals |
+
+Every failure answers `{code, message}`: the code is stable, the message is in the language of `Accept-Language`
+(`en` or `es`; English when the client asks for neither). `statusLabel` follows the language too (`Pending`,
+`Pendiente`); `total` is in US dollars in every language (`$17.50`): the currency is a fact of the order.
 
 ## Every piece, and why it is there
 
@@ -38,6 +42,9 @@ its trigger holds — and the pieces that are absent are absent for a reason, wh
 | Controllers, HTTP request DTO | `infrastructure/controllers` | delivery input → use case request |
 | Platform | `platform/db`, `platform/web` | the connection, the migration runner, the web framework |
 | Composition roots | production (SQLite) and test (in-memory) | the same HTTP scenarios run against both |
+| Error reasons | `InvalidOrderError` / `InvalidCustomerError` carry a `reason` (`NO_LINES`, `INVALID_EMAIL`, …) | the outer layers map a code to a status and a text; the error's message is for logs |
+| Translator + locale negotiation | `platform/i18n/` and `platform/web/` locale | finding a text, falling back to English, filling `{parameters}`; reading `Accept-Language` is an HTTP detail |
+| Catalogs | beside the adapter that writes the text: `customers` controllers, `orders` presenter, `platform/web` | each module owns its texts; a test in `main/` proves every catalog has every locale |
 | Configuration | `main/config` (Go: `bootstrap/settings.go`) | `DB_PATH` and `PORT` are read only by the entry point and validated once; a bad `PORT` stops the process at startup |
 
 Absent on purpose:
@@ -56,4 +63,6 @@ All three versions keep these tests:
 - a presenter is never shared between requests (a deterministic test on the factory);
 - an unexpected failure never reaches the client with its internals;
 - no `OrderPlaced` is published for an order that was not placed;
-- a bad `PORT` (`abc`, `0`, `65536`, `1e3`) stops the process at startup, with an error that names the setting.
+- a bad `PORT` (`abc`, `0`, `65536`, `1e3`) stops the process at startup, with an error that names the setting;
+- every failure is answered in the language the client asked for (`es-AR` → Spanish), and in English when it asked
+  for one the app does not speak.

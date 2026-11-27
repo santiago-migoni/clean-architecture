@@ -12,12 +12,19 @@ def test_starts_pending_and_totals_its_lines():
 
 
 @pytest.mark.parametrize(
-    "customer_id, lines",
-    [("", [LINE]), ("c-1", []), ("c-1", [OrderLine("", 1, 1)]), ("c-1", [OrderLine("p", 0, 1)]), ("c-1", [OrderLine("p", 1, -1)])],
+    "customer_id, lines, reason",
+    [
+        ("", [LINE], "CUSTOMER_REQUIRED"),
+        ("c-1", [], "NO_LINES"),
+        ("c-1", [OrderLine("", 1, 1)], "PRODUCT_REQUIRED"),
+        ("c-1", [OrderLine("p", 0, 1)], "INVALID_QUANTITY"),
+        ("c-1", [OrderLine("p", 1, -1)], "INVALID_UNIT_PRICE"),
+    ],
 )
-def test_rejects_an_invalid_order(customer_id, lines):
-    with pytest.raises(InvalidOrderError):
+def test_rejects_an_invalid_order_with_a_stable_reason(customer_id, lines, reason):
+    with pytest.raises(InvalidOrderError) as raised:
         Order.create("o-1", customer_id, lines)
+    assert raised.value.reason == reason
 
 
 def test_a_cancelled_order_cannot_be_cancelled_again():

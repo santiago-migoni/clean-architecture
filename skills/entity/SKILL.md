@@ -58,7 +58,7 @@ For a language without a reference, apply the same structure with that language'
 ### Step 5: Domain building blocks — only when the first one exists
 Keep `domain/` flat while it is small: one file per entity (and its value objects). Create a subfolder the first time its content appears, never in advance:
 - **Events** — when the entity raises an important business event (OrderPlaced, PaymentReceived): `domain/events/`.
-- **Errors** — when a rule violation deserves a named domain error (OutOfStockError) instead of a generic one: `domain/errors/` (in Go, a sentinel or error type in the `domain` package).
+- **Errors** — when a rule violation deserves a named domain error (OutOfStockError) instead of a generic one: `domain/errors/` (in Go, a sentinel or error type in the `domain` package). The error carries a stable **reason** code for each rule; the outer layers map the code to a status and to text in the user's language. Its message is for logs only.
 - **Domain services** — only for a rule that spans several entities and does not belong to any of them (PricingPolicy): `domain/services/`.
 - **Aggregates** — when several entities must change together under one invariant, make one the aggregate root and reference the others only through it; the repository interface is then per aggregate root.
 If none of these exists yet, create none of these folders.

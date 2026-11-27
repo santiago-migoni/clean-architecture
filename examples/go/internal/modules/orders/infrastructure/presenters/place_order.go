@@ -1,4 +1,5 @@
-// Package presenters holds the TESTABLE half of the Humble Object split: all formatting logic lives here.
+// Package presenters holds the TESTABLE half of the Humble Object split: all formatting logic lives here, including
+// the language: the use case returns codes (a status, a failure reason) and the presenter writes them for the locale.
 package presenters
 
 import (
@@ -13,7 +14,7 @@ import (
 // ViewModel is plain data formatted for the response.
 type ViewModel struct {
 	OrderID     string `json:"orderId"`
-	StatusLabel string `json:"statusLabel"` // "Pending" instead of "PENDING"
+	StatusLabel string `json:"statusLabel"` // "Pending" (or "Pendiente") instead of "PENDING"
 	Total       string `json:"total"`       // "$25.00" instead of 2500 (cents)
 }
 
@@ -27,41 +28,50 @@ const (
 
 type ErrorViewModel struct {
 	Code    ErrorCode `json:"code"`
-	Message string    `json:"message"`
+	Message string    `json:"message"` // in the request's language
 }
-
-var statusLabels = map[string]string{"PENDING": "Pending", "CANCELLED": "Cancelled"}
 
 type PlaceOrder struct {
 	ViewModel      *ViewModel
 	ErrorViewModel *ErrorViewModel
+	t              Translate
+	locale         string
 }
+
+// NewPlaceOrder builds the presenter of ONE request: the locale is the request's.
+func NewPlaceOrder(t Translate, locale string) *PlaceOrder { return &PlaceOrder{t: t, locale: locale} }
 
 var _ output.PlaceOrderOutput = (*PlaceOrder)(nil)
 
 func (p *PlaceOrder) Present(r output.PlaceOrderResult) {
-	label, ok := statusLabels[r.Status]
-	if !ok {
-		label = r.Status
+	key := "STATUS." + r.Status
+	label := p.t(p.locale, key, nil)
+	if label == key {
+		label = r.Status // an unknown status stays readable
 	}
 	p.ViewModel = &ViewModel{OrderID: r.OrderID, StatusLabel: label, Total: dollars(r.TotalCents)}
 }
 
 func (p *PlaceOrder) PresentError(err error) {
 	var notFound *interactors.CustomerNotFoundError
+	var invalid *domain.InvalidOrderError
 	switch {
 	case errors.As(err, &notFound):
-		p.ErrorViewModel = &ErrorViewModel{Code: CustomerNotFound, Message: err.Error()}
-	case errors.Is(err, domain.ErrInvalidOrder):
-		p.ErrorViewModel = &ErrorViewModel{Code: InvalidOrder, Message: ruleMessage(err)}
+		p.fail(CustomerNotFound, p.t(p.locale, "CUSTOMER_NOT_FOUND", map[string]string{"customerId": notFound.CustomerID}))
+	case errors.As(err, &invalid):
+		p.fail(InvalidOrder, p.t(p.locale, "INVALID_ORDER."+string(invalid.Reason), nil))
 	default: // never leak the message of an unexpected failure
-		p.ErrorViewModel = &ErrorViewModel{Code: UnknownError, Message: "Unexpected error"}
+		p.fail(UnknownError, p.t(p.locale, "UNKNOWN_ERROR", nil))
 	}
 }
 
 func (p *PlaceOrder) HasError() bool { return p.ErrorViewModel != nil }
 
-// dollars formats cents as "$1,234.56".
+func (p *PlaceOrder) fail(code ErrorCode, message string) {
+	p.ErrorViewModel = &ErrorViewModel{Code: code, Message: message}
+}
+
+// dollars formats cents as "$1,234.56", whatever the language: the currency is a fact of the order, not of the reader.
 func dollars(cents int) string {
 	whole, frac := cents/100, cents%100
 	digits := fmt.Sprint(whole)
@@ -69,13 +79,4 @@ func dollars(cents int) string {
 		digits = digits[:i] + "," + digits[i:]
 	}
 	return fmt.Sprintf("$%s.%02d", digits, frac)
-}
-
-// ruleMessage drops the "invalid order: business rule violated: " prefix of a domain error.
-func ruleMessage(err error) string {
-	prefix := domain.ErrInvalidOrder.Error() + ": "
-	if s := err.Error(); len(s) > len(prefix) && s[:len(prefix)] == prefix {
-		return s[len(prefix):]
-	}
-	return err.Error()
 }

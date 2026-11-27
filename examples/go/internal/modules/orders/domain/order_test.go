@@ -18,15 +18,18 @@ func TestInvalidOrdersAreRejected(t *testing.T) {
 	cases := []struct {
 		customerID string
 		lines      []Line
+		reason     InvalidOrderReason
 	}{
-		{"", []Line{line}},
-		{"c-1", nil},
-		{"c-1", []Line{{ProductID: "", Quantity: 1}}},
-		{"c-1", []Line{{ProductID: "p", Quantity: 0}}},
-		{"c-1", []Line{{ProductID: "p", Quantity: 1, UnitPriceCents: -1}}},
+		{"", []Line{line}, ReasonCustomerRequired},
+		{"c-1", nil, ReasonNoLines},
+		{"c-1", []Line{{ProductID: "", Quantity: 1}}, ReasonProductRequired},
+		{"c-1", []Line{{ProductID: "p", Quantity: 0}}, ReasonInvalidQuantity},
+		{"c-1", []Line{{ProductID: "p", Quantity: 1, UnitPriceCents: -1}}, ReasonInvalidUnitPrice},
 	}
 	for _, tc := range cases {
-		if _, err := NewOrder("o-1", tc.customerID, tc.lines); !errors.Is(err, ErrInvalidOrder) {
+		_, err := NewOrder("o-1", tc.customerID, tc.lines)
+		var invalid *InvalidOrderError
+		if !errors.Is(err, ErrInvalidOrder) || !errors.As(err, &invalid) || invalid.Reason != tc.reason {
 			t.Fatalf("%+v: got %v", tc, err)
 		}
 	}

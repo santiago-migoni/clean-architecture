@@ -164,6 +164,14 @@ Configuration is a detail, and it has one place: the composition root.
 - A business policy value (a limit, a rate) reaches the use case as a plain value whose type lives in `application/`; `main/` decides where it comes from.
 - A test is its own composition root and may read the environment (Go keeps tests beside the code: `_test.go` files are not reported).
 
+### 13. Translations
+Text for users is a detail of delivery: business code returns codes, the outer layers write the words.
+- `domain/` and `application/` never produce text for users. A failure carries a stable **reason** code (`NO_LINES`, `INVALID_EMAIL`) and data; a status is a code (`PENDING`). The error's message is for logs, in one language, and is never sent as it is.
+- `domain/`, `application/` and `shared/` never import an i18n library (`i18next`, `react-intl`, `gettext`, `babel`, `go-i18n`, `x/text/message`).
+- The **locale is delivery input**: `platform/web/` negotiates it (`Accept-Language`) and passes it to the controller or the presenter, never to the use case. If a language or a region changes a business rule (taxes, for example), it is not a locale: it is a domain concept with its own name.
+- Each module owns its **catalog**, beside the adapter that writes the text (a controller or a presenter); removing the module removes its texts. The translator is a driver in `platform/i18n/`, injected by `main/`, which also decides which locales the app speaks. Every catalog provides every locale.
+- A fact of the domain (the currency of an amount) is data, not language: only how it is written may follow the locale.
+
 ## When Reviewing or Writing Code
 
 Always check:
@@ -177,6 +185,7 @@ Always check:
 8. Are there cyclic dependencies between modules or layers?
 9. Does any module's SQL use a table that another module's migrations create?
 10. Does any code outside `main/` read the environment or load configuration?
+11. Does `domain/` or `application/` produce text for users, or import an i18n library?
 
 ## Available Skills
 
