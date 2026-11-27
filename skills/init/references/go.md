@@ -68,7 +68,7 @@ deps:
     mayDependOn: [orders-application, orders-domain, shared, customers-input]
 ```
 
-Keep `deepScan: false`: it would report the composition root injecting implementations into use cases, which is the Dependency Inversion itself. Add a component for `application/ports/input/**` only once the folder exists (a glob that matches nothing is an error), and list every new module.
+Installing go-arch-lint v1.19.2 (`go install github.com/fe3dback/go-arch-lint@v1.19.2`) needs Go 1.26 or newer; it still checks a module that declares an older `go` version. Keep `deepScan: false`: it would report the composition root injecting implementations into use cases, which is the Dependency Inversion itself. Add a component for `application/ports/input/**` only once the folder exists (a glob that matches nothing is an error), and list every new module.
 
 **ca-scan** (below) needs no per-module configuration and also checks SQL and cycles.
 

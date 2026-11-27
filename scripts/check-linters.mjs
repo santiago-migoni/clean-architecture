@@ -5,8 +5,8 @@
  * naming every planted file. A configuration that reports nothing may simply match no folder.
  *
  *   ESLint + eslint-plugin-boundaries  examples/shop/eslint.config.js   (npm ci in examples/shop)
- *   import-linter                      fixtures/python/pyproject.toml   (pip install import-linter)
- *   go-arch-lint                       fixtures/go/.go-arch-lint.yml    (go install github.com/fe3dback/go-arch-lint)
+ *   import-linter                      fixtures/python/pyproject.toml   (pip install import-linter==2.17; Python >= 3.11)
+ *   go-arch-lint                       fixtures/go/.go-arch-lint.yml    (go install github.com/fe3dback/go-arch-lint@v1.19.2; Go >= 1.26)
  *
  *   node scripts/check-linters.mjs            # skips a linter that is not installed
  *   node scripts/check-linters.mjs --strict   # a missing linter is a failure (CI)

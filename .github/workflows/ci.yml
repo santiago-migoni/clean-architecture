@@ -143,6 +143,17 @@ jobs:
         run: node scripts/check-snippets.mjs --strict
 
       # The native linter configurations the skills recommend, proven in both directions.
+      # The fixtures were checked above on their MINIMUM versions (Python 3.10, Go 1.22); the linters
+      # themselves need newer runtimes: import-linter 2.16+ requires Python >= 3.11, and go-arch-lint
+      # v1.19.2 requires Go >= 1.26. They analyse code written for the older versions without trouble.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
       - name: Install import-linter and go-arch-lint (pinned)
         run: |
           pip install import-linter==2.17

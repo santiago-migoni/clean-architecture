@@ -51,7 +51,7 @@ modules = ["shop.modules.orders", "shop.modules.customers"]
 ignore_imports = ["shop.modules.*.infrastructure.** -> shop.modules.*.application.ports.input.**"]
 ```
 
-Add each new module to `containers` and `modules`. Run it with `PYTHONPATH=src lint-imports` (or install the package in the environment first).
+Add each new module to `containers` and `modules`. Run it with `PYTHONPATH=src lint-imports` (or install the package in the environment first). import-linter 2.16 and later need Python 3.11 or newer to run; they still check a codebase that targets Python 3.10, so in CI install the linter on a newer Python than the project's minimum if needed.
 
 ## In CI: ca-scan
 
