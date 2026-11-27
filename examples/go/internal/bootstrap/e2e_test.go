@@ -4,13 +4,20 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	customersinput "example.com/shop/internal/modules/customers/application/ports/input"
+	customersinmemory "example.com/shop/internal/modules/customers/infrastructure/gateways/inmemory"
+	loyaltydomain "example.com/shop/internal/modules/loyalty/domain"
+	ordersgateways "example.com/shop/internal/modules/orders/infrastructure/gateways"
 	ordersinmemory "example.com/shop/internal/modules/orders/infrastructure/gateways/inmemory"
+	"example.com/shop/internal/platform/events"
+	"example.com/shop/internal/platform/web"
 )
 
 // The same HTTP scenarios against the PRODUCTION composition root (SQLite) and the TEST one (in-memory).
@@ -111,13 +118,77 @@ func TestAnswersInTheLanguageOfAcceptLanguageAndInEnglishWhenItIsNotSpoken(t *te
 	}
 }
 
+func TestLoyaltyAwardsPointsForEachPlacedOrderThroughOrdersPublishedEvent(t *testing.T) {
+	for name, h := range roots(t) {
+		t.Run(name, func(t *testing.T) {
+			_, created := call(h, "POST", "/customers", `{"name":"Ada","email":"ada@example.com"}`)
+			id, _ := created["customerId"].(string)
+			if status, body := call(h, "GET", "/loyalty/"+id, ""); status != 200 || body["customerId"] != id || body["points"] != 0.0 {
+				t.Fatalf("before any order: %d %v", status, body)
+			}
+			item := func(quantity, cents int) string {
+				return fmt.Sprintf(`{"productId":"p1","quantity":%d,"unitPriceCents":%d}`, quantity, cents)
+			}
+			call(h, "POST", "/orders", `{"customerId":"`+id+`","items":[`+item(3, 250)+`,`+item(1, 1000)+`]}`) // $17.50 → 17
+			call(h, "POST", "/orders", `{"customerId":"`+id+`","items":[`+item(2, 250)+`]}`)                   // $5.00 → 5
+			call(h, "POST", "/orders", `{"customerId":"`+id+`","items":[]}`)                                   // not placed: no points
+			if status, body := call(h, "GET", "/loyalty/"+id, ""); status != 200 || body["points"] != 22.0 {
+				t.Fatalf("after the orders: %d %v", status, body)
+			}
+		})
+	}
+}
+
+// brokenAwards is loyalty's repository failing on every call: loyalty breaks, and orders must not notice.
+type brokenAwards struct{}
+
+func (brokenAwards) Add(context.Context, *loyaltydomain.PointsAward) (bool, error) {
+	return false, errors.New("loyalty is down")
+}
+func (brokenAwards) PointsOf(context.Context, string) (int, error) {
+	return 0, errors.New("loyalty is down")
+}
+
+// The production wiring, on in-memory gateways and a broken loyalty: the order is placed and the failure reported.
+func TestAFailingSubscriberNeverFailsTheOrder(t *testing.T) {
+	var reported []string
+	bus := events.NewBus(func(err error, e events.Event) { reported = append(reported, e.EventType()+": "+err.Error()) })
+	customers := composeCustomers(customersinmemory.NewCustomerRepository(), newID, Locales[0])
+	orderEvents := ordersgateways.NewPublishedOrderEvents(publishOrderPlaced(bus))
+	makePlaceOrder := composeOrders(ordersinmemory.NewOrderRepository(), orderEvents, newID, customers.GetCustomer, Locales[0])
+	getPoints := composeLoyalty(brokenAwards{}, bus)
+	h := web.NewHandler(web.Handlers{RegisterCustomer: customers.RegisterCustomer, GetCustomer: customers.GetController, MakePlaceOrder: makePlaceOrder, GetPoints: getPoints}, Locales)
+
+	_, created := call(h, "POST", "/customers", `{"name":"Ada","email":"ada@example.com"}`)
+	status, body := call(h, "POST", "/orders", `{"customerId":"`+created["customerId"].(string)+`","items":[{"productId":"p1","quantity":4,"unitPriceCents":250}]}`)
+	if status != 201 || body["statusLabel"] != "Pending" || len(reported) != 1 || !strings.HasPrefix(reported[0], "orders.order-placed.v1: ") {
+		t.Fatalf("got %d %v, reported %q", status, body, reported)
+	}
+}
+
+func TestTheAuditLogRecordsEveryIntegrationEvent(t *testing.T) {
+	var lines []string
+	h, conn, err := New(Config{DatabaseDSN: ":memory:", AuditLog: func(l string) { lines = append(lines, l) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_, created := call(h, "POST", "/customers", `{"name":"Ada","email":"ada@example.com"}`)
+	id := created["customerId"].(string)
+	_, placed := call(h, "POST", "/orders", `{"customerId":"`+id+`","items":[{"productId":"p1","quantity":1,"unitPriceCents":250}]}`)
+	want := `orders.order-placed.v1 {"orderId":"` + placed["orderId"].(string) + `","customerId":"` + id + `","totalCents":250}`
+	if len(lines) != 1 || lines[0] != want {
+		t.Fatalf("got %q, want %q", lines, want)
+	}
+}
+
 func TestOrderPlacedIsPublishedOnceAndOnlyForPlacedOrders(t *testing.T) {
 	app := NewForTest()
 	_, created := call(app.Handler, "POST", "/customers", `{"name":"Ada","email":"ada@example.com"}`)
 	call(app.Handler, "POST", "/orders", `{"customerId":"ghost","items":[{"productId":"p","quantity":1,"unitPriceCents":1}]}`)
 	call(app.Handler, "POST", "/orders", `{"customerId":"`+created["customerId"].(string)+`","items":[{"productId":"p","quantity":1,"unitPriceCents":1}]}`)
-	if len(app.Events.Published) != 1 || app.Orders.Count() != 1 {
-		t.Fatalf("published %d events for %d orders", len(app.Events.Published), app.Orders.Count())
+	if len(*app.Published) != 1 || app.Orders.Count() != 1 {
+		t.Fatalf("published %d events for %d orders", len(*app.Published), app.Orders.Count())
 	}
 }
 

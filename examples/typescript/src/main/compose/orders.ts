@@ -10,7 +10,8 @@ import { CustomerLookupGateway } from '../../modules/orders/infrastructure/gatew
 import { PlaceOrderInteractor } from '../../modules/orders/application/interactors/place-order';
 import { PlaceOrderPresenter } from '../../modules/orders/infrastructure/presenters/place-order-presenter';
 import { PlaceOrderController } from '../../modules/orders/infrastructure/controllers/place-order-controller';
-import { AuditLogOrderEvents } from '../../modules/orders/infrastructure/gateways/audit-log-order-events';
+import { PublishedOrderEvents } from '../../modules/orders/infrastructure/gateways/published-order-events';
+import type { OrderPlacedV1 } from '../../modules/orders/application/ports/published/order-placed-v1';
 
 const sql = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8');
 
@@ -22,14 +23,14 @@ export interface OrdersDeps {
   db: DatabaseSync;
   newId: () => string;
   getCustomer: IGetCustomerUseCase; // customers' INPUT port — the only legal cross-module link
-  auditLog: (line: string) => void; // where OrderPlaced events are written (a detail chosen by main/)
+  publish: (event: OrderPlacedV1) => Promise<void>; // the bus: orders announces, never knows who listens
   defaultLocale: string;
 }
 
-export function composeOrders({ db, newId, getCustomer, auditLog, defaultLocale }: OrdersDeps) {
+export function composeOrders({ db, newId, getCustomer, publish, defaultLocale }: OrdersDeps) {
   const orderRepository = new SqlOrderRepository(db);
   const customerLookup = new CustomerLookupGateway(getCustomer);
-  const events = new AuditLogOrderEvents(auditLog);
+  const events = new PublishedOrderEvents(publish);
   const t = createTranslator(placeOrderMessages, defaultLocale);
 
   // PlaceOrder has an Output Port: presenters are stateful (they hold the view model), so build

@@ -219,7 +219,9 @@ function architectureDoc(layout, ctx) {
     `| main | ${layout.mainPath(ctx)} | everything — imported by no one |\n\n` +
     '## Dependency Rule\n\nSource code dependencies point **inward only**: infrastructure → application → domain.\n\n' +
     "## Module Rule\n\nA module never imports another module's `domain/` or `infrastructure/`.\n" +
-    'The only legal crossing is `A/infrastructure` → `B/application/ports/input`, through a port owned by A.\n\n' +
+    'There are two legal crossings, both from `infrastructure/` to the other module\'s public surface: a call, ' +
+    '`A/infrastructure` → `B/application/ports/input` (through a port owned by A), and a subscription, ' +
+    '`B/infrastructure/subscribers` → `A/application/ports/published` (an integration event: plain data).\n\n' +
     '## Database\n\n' +
     'SQL lives only in `infrastructure/` (queries in `gateways/`, schema in `gateways/migrations/`) and `platform/db/`. ' +
     "Each module owns the tables its migrations create; no module queries or references another module's tables.\n\n" +

@@ -12,7 +12,7 @@ describe('composeOrders - presenter isolation', () => {
     composeOrders({
       db: createDbConnection(),
       newId: (() => { let n = 0; return () => 'o-' + ++n; })(),
-      auditLog: () => {},
+      publish: async () => {},
       defaultLocale: 'en',
       getCustomer: { execute: vi.fn(async ({ customerId }) => (customerExists(customerId) ? { id: customerId, name: 'n', email: 'e@e.co' } : null)) },
     }).routes.makePlaceOrder;

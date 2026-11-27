@@ -1,6 +1,7 @@
 // Package events holds the orders module's domain events: plain, immutable data about something the
-// business cares about. OrderPlaced exists because placed orders must reach an audit log, and the use case
-// must not know how.
+// business cares about. OrderPlaced exists because other modules react to placed orders (loyalty awards points; an
+// audit log records them), and the use case must not know who. The infrastructure maps it to the published
+// contract (application/ports/published).
 package events
 
 import "example.com/shop/internal/modules/orders/domain"

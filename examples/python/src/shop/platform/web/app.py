@@ -27,6 +27,7 @@ class RouteHandlers:
     register_customer: JsonController
     get_customer: PathController
     make_place_order: Callable[[str], tuple[Any, Any]]  # (locale) -> (presenter, controller): a NEW pair per request
+    get_points: PathController
 
 
 # Delivery detail: which HTTP status each presenter error code gets.
@@ -61,6 +62,11 @@ def build_app(handlers: RouteHandlers, locales: Sequence[str]) -> FastAPI:
     @app.get("/customers/{customer_id}")
     async def get_customer(customer_id: str, request: Request) -> JSONResponse:
         status, payload = handlers.get_customer.handle(customer_id, locale_of(request))
+        return JSONResponse(payload, status_code=status)
+
+    @app.get("/loyalty/{customer_id}")
+    async def get_points(customer_id: str, request: Request) -> JSONResponse:
+        status, payload = handlers.get_points.handle(customer_id, locale_of(request))
         return JSONResponse(payload, status_code=status)
 
     @app.post("/orders")

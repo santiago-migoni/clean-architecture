@@ -35,6 +35,10 @@ const LINTERS = [
       'src/modules/orders/infrastructure/gateways/planted-platform.ts': "import { createDbConnection } from '../../../../platform/db/connection';\nexport const z = createDbConnection;\n",
       'src/modules/orders/infrastructure/gateways/planted-infra.ts':
         "import { SqlCustomerRepository } from '../../../customers/infrastructure/gateways/sql-customer-repository';\nexport const w = SqlCustomerRepository;\n",
+      // a published contract dragging its domain along; a subscription from application instead of infrastructure
+      'src/modules/orders/application/ports/published/planted-contract.ts': "import { Order } from '../../../domain/order';\nexport type V = Order;\n",
+      'src/modules/loyalty/application/interactors/planted-subscribe.ts':
+        "import type { OrderPlacedV1 } from '../../../orders/application/ports/published/order-placed-v1';\nexport type U = OrderPlacedV1;\n",
     },
   },
   {
@@ -49,6 +53,10 @@ const LINTERS = [
       'src/shop/modules/orders/infrastructure/gateways/planted_platform.py': 'from shop.platform.db.connection import connect\n',
       'src/shop/modules/orders/infrastructure/gateways/planted_infra.py':
         'from shop.modules.customers.infrastructure.gateways.in_memory import customer_in_memory_repository\n',
+      // a published contract dragging its domain along; a subscription from application instead of infrastructure
+      'src/shop/modules/orders/application/ports/published/planted_contract.py': 'from shop.modules.orders.domain.order import Order\n',
+      'src/shop/modules/loyalty/application/interactors/planted_subscribe.py':
+        'from shop.modules.orders.application.ports.published.order_placed_v1 import OrderPlacedV1\n',
     },
   },
   {
@@ -62,6 +70,10 @@ const LINTERS = [
       'internal/modules/orders/infrastructure/gateways/planted_platform.go': 'package gateways\n\nimport _ "example.com/shop/internal/platform/db"\n',
       'internal/modules/orders/infrastructure/gateways/planted_infra.go':
         'package gateways\n\nimport _ "example.com/shop/internal/modules/customers/infrastructure/gateways/inmemory"\n',
+      // a published contract dragging its domain along; a subscription from application instead of infrastructure
+      'internal/modules/orders/application/ports/published/planted_contract.go': 'package published\n\nimport _ "example.com/shop/internal/modules/orders/domain"\n',
+      'internal/modules/loyalty/application/interactors/planted_subscribe.go':
+        'package interactors\n\nimport _ "example.com/shop/internal/modules/orders/application/ports/published"\n',
     },
   },
 ];
@@ -100,7 +112,7 @@ try {
     const planted = run(linter, copy);
     const names = Object.keys(linter.plant).map((rel) => rel.split('/').pop().replace(/\.\w+$/, ''));
     const missed = names.filter((n) => !planted.output.includes(n));
-    check(`${linter.name}: fails on the planted violations and names each one (layers, modules, platform)`,
+    check(`${linter.name}: fails on the planted violations and names each one (layers, modules, platform, contracts)`,
       planted.status !== 0 && missed.length === 0, `exit ${planted.status}; not reported: ${missed.join(', ') || '-'}\n${planted.output.slice(-600)}`);
   }
 } finally {

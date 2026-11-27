@@ -15,7 +15,11 @@ import { PlaceOrderInteractor } from '../modules/orders/application/interactors/
 import { PlaceOrderPresenter } from '../modules/orders/infrastructure/presenters/place-order-presenter';
 import { PlaceOrderController } from '../modules/orders/infrastructure/controllers/place-order-controller';
 import { CustomerLookupGateway } from '../modules/orders/infrastructure/gateways/customer-lookup-gateway';
-import { RecordingOrderEvents } from '../modules/orders/infrastructure/gateways/in-memory/recording-order-events';
+import { PublishedOrderEvents } from '../modules/orders/infrastructure/gateways/published-order-events';
+import { ORDER_PLACED_V1, type OrderPlacedV1 } from '../modules/orders/application/ports/published/order-placed-v1';
+import { AwardInMemoryRepository } from '../modules/loyalty/infrastructure/gateways/in-memory/award-in-memory-repository';
+import { InProcessBus, type IntegrationEvent } from '../platform/events/in-process-bus';
+import { composeLoyalty } from './compose/loyalty';
 
 export function bootstrapTestApp() {
   let n = 0;
@@ -23,7 +27,13 @@ export function bootstrapTestApp() {
 
   const customerRepository = new CustomerInMemoryRepository();
   const orderRepository = new OrderInMemoryRepository();
-  const orderEvents = new RecordingOrderEvents();
+  // The same bus and subscriptions as production; every integration event is also recorded for the tests.
+  const bus = new InProcessBus((error) => { throw error; }); // in tests, a failing subscriber must be seen
+  const published: IntegrationEvent[] = [];
+  bus.subscribeAll((event) => { published.push(event); });
+  const orderEvents = new PublishedOrderEvents(bus.publish);
+  const loyalty = composeLoyalty(new AwardInMemoryRepository());
+  bus.subscribe<OrderPlacedV1>(ORDER_PLACED_V1, (event) => loyalty.subscribers.orderPlaced.handle(event));
   const getCustomer = new GetCustomerInteractor(customerRepository);
   const customersText = createTranslator(customerMessages, LOCALES[0]);
   const ordersText = createTranslator(placeOrderMessages, LOCALES[0]);
@@ -38,6 +48,7 @@ export function bootstrapTestApp() {
       const interactor = new PlaceOrderInteractor(presenter, orderRepository, new CustomerLookupGateway(getCustomer), newId, orderEvents);
       return { presenter, controller: new PlaceOrderController(interactor) };
     },
+    ...loyalty.routes,
   }, LOCALES);
-  return { app, orderRepository, orderEvents };
+  return { app, orderRepository, published };
 }

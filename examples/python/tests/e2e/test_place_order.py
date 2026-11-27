@@ -1,4 +1,7 @@
 """The same HTTP scenarios against the PRODUCTION composition root (real SQLite) and the TEST one (in-memory)."""
+import json
+import sqlite3
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -53,6 +56,17 @@ def test_presenter_error_codes_become_http_statuses(client):
     assert empty.status_code == 400 and empty.json()["code"] == "INVALID_ORDER"
 
 
+def test_awards_loyalty_points_for_each_placed_order_through_orders_published_event(client):
+    customer_id = register(client).json()["customerId"]
+    assert client.get(f"/loyalty/{customer_id}").json() == {"customerId": customer_id, "points": 0}
+    item = lambda quantity, cents=250: {"productId": "p1", "quantity": quantity, "unitPriceCents": cents}  # noqa: E731
+    client.post("/orders", json={"customerId": customer_id, "items": [item(3), item(1, 1000)]})  # $17.50 -> 17 points
+    client.post("/orders", json={"customerId": customer_id, "items": [item(2)]})  # $5.00 -> 5 points
+    client.post("/orders", json={"customerId": customer_id, "items": []})  # not placed: no event, no points
+    response = client.get(f"/loyalty/{customer_id}")
+    assert (response.status_code, response.json()) == (200, {"customerId": customer_id, "points": 22})
+
+
 def test_answers_in_the_language_of_accept_language_and_in_english_when_it_is_not_spoken(client):
     es = {"accept-language": "es-AR,es;q=0.9,en;q=0.5"}
     customer_id = register(client).json()["customerId"]
@@ -73,3 +87,24 @@ def test_answers_in_the_language_of_accept_language_and_in_english_when_it_is_no
 def test_malformed_json_is_400_not_500(client):
     response = client.post("/orders", content=b"{", headers={"content-type": "application/json"})
     assert response.status_code == 400 and response.json() == {"code": "MALFORMED_JSON", "message": "Malformed JSON"}
+
+
+def test_a_failing_subscriber_never_fails_the_order(tmp_path, caplog):
+    path = str(tmp_path / "shop.db")
+    client = TestClient(create_app(path, audit_log=lambda line: None), raise_server_exceptions=False)
+    customer_id = register(client).json()["customerId"]
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TABLE loyalty_awards")  # loyalty breaks; orders must not notice
+    response = client.post("/orders", json={"customerId": customer_id, "items": [{"productId": "p1", "quantity": 4, "unitPriceCents": 250}]})
+    assert response.status_code == 201 and response.json()["statusLabel"] == "Pending"
+    assert "Subscriber failed on orders.order-placed.v1" in caplog.text
+
+
+def test_the_audit_log_records_every_integration_event():
+    lines = []
+    client = TestClient(create_app(":memory:", audit_log=lines.append))
+    customer_id = register(client).json()["customerId"]
+    order_id = client.post("/orders", json={"customerId": customer_id, "items": [{"productId": "p1", "quantity": 1, "unitPriceCents": 250}]}).json()["orderId"]
+    assert [json.loads(line) for line in lines] == [
+        {"order_id": order_id, "customer_id": customer_id, "total_cents": 250, "type": "orders.order-placed.v1"}
+    ]

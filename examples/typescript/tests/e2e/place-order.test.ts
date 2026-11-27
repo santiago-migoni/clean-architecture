@@ -74,6 +74,17 @@ describe.each([
       .toMatchObject({ status: 400, body: { code: 'MALFORMED_JSON', message: 'Malformed JSON' } });
   });
 
+  it('awards loyalty points for each placed order, through orders\' published event', async () => {
+    const { send } = await start();
+    const { body: { customerId } } = await send('POST', '/customers', { name: 'Ada', email: 'ada@example.com' });
+    expect(await send('GET', '/loyalty/' + customerId)).toMatchObject({ status: 200, body: { customerId, points: 0 } });
+
+    await send('POST', '/orders', { customerId, items: [item(3), item(1, 1000)] }); // $17.50 → 17 points
+    await send('POST', '/orders', { customerId, items: [item(2)] });                // $5.00  → 5 points
+    await send('POST', '/orders', { customerId, items: [] });                       // not placed: no event, no points
+    expect(await send('GET', '/loyalty/' + customerId)).toMatchObject({ status: 200, body: { customerId, points: 22 } });
+  });
+
   it('answers in the language of Accept-Language, and in English when it is not spoken', async () => {
     const { send } = await start();
     const es = { 'accept-language': 'es-AR,es;q=0.9,en;q=0.5' };
@@ -105,6 +116,38 @@ describe.each([
     // Each response must carry ITS OWN total (q x $1.00).
     results.forEach((r, i) => expect(r.body.total).toBe(dollars(quantities[i])));
     expect(new Set(results.map((r) => r.body.orderId)).size).toBe(25);
+  });
+});
+
+describe('HTTP e2e - a failing subscriber (real composition root)', () => {
+  it('never fails the order: it is placed, the failure is logged, and loyalty simply has no points for it', async () => {
+    const { app, db } = createApp({ auditLog: () => {} });
+    const http = await serve(app);
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const { body: { customerId } } = await http.send('POST', '/customers', { name: 'Ada', email: 'ada@example.com' });
+      db.exec('DROP TABLE loyalty_awards'); // loyalty breaks; orders must not notice
+      const res = await http.send('POST', '/orders', { customerId, items: [item(4)] });
+      expect(res).toMatchObject({ status: 201, body: { statusLabel: 'Pending' } });
+      expect(logged).toHaveBeenCalledWith('Subscriber failed on orders.order-placed.v1:', expect.objectContaining({ message: expect.stringContaining('no such table') }));
+    } finally {
+      logged.mockRestore();
+      await http.close();
+    }
+  });
+});
+
+describe('HTTP e2e - the audit log records every integration event (real composition root)', () => {
+  it('writes one JSON line per published event', async () => {
+    const lines: string[] = [];
+    const http = await serve(createApp({ auditLog: (line) => lines.push(line) }).app);
+    try {
+      const { body: { customerId } } = await http.send('POST', '/customers', { name: 'Ada', email: 'ada@example.com' });
+      const { body: { orderId } } = await http.send('POST', '/orders', { customerId, items: [item(1)] });
+      expect(lines.map((l) => JSON.parse(l))).toEqual([{ type: 'orders.order-placed.v1', orderId, customerId, totalCents: 250 }]);
+    } finally {
+      await http.close();
+    }
   });
 });
 

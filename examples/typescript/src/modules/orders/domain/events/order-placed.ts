@@ -1,6 +1,7 @@
 // src/modules/orders/domain/events/order-placed.ts
 // A DOMAIN EVENT: something the business cares about happened. Plain, immutable data in orders' vocabulary.
-// Why it exists here: placed orders must be recorded in an audit log, and the use case should not know how.
+// Why it exists here: other modules react to placed orders (loyalty awards points; an audit log records them),
+// and the use case must not know who. The infrastructure maps it to the published contract (ports/published).
 import type { Order } from '../order';
 
 export interface OrderPlaced {

@@ -75,12 +75,20 @@ MODULE MAP
 │ application/ports/input:  place-order         │        │ application/ports/input:  get-customer    │
 │ application/ports/output: order-repository    │        │ application/ports/output: customer-repo   │
 │                           customer-lookup ◄───┼─ owned │                                           │
-│ infrastructure/gateways:  customer-lookup-    │  by    │                                           │
+│ application/ports/published: order-placed-v1  │  by    │                                           │
+│ infrastructure/gateways:  customer-lookup-    │ orders │                                           │
 │                           gateway ────────────┼────────┼──► get-customer (input port)              │
 └───────────────────────────────────────────────┘        └───────────────────────────────────────────┘
+                        ▲
+                        ┆ subscribes to order-placed-v1
+┌─ modules/loyalty ─────┴───────────────────────┐
+│ infrastructure/subscribers: order-placed-     │
+│                             subscriber        │
+└───────────────────────────────────────────────┘
 
-shared/   ← used by both (Money, Id, errors)        platform/ ← web, db, external        main/ ← wires everything
-Legend: ──► legal cross-module link (infrastructure → application/ports/input)    ══► VIOLATION (direct import)
+shared/   ← used by all (Money, Id, errors)    platform/ ← web, db, events (bus)    main/ ← wires everything
+Legend: ──► call (infrastructure → application/ports/input)    ┆ subscription (infrastructure/subscribers → application/ports/published)
+        ══► VIOLATION (direct import)
 ```
 
 ---
@@ -292,6 +300,7 @@ OrderRepositoryImpl ═══════╝   Crossed via: IOrderRepository
 orders/infrastructure ═════╗
                            ║ Boundary 4: Module ↔ Module (orders ↔ customers)
 customers/application/ports/input ═╝   Crossed via: IGetCustomerUseCase (called by CustomerLookupGateway)
+orders/application/ports/published ┆   Crossed via: OrderPlacedV1 (received by loyalty's OrderPlacedSubscriber)
                                Port owned by: orders (ICustomerLookup)
                                Data type: plain data / ids only
 ```

@@ -12,7 +12,7 @@ class Customers:
 
 
 def make_factory():
-    return compose_orders(sqlite3.connect(":memory:"), lambda: "o-1", Customers(), audit_log=lambda line: None, default_locale="en")
+    return compose_orders(sqlite3.connect(":memory:"), lambda: "o-1", Customers(), publish=lambda event: None, default_locale="en")
 
 
 def test_builds_a_new_presenter_and_controller_on_every_call():

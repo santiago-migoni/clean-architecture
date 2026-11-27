@@ -70,6 +70,7 @@ The folder of per-module functions is never called `modules/`: that name is the 
 
 What every composition root does, in this order:
 1. **Drivers** (`platform/`): open the database connection, run every module's migrations, create clients, with the values of the configuration. The configuration is loaded by a config module in `main/` (`config` in TypeScript and Python, `bootstrap/settings.go` in Go): a pure function of the environment it is given, which validates every value and fails at startup. The entry point is the only code that touches the environment itself; it passes it to that function.
+   It also creates the **event bus** (`platform/events/`): it gives `publish` to each publishing adapter and subscribes each module's subscribers (see the `event` skill). A failing subscriber is reported, never fails the publisher.
    It also decides the **locales** the app speaks (the first is the default) and builds one translator per module catalog with `platform/i18n/`; `platform/web/` gets the locales to negotiate each request's.
 2. **Modules in dependency order**: each module function builds its gateways, interactors and controllers and returns the **input ports** other modules may use plus its **routes**. The cross-module tie is always an input port passed to the other module's function (A needs B's port ⇒ B is composed first, and B never needs A).
 3. **Delivery**: hand the routes to `platform/web/`, which owns the framework, route registration and the last-resort error handler.
@@ -91,7 +92,7 @@ Different environments can have different composition roots. The **test composit
 - [ ] The same HTTP scenarios run against the production composition root and the test composition root.
 - [ ] No other production code constructs a cross-layer dependency.
 - [ ] No module and no layer imports the composition root.
-- [ ] Modules are connected only here, and only through input ports (each module function returns the ports others may use).
+- [ ] Modules are connected only here, and only through input ports (each module function returns the ports others may use) or subscriptions to published events, registered on the bus here.
 - [ ] Module composition order has no cycles (A needs B's port ⇒ B is composed first, B does not need A).
 - [ ] Environment variables are read ONLY in main, once, by the entry point; the config module validates them and fails at startup (`ca_scan` reports `config-placement` anywhere else).
 - [ ] Each piece receives only the configuration values it uses, never the whole configuration object.

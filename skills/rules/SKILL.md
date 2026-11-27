@@ -19,10 +19,10 @@ Shown with the TypeScript code root (`src/`); Python and Go place the same tree 
 │   │   └── <module>/              # one folder per business capability (screams the domain)
 │   │       ├── domain/            # Enterprise business rules
 │   │       ├── application/       # Application business rules
-│   │       │   ├── ports/{input,output}/
+│   │       │   ├── ports/{input,output,published}/
 │   │       │   └── interactors/
 │   │       └── infrastructure/    # Interface adapters
-│   │           └── {controllers,presenters,gateways}/
+│   │           └── {controllers,presenters,gateways,subscribers}/
 │   ├── shared/                # Shared kernel — pure and minimal
 │   ├── platform/              # Frameworks & drivers: web, db, external
 │   └── main/                  # Composition root (main/<app>/ if there are several entry points)
@@ -50,7 +50,7 @@ File names are kebab-case: `create-order`, `order-repository`, `sql-order-reposi
 
 ### Language conventions
 
-The layers, the folders that name them (`modules/<m>/{domain,application,infrastructure}`, `application/ports/{input,output}`, `shared/`, `platform/`) and both rules are the same in every language. Only names, tests and the entry point follow the language:
+The layers, the folders that name them (`modules/<m>/{domain,application,infrastructure}`, `application/ports/{input,output,published}`, `shared/`, `platform/`) and both rules are the same in every language. Only names, tests and the entry point follow the language:
 
 | | TypeScript / JavaScript | Python | Go |
 |---|---|---|---|
@@ -100,12 +100,17 @@ domain  ←  application  ←  infrastructure  ←  platform
 A module is a cohesive component (CCP/CRP): it changes and is deployed as a unit.
 
 - A module MUST NOT import another module's `domain/` or `infrastructure/`.
-- The **only** legal crossing is `A/infrastructure` → `B/application/ports/input`, through a port **owned by A**:
-  1. `A/application/ports/output/` declares the port it needs (e.g. `customer-lookup`).
-  2. `A/infrastructure/gateways/` implements it by calling `B/application/ports/input/`.
-  3. `A/domain` refers to B's entities **by id only** (`customerId`), never by importing them.
+- There are **two** legal crossings, both from a module's `infrastructure/` into the other module's public surface in `application/ports/`:
+  - **A call** — `A/infrastructure` → `B/application/ports/input`, when A needs an answer from B, through a port **owned by A**:
+    1. `A/application/ports/output/` declares the port it needs (e.g. `customer-lookup`).
+    2. `A/infrastructure/gateways/` implements it by calling `B/application/ports/input/`.
+  - **A subscription** — `B/infrastructure/subscribers/` → `A/application/ports/published/`, when B reacts to what A announces and A does not care who listens:
+    1. `A/application/ports/published/` declares the **integration event**: plain, versioned data (`orders.order-placed.v1`) that imports nothing but `shared/`.
+    2. `A/infrastructure/` maps its domain event to it and publishes it on the bus `main/` injects (`platform/events/`).
+    3. `B/infrastructure/subscribers/` receives it and calls a use case **of B**, idempotently (an event may arrive twice).
+  - Either way, a module's `domain/` refers to another module's entities **by id only** (`customerId`), never by importing them.
 - `shared/` is the only code modules may share. Keep it minimal, pure and free of business policy that belongs to a module.
-- Cycles between modules are forbidden (ADP).
+- Cycles between modules are forbidden (ADP). A subscription is a dependency too: B may not subscribe to A while A calls B.
 - **Each module owns its tables**: a table belongs to the module whose migrations create it. A module never queries, alters or references (foreign key) another module's tables — that is the database version of importing its `domain/`. It asks the other module through its input port, or keeps its own copy of the data it needs, and stores the other entity's id without a foreign key.
 
 ### 4. Domain (Entities)
@@ -176,7 +181,7 @@ Text for users is a detail of delivery: business code returns codes, the outer l
 
 Always check:
 1. Does any import in an inner layer reference an outer layer path?
-2. Does any module import another module's `domain/` or `infrastructure/` (other than `infrastructure → application/ports/input`)?
+2. Does any module import another module's `domain/`, `application/` or `infrastructure/` (other than `infrastructure → application/ports/input` or `application/ports/published`)? Does a published contract import anything but `shared/`?
 3. Do entities contain application or framework logic?
 4. Do use cases reference HTTP status codes, SQL, or ORMs? Is all SQL in `infrastructure/` or `platform/db/`?
 5. Are port interfaces (repository, input, output) defined in the `application` layer of the module that owns them?
@@ -199,6 +204,7 @@ Where a skill takes `<module>/<Name>`, the module prefix selects the folder unde
 - `/clean-architecture:presenter [module/Name]` — Create presenter
 - `/clean-architecture:gateway [module/Name]` — Create gateway
 - `/clean-architecture:boundary [description]` — Define boundary
+- `/clean-architecture:event [module/EventName]` — Publish an event another module reacts to
 - `/clean-architecture:solid [path]` — SOLID audit
 - `/clean-architecture:components [path]` — Component cohesion/coupling audit
 - `/clean-architecture:check` — Dependency Rule and Module Rule scan

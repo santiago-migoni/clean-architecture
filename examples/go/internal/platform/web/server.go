@@ -32,6 +32,7 @@ type Handlers struct {
 	RegisterCustomer LocalizedHandler
 	GetCustomer      LocalizedHandler
 	MakePlaceOrder   func(locale string) PlaceOrderPair
+	GetPoints        LocalizedHandler
 }
 
 // errorBody is every failure answer: a stable code for programs, a text in the request's language for people.
@@ -54,6 +55,7 @@ func NewHandler(h Handlers, locales []string) http.Handler {
 	mux.HandleFunc("POST /customers", s.localized(h.RegisterCustomer))
 	mux.HandleFunc("GET /customers/{id}", s.localized(h.GetCustomer))
 	mux.HandleFunc("POST /orders", s.placeOrder(h.MakePlaceOrder))
+	mux.HandleFunc("GET /loyalty/{customerId}", s.localized(h.GetPoints))
 	return s.recoverUnexpected(mux)
 }
 

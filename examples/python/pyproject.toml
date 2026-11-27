@@ -30,7 +30,7 @@ root_package = "shop"
 [[tool.importlinter.contracts]]
 name = "Layers point inward inside every module"
 type = "layers"
-containers = ["shop.modules.orders", "shop.modules.customers"]
+containers = ["shop.modules.orders", "shop.modules.customers", "shop.modules.loyalty"]
 layers = ["infrastructure", "application", "domain"]
 
 [[tool.importlinter.contracts]]
@@ -40,7 +40,16 @@ source_modules = ["shop.modules"]
 forbidden_modules = ["shop.platform", "shop.main"]
 
 [[tool.importlinter.contracts]]
-name = "Modules do not import each other, except another module's input port from infrastructure"
+name = "Modules do not import each other, except another module's input port or published contract from infrastructure"
 type = "independence"
-modules = ["shop.modules.orders", "shop.modules.customers"]
-ignore_imports = ["shop.modules.*.infrastructure.** -> shop.modules.*.application.ports.input.**"]
+modules = ["shop.modules.orders", "shop.modules.customers", "shop.modules.loyalty"]
+ignore_imports = [
+    "shop.modules.*.infrastructure.** -> shop.modules.*.application.ports.input.**",
+    "shop.modules.*.infrastructure.** -> shop.modules.*.application.ports.published.**",
+]
+
+[[tool.importlinter.contracts]]
+name = "A published contract is plain data: never its module's domain"
+type = "forbidden"
+source_modules = ["shop.modules.orders.application.ports.published"]
+forbidden_modules = ["shop.modules.orders.domain", "shop.modules.orders.application.interactors", "shop.modules.orders.infrastructure"]

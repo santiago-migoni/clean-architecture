@@ -62,6 +62,7 @@ All commands are namespaced under `/clean-architecture:`. Every skill has a `des
 | `/clean-architecture:presenter` | Create a Presenter (Humble Object Pattern) |
 | `/clean-architecture:gateway` | Create a Gateway/Repository with data mapper (and cross-module gateways) |
 | `/clean-architecture:boundary` | Define and enforce architectural boundaries |
+| `/clean-architecture:event` | Publish an integration event from one module and react to it in another (bus, subscribers, idempotency) |
 | `/clean-architecture:solid` | Audit and fix SOLID principle violations |
 | `/clean-architecture:components` | Audit component cohesion (REP/CCP/CRP) and coupling (ADP/SDP/SAP) |
 | `/clean-architecture:check` | Full Dependency Rule and Module Rule violation scan |
@@ -107,7 +108,7 @@ Embedded SQL is read only from string literals (never comments) that start like 
 
 Source files in any other language (Java, Kotlin, C#, …) are **reported as not checked** and the project gets no health score, instead of a misleading 100.
 
-The skills are language-neutral: each `SKILL.md` holds the workflow and the checklist, and the code is in `skills/<skill>/references/{typescript,python,go}.md` (plus `sql.md` for the gateway), one complete example per language on the same `orders`/`customers` domain. Claude reads only the reference for the project's language. Every code block there must parse with its language's own parser (`node scripts/check-snippets.mjs`, run in CI with `--strict`), so the examples use concrete names, never placeholders.
+The skills are language-neutral: each `SKILL.md` holds the workflow and the checklist, and the code is in `skills/<skill>/references/{typescript,python,go}.md` (plus `sql.md` for the gateway), one complete example per language on the same `orders`/`customers` domain (plus `loyalty`, which reacts to orders' events, in the `event` skill). Claude reads only the reference for the project's language. Every code block there must parse with its language's own parser (`node scripts/check-snippets.mjs`, run in CI with `--strict`), so the examples use concrete names, never placeholders.
 
 Each profile is verified against its example in [`examples/<language>/`](examples) (SQL against the Go example, whose queries and migrations are `.sql` files): a real application with its own tests, which `verify:example` scans clean and then with planted violations. Adding a language means adding a profile, its example and its checks — the rules themselves do not change.
 
@@ -137,7 +138,7 @@ Native linters for faster feedback in the editor — ESLint with `eslint-plugin-
    ✗ imports "../../infrastructure/gateways/sql-order-repository" — application must not depend on infrastructure
      Fix: Define an interface (port) in this module's application/ports/ and inject the concrete implementation from main/.
    ✗ imports "../../../customers/domain/customer" — module "orders" must not import module "customers" directly
-     Fix: Declare a port owned by "orders" (application/ports/output), implement it in "orders/infrastructure/gateways" by calling "customers/application/ports/input", and reference "customers" entities from the domain by id only.
+     Fix: To ask "customers" something: declare a port owned by "orders" (application/ports/output) and implement it in "orders/infrastructure/gateways" by calling "customers/application/ports/input". To react to what "customers" announces: subscribe from "orders/infrastructure/subscribers" to "customers/application/ports/published". Reference "customers" entities from the domain by id only.
 ```
 
 The hook and the MCP server share one rule set (`src/lib/architecture.js`), so they always agree.
@@ -182,7 +183,7 @@ Run the engine check locally with `npm run verify:example`.
 
 **Layers (inside every module):** `domain` (Entities) → `application` (Use Cases) → `infrastructure` (Interface Adapters) → `platform` (Frameworks & Drivers), plus `shared` (shared kernel) and `main` (composition root)
 
-**Modules:** each folder under `src/modules/` is a cohesive component; modules talk only through ports (`A/infrastructure` → `B/application/ports/input`)
+**Modules:** each folder under `src/modules/` is a cohesive component; modules talk only through ports: a call (`A/infrastructure` → `B/application/ports/input`) or a subscription to an event (`B/infrastructure/subscribers` → `A/application/ports/published`)
 
 **Principles:**
 - The Dependency Rule (Chapter 22)
@@ -251,7 +252,7 @@ tests/
 | Axis | Rule |
 |---|---|
 | **Layers** | Dependencies point inward: `infrastructure → application → domain`. `infrastructure` never imports `platform/` (the framework client is injected from `main/`). |
-| **Modules** | A module never imports another module's `domain/` or `infrastructure/`. The only legal crossing is `A/infrastructure → B/application/ports/input`, through a port owned by A. |
+| **Modules** | A module never imports another module's `domain/` or `infrastructure/`. Two legal crossings, both from `infrastructure/`: a call, `A/infrastructure → B/application/ports/input`, through a port owned by A; and a subscription, `B/infrastructure/subscribers → A/application/ports/published`, to an integration event that is plain data (`published-contract`). |
 
 Reserved names that cannot be module names: `shared`, `platform`, `main`, `domain`, `application`, `infrastructure`, `modules`, `bootstrap` and `composition` (aliases of `main`), plus `app`, `infra` and `adapters` (layer folders of versions before 2.0).
 

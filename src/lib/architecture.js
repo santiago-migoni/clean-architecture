@@ -15,8 +15,11 @@
  *
  * Two axes of rules:
  *   1. Layers  — dependencies point inward: infrastructure → application → domain.
- *   2. Modules — a module never reaches into another module. The ONLY legal
- *      crossing is  A/infrastructure  →  B/application/ports/input.
+ *   2. Modules — a module never reaches into another module. There are two legal crossings, both
+ *      from infrastructure to another module's public surface:
+ *        call:          A/infrastructure  →  B/application/ports/input      (what B lets others ask)
+ *        subscription:  B/infrastructure  →  A/application/ports/published  (what A announces)
+ *      A published contract is plain data: it imports nothing but shared/ and other published contracts.
  * And details that each have their place: SQL (infrastructure and platform/db), configuration (main/
  * alone reads the environment and loads configuration) and translations (never in domain, application
  * or shared: business code returns codes, the outer layers turn them into text).
@@ -183,15 +186,21 @@ export function usesLegacyLayerName(relPath) {
 }
 
 /**
- * The only legal way for one module to reach another:
- *   infrastructure of module A  →  application/ports/input of module B
+ * The two legal ways for one module to reach another, both from its infrastructure to the other's public surface:
+ *   infrastructure of module A  →  application/ports/input of module B       (a call)
+ *   infrastructure of module B  →  application/ports/published of module A   (a subscription to A's events)
  */
 export function isLegalCrossModuleImport(fromLayer, toLayer, importedRelPath) {
   return (
     fromLayer === 'infrastructure' &&
     toLayer === 'application' &&
-    /\/(application|app)\/ports\/input(\/|$)/.test(norm(importedRelPath))
+    /\/(application|app)\/ports\/(input|published)(\/|$)/.test(norm(importedRelPath))
   );
+}
+
+/** True for a module's published contracts (integration events): modules/<m>/application/ports/published/. */
+export function isPublishedContract(relPath) {
+  return /\/modules\/[^/]+\/(application|app)\/ports\/published(\/|$)/.test(norm(relPath));
 }
 
 function severityFor(layer) {
@@ -379,6 +388,7 @@ export function findViolations(file, srcDir, content, ctx = {}) {
 
   const mod = detectModule(rel);
   const allowedLayers = ALLOWED_LAYERS[layerDef.layer] || [];
+  const published = isPublishedContract(rel);
   const out = [];
 
   for (const { spec: imp, rel: impRel } of fileImports(file, srcDir, content)) {
@@ -386,6 +396,26 @@ export function findViolations(file, srcDir, content, ctx = {}) {
     const { layer: importedLayer, module: impMod } = classifyPath(impRel);
     // A module's root (e.g. a barrel '@/modules/customers') has no layer but still belongs to a module.
     if (!importedLayer && !impMod) continue;
+
+    // A published contract is what other modules subscribe to: it must not drag its module's domain (or anything
+    // else) along, or every subscriber would depend on it. Plain data: shared/ and other contracts only.
+    if (published && importedLayer?.layer !== 'shared' && !isPublishedContract(impRel)) {
+      out.push({
+        severity: 'HIGH',
+        rule: 'published-contract',
+        layer: layerDef.layer,
+        module: mod,
+        import: imp,
+        what: `imports "${imp}"`,
+        importedLayer: importedLayer ? importedLayer.layer : null,
+        importedModule: impMod,
+        message: 'a published contract must be plain data: it may import only shared/ and other published contracts',
+        fix:
+          'Declare the event with plain fields (ids, numbers, strings) in application/ports/published, and map the ' +
+          "domain event to it in this module's infrastructure (the adapter that publishes it).",
+      });
+      continue;
+    }
 
     // Axis 1 — layers
     if (importedLayer && importedLayer.layer !== layerDef.layer && !allowedLayers.includes(importedLayer.layer)) {
@@ -420,9 +450,10 @@ export function findViolations(file, srcDir, content, ctx = {}) {
         importedModule: impMod,
         message: `module "${mod}" must not import module "${impMod}" directly`,
         fix:
-          `Declare a port owned by "${mod}" (application/ports/output), implement it in ` +
-          `"${mod}/infrastructure/gateways" by calling "${impMod}/application/ports/input", and reference ` +
-          `"${impMod}" entities from the domain by id only.`,
+          `To ask "${impMod}" something: declare a port owned by "${mod}" (application/ports/output) and implement it in ` +
+          `"${mod}/infrastructure/gateways" by calling "${impMod}/application/ports/input". To react to what ` +
+          `"${impMod}" announces: subscribe from "${mod}/infrastructure/subscribers" to "${impMod}/application/ports/published". ` +
+          `Reference "${impMod}" entities from the domain by id only.`,
       });
     }
   }

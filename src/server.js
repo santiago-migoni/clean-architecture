@@ -294,7 +294,9 @@ function toolLayerOf(args) {
     dependencyRuleCompliant: violations.length === 0,
     importViolations: violations,
     allowedDependencies: allowedLayers.length ? allowedLayers : ['none — this is the innermost layer'],
-    crossModuleRule: 'Only infrastructure may reach another module, and only via its application/ports/input.',
+    crossModuleRule:
+      'Only infrastructure may reach another module: its application/ports/input (a call) or its ' +
+      'application/ports/published (a subscription to its events).',
   };
 }
 
@@ -307,7 +309,7 @@ function handleMessage(msg) {
     ok(id, {
       protocolVersion: '2024-11-05',
       capabilities: { tools: {} },
-      serverInfo: { name: 'clean-architecture', version: '2.9.0' },
+      serverInfo: { name: 'clean-architecture', version: '2.10.0' },
     });
     return;
   }

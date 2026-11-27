@@ -94,6 +94,8 @@ modules/
 
 The `billing` module does NOT import `inventory`'s `domain/` or `infrastructure/`. The port is owned by the **caller** (`billing`), its implementation lives in the caller's `infrastructure`, and that gateway calls only `inventory/application/ports/input/`. The composition root injects inventory's interactor into the gateway. Data crossing the boundary is plain data, and `billing`'s domain refers to inventory items by id only.
 
+A module boundary can also be crossed the other way round, by an **event**: `inventory` announces `stock-depleted` in `inventory/application/ports/published/` (plain, versioned data), and `billing/infrastructure/subscribers/` reacts by calling a use case of billing. `inventory` never knows billing exists. Use a call when the caller needs an answer to finish; use an event when the publisher only announces a fact. See the `event` skill.
+
 ### Step 5: Partial Boundary (Strategy)
 
 When a full boundary is overkill but you want to preserve the option: keep the interface in `application/ports/output/` and a single implementation in the same module, and mark the interface as a partial boundary in its doc comment so a future team can split it out without touching the callers. (Example in the language references.)

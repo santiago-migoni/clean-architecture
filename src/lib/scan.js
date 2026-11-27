@@ -124,7 +124,7 @@ export function scanProject(root) {
       unclassifiedFiles: unclassified,
       violations: violations.length,
       layerViolations: byRule('dependency-rule'),
-      crossModuleViolations: byRule('cross-module'),
+      crossModuleViolations: byRule('cross-module', 'published-contract'),
       sqlViolations: byRule('sql-placement', 'table-ownership'),
       configViolations: byRule('config-placement'),
       i18nViolations: byRule('i18n-placement'),

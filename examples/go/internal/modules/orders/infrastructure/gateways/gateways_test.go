@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	customersinput "example.com/shop/internal/modules/customers/application/ports/input"
+	"example.com/shop/internal/modules/orders/application/ports/published"
 	"example.com/shop/internal/modules/orders/domain/events"
 )
 
@@ -28,11 +29,11 @@ func TestCustomerLookupTranslatesTheAnswerIntoABoolean(t *testing.T) {
 	}
 }
 
-func TestAuditLogWritesOneJSONLinePerEvent(t *testing.T) {
-	var lines []string
-	_ = NewAuditLogOrderEvents(func(l string) { lines = append(lines, l) }).
-		Publish(context.Background(), events.OrderPlaced{Type: "OrderPlaced", OrderID: "o-1", CustomerID: "c-1", TotalCents: 2500})
-	if len(lines) != 1 || lines[0] != `{"type":"OrderPlaced","orderId":"o-1","customerId":"c-1","totalCents":2500}` {
-		t.Fatalf("got %q", lines)
+func TestPublishedOrderEventsMapsTheDomainEventToThePublishedContract(t *testing.T) {
+	var sent []published.OrderPlacedV1
+	send := func(_ context.Context, e published.OrderPlacedV1) error { sent = append(sent, e); return nil }
+	_ = NewPublishedOrderEvents(send).Publish(context.Background(), events.OrderPlaced{Type: "OrderPlaced", OrderID: "o-1", CustomerID: "c-1", TotalCents: 2500})
+	if len(sent) != 1 || sent[0] != (published.OrderPlacedV1{OrderID: "o-1", CustomerID: "c-1", TotalCents: 2500}) || sent[0].EventType() != "orders.order-placed.v1" {
+		t.Fatalf("got %+v", sent)
 	}
 }

@@ -14,12 +14,13 @@ The module path is the import root: `example.com/shop/internal/modules/orders/do
 
 The compiler forbids import cycles and `internal/` keeps other repositories out, but nothing stops one module from importing another module's `domain/`. Two ways to enforce the rules:
 
-**go-arch-lint**, configured per module: one component per layer of each module, and the single legal cross-module edge listed explicitly. Tested with go-arch-lint v1.19.2 on [`examples/go`](../../../examples/go), in both directions (clean, and failing on planted violations of each kind):
+**go-arch-lint**, configured per module: one component per layer of each module, and the two legal cross-module edges listed explicitly (a call into another module's `ports/input`, a subscription to its `ports/published`). Tested with go-arch-lint v1.19.2 on [`examples/go`](../../../examples/go), in both directions (clean, and failing on planted violations of each kind):
 
 ```yaml
 # go-arch-lint (v1.19, config v3): both axes, declared per module.
-# Layers point inward inside a module; the only edge between modules is
-# orders/infrastructure -> customers/application/ports/input.
+# Layers point inward inside a module; the two edges between modules go from infrastructure into another
+# module's public surface: orders/infrastructure -> customers/application/ports/input (a call) and
+# loyalty/infrastructure -> orders/application/ports/published (a subscription to its event).
 # shared depends on nothing, so it has no entry under deps. A module's ports/input component
 # exists only once the folder does (go-arch-lint rejects a glob that matches nothing).
 version: 3
@@ -43,12 +44,17 @@ components:
   customers-infrastructure: { in: modules/customers/infrastructure/** }
 
   orders-domain:            { in: modules/orders/domain/** }
+  orders-published:         { in: modules/orders/application/ports/published/** }
   orders-application:       { in: modules/orders/application/** }
   orders-infrastructure:    { in: modules/orders/infrastructure/** }
 
+  loyalty-domain:           { in: modules/loyalty/domain/** }
+  loyalty-application:      { in: modules/loyalty/application/** }
+  loyalty-infrastructure:   { in: modules/loyalty/infrastructure/** }
+
 deps:
   platform:
-    mayDependOn: [shared, orders-infrastructure]  # the web view reads the orders presenter
+    mayDependOn: [platform, shared, orders-infrastructure]  # web uses i18n; the web view reads the orders presenter
   bootstrap:
     anyProjectDeps: true
 
@@ -63,13 +69,22 @@ deps:
 
   orders-domain:
     mayDependOn: [orders-domain, shared]
+  orders-published:
+    mayDependOn: [shared]  # a published contract is plain data: never its module's domain
   orders-application:
-    mayDependOn: [orders-application, orders-domain, shared]
+    mayDependOn: [orders-application, orders-published, orders-domain, shared]
   orders-infrastructure:
-    mayDependOn: [orders-infrastructure, orders-application, orders-domain, shared, customers-input]
+    mayDependOn: [orders-infrastructure, orders-application, orders-published, orders-domain, shared, customers-input]
+
+  loyalty-domain:
+    mayDependOn: [loyalty-domain, shared]
+  loyalty-application:
+    mayDependOn: [loyalty-application, loyalty-domain, shared]
+  loyalty-infrastructure:
+    mayDependOn: [loyalty-infrastructure, loyalty-application, loyalty-domain, shared, orders-published]
 ```
 
-Installing go-arch-lint v1.19.2 (`go install github.com/fe3dback/go-arch-lint@v1.19.2`) needs Go 1.26 or newer; it still checks a module that declares an older `go` version. List each component in its own `mayDependOn` (imports between packages of one layer), allow vendor dependencies (`depOnAnyVendor`), and keep `deepScan: false`: it would report the composition root injecting implementations into use cases, which is the Dependency Inversion itself. Add a component for `application/ports/input/**` only once the folder exists (a glob that matches nothing is an error), and list every new module.
+Installing go-arch-lint v1.19.2 (`go install github.com/fe3dback/go-arch-lint@v1.19.2`) needs Go 1.26 or newer; it still checks a module that declares an older `go` version. List each component in its own `mayDependOn` (imports between packages of one layer), allow vendor dependencies (`depOnAnyVendor`), and keep `deepScan: false`: it would report the composition root injecting implementations into use cases, which is the Dependency Inversion itself. Add a component for `application/ports/input/**` or `application/ports/published/**` only once the folder exists (a glob that matches nothing is an error), and list every new module. A published contract's component may depend on `shared` only.
 
 **ca-scan** (below) needs no per-module configuration and also checks SQL and cycles.
 

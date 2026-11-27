@@ -88,7 +88,7 @@ try {
   const metrics = callTool(EXAMPLE, 'ca_metrics');
   const components = metrics.metrics.map((m) => m.component);
   check('ca_metrics: components are the modules plus shared, platform and main',
-    same(components, ['main', 'modules/customers', 'modules/orders', 'platform', 'shared']), components.join(', '));
+    same(components, ['main', 'modules/customers', 'modules/loyalty', 'modules/orders', 'platform', 'shared']), components.join(', '));
 
   const clean = runHook(join(EXAMPLE, 'src/modules/orders/infrastructure/gateways/customer-lookup-gateway.ts'));
   check('hook: silent on the one legal cross-module import', clean.status === 0 && clean.stderr === '', clean.stderr);
@@ -136,7 +136,7 @@ try {
     ph.summary.violations === 0, JSON.stringify(ph.violations.map((v) => `${v.rule}:${v.file}`)));
   const phComponents = callTool(phantom, 'ca_metrics').metrics.map((m) => m.component);
   check('ca_metrics: no phantom components such as "modules/orders.ts"',
-    same(phComponents, ['main', 'modules/customers', 'modules/orders', 'platform', 'shared']), phComponents.join(', '));
+    same(phComponents, ['main', 'modules/customers', 'modules/loyalty', 'modules/orders', 'platform', 'shared']), phComponents.join(', '));
 
   // ── 3. a legacy layout must be flagged, not scored as "clean" ──────────────────────────
   console.log('\n[3] the previous layer-first layout is flagged instead of scoring 100');
@@ -299,11 +299,16 @@ try {
         'orders/domain/planted-i18n.ts': "import i18next from 'i18next';\nexport const t = i18next.t;\n",
         'orders/application/interactors/planted-intl.ts': "import { createIntl } from '@formatjs/intl';\nexport { createIntl };\n",
         'orders/infrastructure/presenters/planted-i18n-ok.ts': "import i18next from 'i18next';\nexport const t = i18next.t;\n",
+        // events: a contract is plain data; a subscription goes from infrastructure only
+        'orders/application/ports/published/planted-contract.ts': "import { Order } from '../../../domain/order';\nexport type V = Order;\n",
+        'loyalty/application/interactors/planted-subscribe.ts': "import type { OrderPlacedV1 } from '../../../orders/application/ports/published/order-placed-v1';\n",
+        'loyalty/infrastructure/subscribers/planted-legal.ts': "import type { OrderPlacedV1 } from '../../../orders/application/ports/published/order-placed-v1';\n",
       },
       want: ['dependency-rule:planted-outward.ts', 'dependency-rule:planted-dynamic.tsx', 'cross-module:planted-cross.mts',
         'dependency-rule:planted-platform.cjs', 'cross-module:planted-infra.jsx',
         'config-placement:planted-env.ts', 'config-placement:planted-dotenv.ts',
-        'i18n-placement:planted-i18n.ts', 'i18n-placement:planted-intl.ts'],
+        'i18n-placement:planted-i18n.ts', 'i18n-placement:planted-intl.ts',
+        'published-contract:planted-contract.ts', 'cross-module:planted-subscribe.ts'],
     },
     python: {
       dir: join(ROOT, 'examples/python'),
@@ -324,11 +329,16 @@ try {
         'orders/domain/planted_gettext.py': 'import gettext\n\n_ = gettext.gettext\n',
         'orders/application/interactors/planted_babel.py': 'from babel.numbers import format_currency\n',
         'orders/infrastructure/presenters/planted_babel_ok.py': 'from babel.numbers import format_currency\n',
+        // events: a contract is plain data; a subscription goes from infrastructure only
+        'orders/application/ports/published/planted_contract.py': 'from ...domain.order import Order\n',
+        'loyalty/application/interactors/planted_subscribe.py': 'from shop.modules.orders.application.ports.published.order_placed_v1 import OrderPlacedV1\n',
+        'loyalty/infrastructure/subscribers/planted_legal.py': 'from shop.modules.orders.application.ports.published.order_placed_v1 import OrderPlacedV1\n',
       },
       want: ['dependency-rule:planted_outward.py', 'cross-module:planted_cross.py', 'dependency-rule:planted_platform.py',
         'cross-module:planted_infra.py',
         'config-placement:planted_env.py', 'config-placement:planted_getenv.py', 'config-placement:planted_settings.py',
-        'i18n-placement:planted_gettext.py', 'i18n-placement:planted_babel.py'],
+        'i18n-placement:planted_gettext.py', 'i18n-placement:planted_babel.py',
+        'published-contract:planted_contract.py', 'cross-module:planted_subscribe.py'],
     },
     go: {
       dir: join(ROOT, 'examples/go'),
@@ -350,10 +360,15 @@ try {
         'orders/domain/planted_i18n.go': 'package domain\n\nimport "github.com/nicksnyder/go-i18n/v2/i18n"\n\nvar _ = i18n.NewBundle\n',
         'orders/application/interactors/planted_message.go': 'package interactors\n\nimport "golang.org/x/text/message"\n\nvar _ = message.NewPrinter\n',
         'orders/infrastructure/presenters/planted_i18n_ok.go': 'package presenters\n\nimport "github.com/nicksnyder/go-i18n/v2/i18n"\n\nvar _ = i18n.NewBundle\n',
+        // events: a contract is plain data; a subscription goes from infrastructure only
+        'orders/application/ports/published/planted_contract.go': 'package published\n\nimport _ "example.com/shop/internal/modules/orders/domain"\n',
+        'loyalty/application/interactors/planted_subscribe.go': 'package interactors\n\nimport _ "example.com/shop/internal/modules/orders/application/ports/published"\n',
+        'loyalty/infrastructure/subscribers/planted_legal.go': 'package subscribers\n\nimport _ "example.com/shop/internal/modules/orders/application/ports/published"\n',
       },
       want: ['dependency-rule:planted_outward.go', 'cross-module:planted_cross.go', 'dependency-rule:planted_platform.go',
         'cross-module:planted_infra.go', 'config-placement:planted_env.go', 'config-placement:planted_viper.go',
-        'i18n-placement:planted_i18n.go', 'i18n-placement:planted_message.go'],
+        'i18n-placement:planted_i18n.go', 'i18n-placement:planted_message.go',
+        'published-contract:planted_contract.go', 'cross-module:planted_subscribe.go'],
     },
     sql: {
       // SQL has no project of its own: it is checked on the Go example, whose queries and migrations are .sql files.
@@ -385,7 +400,7 @@ try {
   for (const [lang, spec] of Object.entries(LANGS)) {
     const fixture = spec.dir;
     const cleanScan = callTool(fixture, 'ca_scan');
-    const wantComponents = spec.components ?? ['main', 'modules/customers', 'modules/orders', 'platform', 'shared'];
+    const wantComponents = spec.components ?? ['main', 'modules/customers', 'modules/loyalty', 'modules/orders', 'platform', 'shared'];
     check(`${lang}: ${relative(ROOT, fixture)} scans clean (no violations, no warnings, every file classified)`,
       cleanScan.summary.violations === 0 && cleanScan.warnings.length === 0 && cleanScan.summary.unclassifiedFiles === 0 &&
       cleanScan.summary.languages[lang] > 0 && cleanScan.summary.filesScanned >= (spec.minFiles ?? 10),
@@ -412,11 +427,21 @@ try {
       lh.stderr || '(no output)');
   }
 
+  // A subscription is a dependency too: customers subscribing to orders while orders calls customers is a cycle.
+  const cyclic = tmpProject('event-cycle'); temps.push(cyclic);
+  cpSync(EXAMPLE, cyclic, { recursive: true, filter: (src) => !/[\\/]node_modules$/.test(src) });
+  write(cyclic, 'src/modules/customers/infrastructure/subscribers/planted-cycle.ts',
+    "import type { OrderPlacedV1 } from '../../../orders/application/ports/published/order-placed-v1';\nexport type C = OrderPlacedV1;\n");
+  const cyc = callTool(cyclic, 'ca_cycles');
+  check('ca_cycles: a subscription that closes a loop with a call is a cycle (customers -> orders -> customers)',
+    cyc.adpCompliant === false && JSON.stringify(cyc.cycles).includes('modules/customers') && JSON.stringify(cyc.cycles).includes('modules/orders'),
+    JSON.stringify(cyc).slice(0, 300));
+
   // Table ownership is inferred from the migrations, in .sql files and in code alike
   const owned = callTool(join(ROOT, 'examples/go'), 'ca_scan').summary.tables;
   check('examples/go: each table is owned by the module whose .sql migrations create it (platform owns its bookkeeping, created in Go code)',
     same(Object.entries(owned).map(([t, o]) => `${t}=${o}`),
-      ['schema_migrations=platform', 'customers=customers', 'orders=orders', 'order_lines=orders']),
+      ['schema_migrations=platform', 'customers=customers', 'orders=orders', 'order_lines=orders', 'loyalty_awards=loyalty']),
     JSON.stringify(owned));
   const shopTables = callTool(EXAMPLE, 'ca_scan').summary.tables;
   check('examples/typescript: tables created in TS code (platform) and in .sql migrations (modules) are both found',

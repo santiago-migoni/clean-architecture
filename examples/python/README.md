@@ -32,6 +32,7 @@ src/shop/
 │   └── orders/
 │       ├── domain/            order.py, errors.py, events/order_placed.py
 │       ├── application/
+│       │   ├── ports/published/ order_placed_v1.py     ← public surface: loyalty subscribes to it
 │       │   ├── ports/output/  order_repository.py, customer_lookup.py, place_order_output.py, order_events.py
 │       │   ├── interactors/   place_order.py
 │       │   └── errors.py
@@ -39,10 +40,17 @@ src/shop/
 │           ├── controllers/   place_order_controller.py, place_order_http_request.py
 │           ├── presenters/    place_order_presenter.py, place_order_view_model.py
 │           └── gateways/      sql_order_repository.py, order_persistence_model.py, customer_lookup_gateway.py,
-│                              audit_log_order_events.py, in_memory/, migrations/
+│                              published_order_events.py, in_memory/, migrations/
+│   └── loyalty/
+│       ├── domain/            points_award.py, errors.py
+│       ├── application/       interactors/{award_points,get_points}.py · ports/output/award_repository.py
+│       └── infrastructure/
+│           ├── subscribers/   order_placed_subscriber.py   ← imports orders' published contract
+│           ├── controllers/   get_points_controller.py
+│           └── gateways/      sql_award_repository.py, in_memory/, migrations/
 ├── shared/                    domain_error.py   ← base of every module's domain error
-├── platform/                  db/{connection,migrate}.py · i18n/translator.py · web/{app,locale,messages}.py (FastAPI, locale, last-resort handlers)
-└── main/                      app.py (create_app) · __main__.py (serve) · config.py (load_config) · locales.py · compose/{customers,orders}.py · testing.py
+├── platform/                  db/{connection,migrate}.py · events/in_process_bus.py · i18n/translator.py · web/{app,locale,messages}.py (FastAPI, locale, last-resort handlers)
+└── main/                      app.py (create_app) · __main__.py (serve) · config.py (load_config) · locales.py · compose/{customers,orders,loyalty}.py · testing.py
 tests/<module>/unit/ (mirrors the module) · tests/<module>/integration/ · tests/shared/ · tests/e2e/
 ```
 

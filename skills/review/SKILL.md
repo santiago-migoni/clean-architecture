@@ -37,7 +37,7 @@ Perform a full dependency scan (same as `/clean-architecture:check`):
 - Domain importing from outer layers.
 - Use cases (`application`) importing from `infrastructure` or `platform`.
 - Adapters importing `platform` (the framework client should be injected from `main/`).
-- Modules importing each other in any way other than `infrastructure → application/ports/input`; cycles between modules.
+- Modules importing each other in any way other than `infrastructure → application/ports/input` (a call) or `infrastructure/subscribers → application/ports/published` (a subscription); a published contract that imports its module's domain; cycles between modules, subscriptions included.
 - Concrete class references in inner layers.
 - Framework-specific types (annotations, decorators) in domain/use cases.
 
@@ -164,6 +164,7 @@ For each identified architectural boundary:
 - Is the boundary documented?
 - Is the boundary type appropriate (full vs. partial) given the context?
 - For each pair of modules that talk to each other: is the port owned by the caller, is the gateway in the caller's `infrastructure`, and does it call only the other module's `application/ports/input/`?
+- For each event between modules: is the contract plain and versioned in the publisher's `application/ports/published/`, does the subscriber call a use case of its own module, and is the handling idempotent? Is a call used where the caller needs an answer, and an event where it only announces a fact?
 
 Score: 0-5 points
 

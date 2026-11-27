@@ -31,11 +31,12 @@ export default [
     settings: {
       'import/resolver': { typescript: { project: './tsconfig.json' } },
       'boundaries/include': ['src/**/*'],
-      // Order matters: the first matching descriptor wins, so `input-port` precedes `application`.
+      // Order matters: the first matching descriptor wins, so `input-port` and `published` precede `application`.
       'boundaries/elements': [
         { type: 'shared',         pattern: 'src/shared',                            partialMatch: false },
         { type: 'domain',         pattern: 'src/modules/*/domain',                  partialMatch: false, capture: ['module'] },
         { type: 'input-port',     pattern: 'src/modules/*/application/ports/input', partialMatch: false, capture: ['module'] },
+        { type: 'published',      pattern: 'src/modules/*/application/ports/published', partialMatch: false, capture: ['module'] },
         { type: 'application',    pattern: 'src/modules/*/application',             partialMatch: false, capture: ['module'] },
         { type: 'infrastructure', pattern: 'src/modules/*/infrastructure',          partialMatch: false, capture: ['module'] },
         { type: 'platform',       pattern: 'src/platform',                          partialMatch: false },
@@ -48,16 +49,20 @@ export default [
         policies: [
           // Layers — inward only, and only inside the SAME module
           ...rule('domain',      { element: { type: 'shared' } }, same('domain')),
-          ...rule('application', { element: { type: 'shared' } }, same('domain'), same('application'), same('input-port')),
+          ...rule('application', { element: { type: 'shared' } }, same('domain'), same('application'), same('input-port'),
+                  same('published')),
           ...rule('input-port',  { element: { type: 'shared' } }, same('domain'), same('application'), same('input-port')),
+          // A published contract is plain data: shared and other contracts only (never its module's domain)
+          ...rule('published',   { element: { type: 'shared' } }, same('published')),
           ...rule('infrastructure', { element: { type: 'shared' } }, same('domain'), same('application'), same('input-port'),
-                            same('infrastructure'),
-                            // The ONE legal cross-module edge: infrastructure → another module's application/ports/input
-                            any('input-port')),
-          ...rule('platform', any('shared'), any('domain'), any('application'), any('input-port'), any('infrastructure'),
-                  any('platform')),
-          ...rule('main', any('shared'), any('domain'), any('application'), any('input-port'), any('infrastructure'),
-                  any('platform'), any('main')),
+                            same('published'), same('infrastructure'),
+                            // The two legal cross-module edges, both into another module's public surface:
+                            // a call (its application/ports/input) and a subscription (its application/ports/published)
+                            any('input-port'), any('published')),
+          ...rule('platform', any('shared'), any('domain'), any('application'), any('input-port'), any('published'),
+                  any('infrastructure'), any('platform')),
+          ...rule('main', any('shared'), any('domain'), any('application'), any('input-port'), any('published'),
+                  any('infrastructure'), any('platform'), any('main')),
         ],
       }],
     },
@@ -71,7 +76,7 @@ Notes for the generated project:
 - `tsconfig.json`: use `"paths": { "@/*": ["./src/*"] }` **without `baseUrl`** (deprecated in TypeScript 6 and an error without `ignoreDeprecations`).
 - `tsconfig.json`: TypeScript 6 no longer includes `@types/*` automatically — if the code uses Node built-ins (`node:fs`, `node:sqlite`, `node:crypto`), install `@types/node` and set `"types": ["node"]`.
 - Do not name a folder under `src/main/` `modules/`: use `src/main/compose/`. `src/modules/` is the business code, and the same name in two places confuses people.
-- The `input-port` element must come **before** `application` in `boundaries/elements`: the first matching descriptor wins, and `application/ports/input` is the only place another module may reach.
+- The `input-port` and `published` elements must come **before** `application` in `boundaries/elements`: the first matching descriptor wins, and `application/ports/input` (a call) and `application/ports/published` (a subscription) are the only places another module may reach. A `published` contract may import only `shared` and other contracts.
 - The whole `src/modules/*/infrastructure` folder is the infrastructure layer, not just `infrastructure`.
 - After generating the config, verify it by temporarily adding a file that imports outward (for example a `domain/` file importing from `application/`) and checking that ESLint reports it, then delete it. A config that reports nothing may simply not be matching your folders.
 

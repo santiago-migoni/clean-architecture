@@ -35,6 +35,7 @@ curl -X POST localhost:3000/orders -H 'content-type: application/json' \
 | `POST /customers` | `201 {customerId}` · `400` invalid · `409` email already registered |
 | `GET /customers/:id` | `200` · `404` |
 | `POST /orders` | `201` view model · `404 CUSTOMER_NOT_FOUND` · `400 INVALID_ORDER` · `500` unexpected (logged, no internals) |
+| `GET /loyalty/:customerId` | `200 {customerId, points}` |
 | malformed JSON | `400`; unexpected failures are `500` with no internals |
 
 ## Structure
@@ -55,6 +56,7 @@ src/
 │   └── orders/
 │       ├── domain/            order.ts, errors/invalid-order-error.ts, events/order-placed.ts
 │       ├── application/
+│       │   ├── ports/published/ order-placed-v1.ts     ← public surface: loyalty subscribes to it
 │       │   ├── ports/output/  order-repository.ts, customer-lookup.ts, place-order-output.ts, order-events.ts
 │       │   ├── errors/        customer-not-found-error.ts
 │       │   └── interactors/   place-order.ts
@@ -62,10 +64,17 @@ src/
 │           ├── controllers/   place-order-controller.ts, place-order-http-request.ts
 │           ├── presenters/    place-order-presenter.ts, place-order-view-model.ts
 │           └── gateways/      sql-order-repository.ts, order-persistence-model.ts, customer-lookup-gateway.ts,
-│                              audit-log-order-events.ts, in-memory/, migrations/
+│                              published-order-events.ts, in-memory/, migrations/
+│   └── loyalty/
+│       ├── domain/            points-award.ts, errors/invalid-points-award-error.ts
+│       ├── application/       interactors/{award-points,get-points}.ts · ports/output/award-repository.ts
+│       └── infrastructure/
+│           ├── subscribers/   order-placed-subscriber.ts   ← imports orders' published contract
+│           ├── controllers/   get-points-controller.ts
+│           └── gateways/      sql-award-repository.ts, in-memory/, migrations/
 ├── shared/                    domain-error.ts   ← base of every module's domain error
-├── platform/                  db/{connection,migrate}.ts · i18n/translator.ts · web/{app,routes,place-order-route,locale,messages}.ts
-└── main/                      index.ts (createApp) · server.ts (listen) · config.ts (loadConfig) · locales.ts · compose/{customers,orders}.ts · index.test.ts
+├── platform/                  db/{connection,migrate}.ts · events/in-process-bus.ts · i18n/translator.ts · web/{app,routes,place-order-route,locale,messages}.ts
+└── main/                      index.ts (createApp) · server.ts (listen) · config.ts (loadConfig) · locales.ts · compose/{customers,orders,loyalty}.ts · index.test.ts
 tests/<module>/unit/ (mirrors the module) · tests/<module>/integration/ (flat, gateways) · tests/shared/ · tests/e2e/
 ```
 
@@ -79,7 +88,8 @@ tests/<module>/unit/ (mirrors the module) · tests/<module>/integration/ (flat, 
 | **Humble Object** | `place-order-presenter.ts` holds the logic and is tested without HTTP; `platform/web/place-order-route.ts` only reads it and sends |
 | **Infrastructure is injected** | gateways take the DB connection in their constructor and never import `platform/`; `src/main/` is the only place that instantiates concrete classes |
 | **Typed errors** | `domain/errors/` (entity rules) and `application/errors/` (use case failures) are mapped by `instanceof` in controllers/presenters, never by message text |
-| **Domain events** | `PlaceOrder` publishes `OrderPlaced` through its own port (`order-events.ts`) after the order is stored; `audit-log-order-events.ts` writes it to an audit log injected by `main/`, and the tests use `in-memory/recording-order-events.ts` |
+| **Domain events** | `PlaceOrder` publishes `OrderPlaced` through its own port (`order-events.ts`) after the order is stored; the use case tests use `in-memory/recording-order-events.ts` |
+| **Events between modules** | `published-order-events.ts` maps `OrderPlaced` to the published contract `order-placed-v1.ts` and publishes it on the bus (`platform/events/in-process-bus.ts`); `loyalty`'s `order-placed-subscriber.ts` reacts; `main/index.ts` wires the subscription and the audit log. `orders` never imports `loyalty` |
 | **Shared kernel** | `shared/domain-error.ts`: the base of `InvalidOrderError` and `InvalidCustomerError`; it imports nothing and holds no module's policy |
 | **Translations outside business code** | errors carry a `reason`, never a text for users; `customer-messages.ts` and `place-order-messages.ts` hold each module's texts; `platform/web/locale.ts` negotiates `Accept-Language`; `main/` builds the translators (`platform/i18n/translator.ts`) and lists the locales (`main/locales.ts`) |
 | **Configuration in one place** | `server.ts` is the only line that reads `process.env`; `main/config.ts` validates it once (`loadConfig`, tested in `tests/main/`), and each piece receives only the values it uses |

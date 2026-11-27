@@ -102,6 +102,8 @@ Never import the other module's `domain/` or `infrastructure/`. Use the cross-mo
 3. **Reference the other module's entities by id** in this module's domain (`customerId`).
 4. Wire both sides in the composition root.
 
+If this use case does not need an answer from the other module but the other module must **react** to what this one did (award points for a placed order), it is an event instead: publish a domain event through an output port and let the other module subscribe (see the `event` skill).
+
 ### Step 6: Create Use Case Tests
 Where the language puts unit tests (`tests/<module>/unit/application/` in TypeScript and Python, a `_test.go` beside the interactor in Go).
 

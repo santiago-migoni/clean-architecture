@@ -56,15 +56,17 @@ main   (src/main/)   is outside the circles: it may import everything, nobody im
 
 ## The Module Rule (axis 2 — modules)
 
-Each folder under `src/modules/` is a component. The only legal way for module A to reach module B is:
+Each folder under `src/modules/` is a component. There are two legal ways for one module to reach another, both from its `infrastructure/` into the other's public surface:
 
 ```
-A/infrastructure/...  →  B/application/ports/input/...
+A/infrastructure/gateways/...     →  B/application/ports/input/...      (a call: A asks B)
+B/infrastructure/subscribers/...  →  A/application/ports/published/...  (a subscription: B reacts to A's event)
 ```
-through a port owned by A (declared in `A/application/ports/output/`, implemented in `A/infrastructure/gateways/`).
+A call goes through a port owned by A (declared in `A/application/ports/output/`, implemented in `A/infrastructure/gateways/`). A subscription imports A's **published contract**, which is plain data (see the `event` skill).
 
 **Forbidden (violations):**
-- Module A importing `B/domain/`, `B/application/` (other than `ports/input/`), or `B/infrastructure/`.
+- Module A importing `B/domain/`, `B/application/` (other than `ports/input/` and `ports/published/`), or `B/infrastructure/`.
+- A published contract importing anything but `shared/` and other contracts (`published-contract`): every subscriber would depend on its module's domain.
 - `A/domain`, `A/application` importing anything from module B.
 - Cycles between modules (A → B → A).
 - Business policy hidden in `shared/` that belongs to one module.
@@ -89,7 +91,7 @@ For each file, extract all import/require statements and determine:
 - Which layer and module is the importing file in?
 - Which layer and module is the imported file in? (resolve relative imports against the importing file; treat `@/…` aliases as `src/…`; a Python absolute import or a Go import is project code only when it starts with the project's own package or `go.mod` module path)
 - Is the import direction inward (allowed) or outward (violation)?
-- Does it cross a module boundary, and if so is it `infrastructure → application/ports/input`?
+- Does it cross a module boundary, and if so is it `infrastructure → application/ports/input` or `infrastructure → application/ports/published`?
 
 Import forms per language (the same ones `ca_scan` reads):
 
@@ -147,7 +149,7 @@ SQL is found in `.sql` files and in string literals of code that start like a st
 For each violation:
 ```
 ARCHITECTURE RULE VIOLATION
-  Rule: dependency-rule | cross-module | sql-placement | table-ownership | config-placement | i18n-placement
+  Rule: dependency-rule | cross-module | published-contract | sql-placement | table-ownership | config-placement | i18n-placement
   Severity: CRITICAL | HIGH | MEDIUM
   File: <path>:<line>
   Module: <module>
